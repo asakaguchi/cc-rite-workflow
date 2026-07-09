@@ -6,7 +6,7 @@
 >
 > **用語統一**: canonical 表記は **「文書-実装整合性」** (英訳: `Doc-Impl Consistency`)。「ドキュメント-実装整合性」/「内部事実」/「内部整合性」/「Internal Consistency」は同義。新規記述は canonical 表記を優先する。
 >
-> **Canonical category names** (literal-substring matched by `skills/review/SKILL.md` ステップ 5.1.3 META check — 表記揺れは `doc_heavy_post_condition: warning` false positive の原因):
+> **Canonical category names** (literal-substring matched by `skills/pr-review/SKILL.md` ステップ 5.1.3 META check — 表記揺れは `doc_heavy_post_condition: warning` false positive の原因):
 >
 > - `Implementation Coverage`
 > - `Enumeration Completeness`
@@ -22,7 +22,7 @@
 
 | 表記 | 用法 | 出現箇所 |
 |------|------|----------|
-| `Doc-Heavy PR Mode` | **固有名詞**: `skills/review/SKILL.md` ステップ 1.2.7 で判定される機能名 | 見出し / 文中の機能名参照 (英) |
+| `Doc-Heavy PR Mode` | **固有名詞**: `skills/pr-review/SKILL.md` ステップ 1.2.7 で判定される機能名 | 見出し / 文中の機能名参照 (英) |
 | `doc-heavy` | **形容詞** (小文字): `doc-heavy PR` / `doc-heavy mode` のような前置形容用法 | 文中の形容詞 (英) |
 | `{doc_heavy_pr}` | **変数名** (snake_case): retained context flag の名前 | bash 変数 / placeholder |
 | `ドキュメント中心 PR` | **一般説明** (日): 日本語本文での描写 | CHANGELOG.ja.md / 日本語ドキュメント |
@@ -50,9 +50,9 @@ Read `review.doc_heavy` from `rite-config.yml`:
 | `count_ratio_threshold` | number | `0.7` | ドキュメント**ファイル数比率**の閾値 (`doc_files_count / total_files_count`、total_files に対する doc_files の比率) |
 | `max_diff_lines_for_count` | integer | `2000` | ファイル数比率判定を有効にする最大 diff 行数 |
 
-**Activation 条件**: 本プロトコルは `{doc_heavy_pr} == true` (review.md ステップ 1.2.7 で計算される) のときのみ発動する。
+**Activation 条件**: 本プロトコルは `{doc_heavy_pr} == true` (pr-review.md ステップ 1.2.7 で計算される) のときのみ発動する。
 
-> **Single source of truth**: skip/activation 判定は [`skills/review/SKILL.md`](../SKILL.md) ステップ 1.2.7 の `{doc_heavy_pr}` 計算結果に完全委譲（二重定義 drift 防止）。`review.doc_heavy.enabled: false` / 空 PR / rite plugin 自身のドキュメントのみ変更 (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, `plugins/rite/i18n/**` — 分子から除外、分母には含める方式) / doc 比率閾値未満のいずれでも `doc_heavy_pr = false` で本プロトコル非発動。
+> **Single source of truth**: skip/activation 判定は [`skills/pr-review/SKILL.md`](../SKILL.md) ステップ 1.2.7 の `{doc_heavy_pr}` 計算結果に完全委譲（二重定義 drift 防止）。`review.doc_heavy.enabled: false` / 空 PR / rite plugin 自身のドキュメントのみ変更 (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, `plugins/rite/i18n/**` — 分子から除外、分母には含める方式) / doc 比率閾値未満のいずれでも `doc_heavy_pr = false` で本プロトコル非発動。
 
 ## Verification Protocol
 
@@ -201,9 +201,9 @@ reviewer は finding 出力末尾の META 行に、inconclusive となった cat
 - **(a + inconclusive)** `META: All 5 verification categories executed, 0 inconsistencies found, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]`
 - **(b + inconclusive)** `META: All 5 verification categories executed, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Findings below.`
 
-### review.md ステップ 5.1.3 での扱い
+### pr-review.md ステップ 5.1.3 での扱い
 
-review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inconclusive) / (b + inconclusive) も accept する必要がある。さらに `inconclusive` 内容が 1 件以上ある場合、`cross_reference_partial_skip` と同じ acknowledgement プロセスを発火する必要がある (ユーザーに「inconclusive な category があるが続行するか」を `AskUserQuestion` で確認する)。
+pr-review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inconclusive) / (b + inconclusive) も accept する必要がある。さらに `inconclusive` 内容が 1 件以上ある場合、`cross_reference_partial_skip` と同じ acknowledgement プロセスを発火する必要がある (ユーザーに「inconclusive な category があるが続行するか」を `AskUserQuestion` で確認する)。
 
 これにより、tech-writer が「META は出しておこう」で post-condition を pass しつつ実質的には silent skip を行う抜け道を塞ぐ。
 
@@ -275,7 +275,7 @@ review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記 (a
 
    **Failure signal の値は上記判定条件テーブル (step 2) の 7 値 (`404` / `401` / `403` / `5xx` / `timeout` / `empty` / `name-unresolved`) と完全に対応させる** (各値の意味は上記テーブルの「判定条件」列を参照)。
 
-4. レビュー呼び出し側 (review.md ステップ 5.1.3 Doc-Heavy Post-Condition Check) はこのメタ情報を検出し、ユーザーに明示的な確認を求める。メタ情報なしで cross-reference を skip した finding は post-condition check で reject される。
+4. レビュー呼び出し側 (pr-review.md ステップ 5.1.3 Doc-Heavy Post-Condition Check) はこのメタ情報を検出し、ユーザーに明示的な確認を求める。メタ情報なしで cross-reference を skip した finding は post-condition check で reject される。
 
 ## Cross-Reference
 

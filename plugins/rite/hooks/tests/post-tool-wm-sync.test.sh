@@ -442,6 +442,117 @@ else
 fi
 echo ""
 
+# --- TC-EARLYEXIT-1 (AC-1): non-rite project → no git rev-parse spawn, exit 0 ---
+# The lightweight rite-project gate must early-exit before state-path-resolve.sh
+# (git rev-parse ×2). A `git` PATH-shim records every invocation; a non-rite
+# sandbox (no rite-config.yml, no .rite/, none up to /) must exit 0 with the
+# shim never touched and no work memory created.
+echo "TC-EARLYEXIT-1 (AC-1): non-rite project early-exits with no git spawn"
+dir_ee1="$TEST_DIR/tc_earlyexit1"
+mkdir -p "$dir_ee1"
+shim_ee1="$TEST_DIR/tc_earlyexit1-shim"
+mkdir -p "$shim_ee1"
+git_log_ee1="$TEST_DIR/tc_earlyexit1-git.log"
+cat > "$shim_ee1/git" <<SHIM
+#!/bin/sh
+echo "GIT_CALLED \$*" >> "$git_log_ee1"
+exit 0
+SHIM
+chmod +x "$shim_ee1/git"
+rc_ee1=0
+echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee1\"}" | PATH="$shim_ee1:$PATH" bash "$HOOK" 2>/dev/null || rc_ee1=$?
+if [ ! -f "$git_log_ee1" ]; then
+  pass "TC-EARLYEXIT-1 no git rev-parse spawned in non-rite project (exit code: $rc_ee1)"
+else
+  fail "TC-EARLYEXIT-1 git was spawned in non-rite project: $(cat "$git_log_ee1")"
+fi
+if [ "$rc_ee1" -eq 0 ] && [ ! -d "$dir_ee1/.rite-work-memory" ]; then
+  pass "TC-EARLYEXIT-1 exit 0 and no work memory created"
+else
+  fail "TC-EARLYEXIT-1 unexpected: rc=$rc_ee1, wm-dir=$([ -d "$dir_ee1/.rite-work-memory" ] && echo present || echo absent)"
+fi
+echo ""
+
+# --- TC-EARLYEXIT-2 (AC-3): worktree (rite-config.yml only, no .rite/) does NOT early-exit ---
+# A multi_session worktree checks out the tracked rite-config.yml but has no
+# .rite state dir (that lives in the main checkout). The gate must detect it via
+# rite-config.yml and proceed past the gate to the resolver — proven by the git
+# shim being invoked. Guards against a regression that keys detection on .rite/
+# alone (which would false-early-exit every worktree edit).
+echo "TC-EARLYEXIT-2 (AC-3): worktree with rite-config.yml only is not early-exited"
+dir_ee2="$TEST_DIR/tc_earlyexit2"
+mkdir -p "$dir_ee2"
+printf '# rite worktree sandbox config\n' > "$dir_ee2/rite-config.yml"
+# Intentionally do NOT create .rite/ — this is the worktree-specific condition.
+shim_ee2="$TEST_DIR/tc_earlyexit2-shim"
+mkdir -p "$shim_ee2"
+git_log_ee2="$TEST_DIR/tc_earlyexit2-git.log"
+cat > "$shim_ee2/git" <<SHIM
+#!/bin/sh
+echo "GIT_CALLED \$*" >> "$git_log_ee2"
+exit 0
+SHIM
+chmod +x "$shim_ee2/git"
+rc_ee2=0
+echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee2\"}" | PATH="$shim_ee2:$PATH" bash "$HOOK" 2>/dev/null || rc_ee2=$?
+if [ -f "$git_log_ee2" ]; then
+  pass "TC-EARLYEXIT-2 gate passed via rite-config.yml (git rev-parse reached, exit code: $rc_ee2)"
+else
+  fail "TC-EARLYEXIT-2 gate wrongly early-exited a worktree (git never reached — .rite-only detection regression)"
+fi
+echo ""
+
+# --- TC-EARLYEXIT-3: relative CWD terminates the gate walk (no infinite loop) ---
+# The upward-walk ascends via `${dir%/*}`, which leaves a slashless segment
+# (a relative .cwd like `reldir`) unchanged. Without the no-progress guard the
+# gate spins forever. The harness supplies an absolute .cwd in practice, but this
+# pins the guard. Run under `timeout`; a hang exits 124. Skip when `timeout` is
+# unavailable (e.g. macOS without coreutils) rather than fail spuriously.
+echo "TC-EARLYEXIT-3: relative CWD terminates the gate walk (no infinite loop)"
+dir_ee3="$TEST_DIR/tc_earlyexit3"
+mkdir -p "$dir_ee3/reldir"
+if command -v timeout >/dev/null 2>&1; then
+  rc_ee3=0
+  ( cd "$dir_ee3" && echo '{"tool_name": "Bash", "cwd": "reldir"}' | timeout 5 bash "$HOOK" >/dev/null 2>&1 ) || rc_ee3=$?
+  if [ "$rc_ee3" -ne 124 ]; then
+    pass "TC-EARLYEXIT-3 gate terminated for relative CWD (exit code: $rc_ee3, not a 124 timeout)"
+  else
+    fail "TC-EARLYEXIT-3 hook hung on relative CWD (timeout 124 — infinite-loop regression)"
+  fi
+else
+  pass "TC-EARLYEXIT-3 skipped: timeout(1) unavailable, termination not exercised"
+fi
+echo ""
+
+# --- TC-EARLYEXIT-4: rite marker found at an ANCESTOR (multi-level upward walk) ---
+# The other early-exit TCs place the rite marker directly at CWD, so none of them
+# exercise the upward walk actually ascending. Here the marker (.rite) sits at the
+# sandbox root and CWD is several levels below it — the gate must walk up to find
+# it, proven by git being reached. Guards against a regression that narrows the
+# gate to a CWD-only check, which would still pass every other TC but break the
+# common "Bash invoked from a subdirectory of a rite project" case (WM sync would
+# silently stop).
+echo "TC-EARLYEXIT-4 (AC-1/AC-3): ancestor marker found via upward walk is not early-exited"
+dir_ee4="$TEST_DIR/tc_earlyexit4"
+mkdir -p "$dir_ee4/.rite" "$dir_ee4/sub/deep"
+shim_ee4="$TEST_DIR/tc_earlyexit4-shim"
+mkdir -p "$shim_ee4"
+git_log_ee4="$TEST_DIR/tc_earlyexit4-git.log"
+cat > "$shim_ee4/git" <<SHIM
+#!/bin/sh
+echo "GIT_CALLED \$*" >> "$git_log_ee4"
+exit 0
+SHIM
+chmod +x "$shim_ee4/git"
+rc_ee4=0
+echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee4/sub/deep\"}" | PATH="$shim_ee4:$PATH" bash "$HOOK" 2>/dev/null || rc_ee4=$?
+if [ -f "$git_log_ee4" ]; then
+  pass "TC-EARLYEXIT-4 gate ascended to the ancestor .rite marker (git rev-parse reached, exit code: $rc_ee4)"
+else
+  fail "TC-EARLYEXIT-4 gate did not walk up to the ancestor marker (CWD-only detection regression)"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

@@ -51,11 +51,11 @@ chore: maintenance
 ```
 plugins/rite/
 ├── skills/           # Skill definitions auto-detected by Claude Code (SKILL.md); invoked as /rite:<name>
-│   │                 #   each skill = thin SKILL.md (< 500-line entrypoint) + co-located references/
-│   ├── (PR lifecycle)  # open, iterate, review, fix, ready, merge, cleanup, run, pr-create
+│   │                 #   each skill = thin SKILL.md + co-located references/ (entry skills < 500 lines; procedural skills <= 4,000 lines, rationale in references/)
+│   ├── (PR lifecycle)  # open, iterate, pr-review, fix, ready, merge, cleanup, run, pr-create
 │   ├── (issue ops)     # issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
 │   ├── (wiki)          # wiki-init, wiki-query, wiki-ingest, wiki-lint
-│   ├── (meta/top)      # init, getting-started, workflow, investigate, learn, lint, resume, skill-suggest, template-reset
+│   ├── (meta/top)      # setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
 │   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
 ├── agents/           # Sub-agent definitions for PR review (13 reviewers + _reviewer-base)
@@ -67,9 +67,35 @@ plugins/rite/
 └── scripts/          # Utility scripts (Issue creation with Projects integration)
 ```
 
+## Adding a New Reviewer
+
+A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3) is machine-checked by `reviewer-registry-drift-check.sh` (run from `/rite:lint` ステップ 3.7.1) with one deliberate gap: a missing **Available Reviewers** row in (2) is indistinguishable from a logic-selected reviewer and is NOT machine-checked (invariant I2 is one-way) — verify edit location 2 against this checklist; (4) is free-form prose covered only by this checklist.
+
+**Edit locations:**
+
+1. **`plugins/rite/agents/{type}-reviewer.md`** (new file) — the reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format), injected as the named subagent's system prompt. Model an existing reviewer (e.g. `security-reviewer.md`); shared principles live in `_reviewer-base.md` and must not be duplicated.
+2. **`plugins/rite/skills/reviewers/SKILL.md` — `Available Reviewers` table** — add a row with the display name, agent filename, and activation file patterns. Skip this table only for logic-selected reviewers that have no file patterns (e.g. `code-quality`, the fallback / co-reviewer).
+3. **`plugins/rite/skills/reviewers/SKILL.md` — `Reviewer Type Identifiers` table** — add a row mapping the `reviewer_type` slug to the 日本語表示名 and agent filename. The slug MUST equal the agent basename minus `-reviewer.md` (e.g. `security-reviewer.md` → `security`); the drift check verifies this per row.
+4. **(Conditional) `plugins/rite/skills/pr-review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.).
+
+**Verification:**
+
+```bash
+# 3-way sync: agents/ files <-> Available Reviewers <-> Type Identifiers
+bash plugins/rite/hooks/scripts/reviewer-registry-drift-check.sh --all
+
+# Only when the Technical Writer row was touched: tech-writer pattern equivalence
+bash plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh --all
+
+# Regression tests for the registry check itself
+bash plugins/rite/hooks/tests/reviewer-registry-drift-check.test.sh
+```
+
+`/rite:lint` runs both drift checks automatically (ステップ 3.7 / 3.7.1) as non-blocking warnings, so a forgotten Type Identifiers row or agent profile surfaces on the next lint (invariants I1/I3) even if you skip manual verification. A forgotten **Available Reviewers** row is the one gap the check cannot see (indistinguishable from a logic-selected reviewer) — verify edit location 2 manually.
+
 ## Hook Development Guide
 
-Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered via `plugins/rite/hooks/hooks.json` (native plugin hook management) and executed automatically by Claude Code. For legacy setups without `hooks.json`, `/rite:init` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json` — see the Hook Events and Registration section below.
+Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered via `plugins/rite/hooks/hooks.json` (native plugin hook management) and executed automatically by Claude Code. For legacy setups without `hooks.json`, `/rite:setup` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json` — see the Hook Events and Registration section below.
 
 ### Hook Directory Structure
 
@@ -95,13 +121,13 @@ plugins/rite/hooks/
 
 > **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the seven events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from skills. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
 
-> **Note**: The `Stop` event is registered to `stop-loop-continuation.sh`, which consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command (`/rite:review` ⇄ `/rite:fix`), the `/rite:cleanup` → wiki-ingest → wiki-lint chain continuation, or a terminal completion-notice (see the `handoff` field in `docs/SPEC.md`). This is **not** a stop-*prevention* hook: the legacy blocking `stop-guard.sh`, which made the LLM stall in thinking loops at phase boundaries, was removed, and general workflow halting is now prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
+> **Note**: The `Stop` event is registered to `stop-loop-continuation.sh`, which consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command (`/rite:pr-review` ⇄ `/rite:fix`), the `/rite:cleanup` → wiki-ingest → wiki-lint chain continuation, or a terminal completion-notice (see the `handoff` field in `docs/SPEC.md`). This is **not** a stop-*prevention* hook: the legacy blocking `stop-guard.sh`, which made the LLM stall in thinking loops at phase boundaries, was removed, and general workflow halting is now prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
 
 ### Hook Events and Registration
 
 Rite Workflow uses native Claude Code plugin hook management via `plugins/rite/hooks/hooks.json`. When the plugin is installed (or developed locally), Claude Code reads this file and registers all hooks automatically — no manual edits to `.claude/settings.local.json` are required.
 
-For legacy setups or environments where `hooks.json` is unavailable, `/rite:init` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json`. The following is a partial example of that fallback format:
+For legacy setups or environments where `hooks.json` is unavailable, `/rite:setup` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json`. The following is a partial example of that fallback format:
 
 ```json
 {
@@ -154,7 +180,7 @@ fi
 ```
 
 2. Make it executable: `chmod +x plugins/rite/hooks/your-hook.sh`
-3. Register it in `plugins/rite/hooks/hooks.json` (native plugin hook registration) and — for legacy fallback — in `init.md` (Phase 4.5.2) so it also lands in `.claude/settings.local.json`
+3. Register it in `plugins/rite/hooks/hooks.json` (native plugin hook registration) and — for legacy fallback — in `setup.md` (Phase 4.5.2) so it also lands in `.claude/settings.local.json`
 4. Write tests in `plugins/rite/hooks/tests/your-hook.test.sh`
 
 ### Hook Conventions
@@ -242,7 +268,7 @@ echo "Results: $PASS passed, $FAIL failed"
 4. Clean up with `trap cleanup EXIT`
 5. Exit with code 1 if any test fails
 
-The test runner (`run-tests.sh`) automatically discovers all `*.test.sh` files and reports aggregate results.
+The test runner (`run-tests.sh`) automatically discovers all `*.test.sh` files in `plugins/rite/hooks/tests/` plus the `test-*.sh` files in `plugins/rite/hooks/scripts/tests/`, and reports aggregate results.
 
 ## Worktree Workflow
 

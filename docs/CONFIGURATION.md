@@ -85,6 +85,7 @@ issue:
 # Review settings
 review:
   min_reviewers: 1      # Fallback when no reviewers match
+  max_reviewers: 6      # Cost cap: max reviewers spawned per review (default 6)
   criteria:
     - file_types
     - content_analysis
@@ -93,7 +94,7 @@ review:
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
     # Review-fix loop termination
     # The loop terminates only on (a) 0 findings remaining → [review:mergeable] (normal exit), or
-    # (b) manual abort via Ctrl+C → /rite:resume (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]).
+    # (b) manual abort via Ctrl+C → /rite:recover (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]).
     # The keys below remain as config scaffolding but have no
     # runtime effect on loop termination — see skills/iterate/SKILL.md ループ仕様 and
     # skills/fix/references/fix-relaxation-rules.md "Loop Termination" for the live spec.
@@ -117,10 +118,6 @@ review:
     max_claims: 20                     # Maximum number of External claims to verify per review (default: 20). Internal Likelihood claims are Grep-based and counted outside this cap
     use_context7: true                 # Use context7 MCP tool for verification (default: true). Auto-falls back to WebSearch when context7 is unavailable
     verify_internal_likelihood: true   # Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep (default: true)
-
-# Fix settings
-fix:
-  fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
 
 # Iteration settings (optional)
 iteration:
@@ -153,8 +150,7 @@ pr_review:
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
-  # The review-fix loop has no iteration-count limit key; it exits only on 0 findings
-  # or manual abort (Ctrl+C / /rite:resume).
+  max_review_cycles: 5             # review-fix loop (circuit breaker) hard limit per PR (default: 5)
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
@@ -405,10 +401,11 @@ issue:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `min_reviewers` | integer | `1` | Minimum number of reviewers (fallback when no reviewers match) |
+| `max_reviewers` | integer | `6` | Maximum reviewers spawned per review (cost cap). Applied after `min_reviewers` and the security/sole-reviewer guards, so it never drops a mandatory reviewer or reduces below `min_reviewers`. When the matched set exceeds the cap, reviewers are narrowed by relevance (matched file count) and the omitted reviewers are displayed (never silently capped). Invalid values (non-numeric, or `< min_reviewers`) fall back with a WARNING (default `6` — raised to `min_reviewers` when `min_reviewers > 6` — or `min_reviewers` respectively) |
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits only on 0 findings (normal) or manual abort (Ctrl+C → `/rite:resume`) — see `skills/iterate/SKILL.md` for the live spec |
+| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits on 0 findings (normal), the `safety.max_review_cycles` circuit breaker (default 5), or manual abort (Ctrl+C → `/rite:recover`) — see `skills/iterate/SKILL.md` for the live spec |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
@@ -432,21 +429,15 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 | Exit | Trigger |
 |------|---------|
 | Normal | 0 findings remaining → `[review:mergeable]` |
-| Manual abort | User aborts via `Ctrl+C` → `/rite:resume` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
+| Manual abort | User aborts via `Ctrl+C` → `/rite:recover` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 
-**Fix settings:**
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
-
-**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/review/references/internal-consistency.md` for the full protocol.
+**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/pr-review/references/internal-consistency.md` for the full protocol.
 
 **Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, from cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). The default `false` performs full review only every cycle, maximizing review quality.
 
 **Review execution:**
 
-`/rite:review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role. This improves context efficiency and enables parallel execution.
+`/rite:pr-review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role. This improves context efficiency and enables parallel execution.
 
 **Available reviewers:**
 
@@ -582,7 +573,7 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable per-session worktrees (on by default). Set to `false` to restore single-session behavior (identical to the previous default, zero change). New projects get `enabled: true` from the `/rite:init` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
+| `enabled` | boolean | `true` | Enable per-session worktrees (on by default). Set to `false` to restore single-session behavior (identical to the previous default, zero change). New projects get `enabled: true` from the `/rite:setup` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
 | `worktree_base` | string | `".rite/worktrees"` | Base directory for session worktrees (each Issue gets an `issue-{N}` subdirectory) |
 
 **Separate axis from `parallel`:** `parallel.*` governs per-Issue sub-agent fan-out *within a single session*; `multi_session.*` governs lifecycle isolation *across whole sessions*. The two are orthogonal and intentionally not merged — `parallel.mode: "worktree"` uses `.worktrees/{issue}/{task}`, while `multi_session` uses `.rite/worktrees/issue-{N}`.
@@ -601,7 +592,7 @@ multi_session:
   worktree_base: ".rite/worktrees"
 ```
 
-**`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:init` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
+**`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:setup` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
 
@@ -612,6 +603,7 @@ Fail-closed safety thresholds to prevent runaway workflows.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `max_implementation_rounds` | integer | `20` | Hard limit for implementation rounds per Issue (re-entries from checklist failures) |
+| `max_review_cycles` | integer | `5` | Hard limit for `/rite:iterate` review⇄fix loop cycles per PR (circuit breaker). Prevents infinite loops from non-deterministic reviewer oscillation or non-convergent PRs. Invalid values (≤ 0 or non-numeric) fall back to the default with a WARNING |
 | `time_budget_minutes` | integer | `120` | Advisory time budget per Issue in minutes (not enforced by timer) |
 | `auto_stop_on_repeated_failure` | boolean | `true` | Stop workflow when the same failure class repeats consecutively |
 | `repeated_failure_threshold` | integer | `3` | Number of consecutive same-class failures before triggering auto-stop |
@@ -621,6 +613,7 @@ Fail-closed safety thresholds to prevent runaway workflows.
 ```yaml
 safety:
   max_implementation_rounds: 20
+  max_review_cycles: 5
   time_budget_minutes: 120
   auto_stop_on_repeated_failure: true
   repeated_failure_threshold: 3
@@ -632,6 +625,15 @@ When a limit is exceeded, the workflow presents options:
 1. Continue (raise the limit)
 2. Abort (save state to work memory for later resumption)
 3. Manual intervention (user handles directly)
+
+**`max_review_cycles` (review⇄fix circuit breaker):**
+
+The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 findings). `max_review_cycles` adds a circuit breaker so a non-convergent PR cannot loop forever. When the cycle count reaches the limit:
+
+- **Interactive `/rite:iterate`**: an `AskUserQuestion` is presented (continue for another `max_review_cycles` cycles / abort / leave the draft as-is). The loop is never auto-continued past the limit.
+- **`/rite:batch-run` batch**: the Issue is recorded as failed (`[iterate:max-cycles-reached]`) and the batch advances to the next Issue, leaving the draft/open PR for review. This prevents one non-convergent PR from stalling the whole batch.
+
+The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:recover` — an interrupted loop resumes its count rather than restarting from 0.
 
 ### metrics
 

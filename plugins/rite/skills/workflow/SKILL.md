@@ -5,6 +5,7 @@ description: |
   ブランチ・作業中 Issue) を検出し、ワークフロー全体図・コマンド一覧・次のステップを案内する。
   ユーザーが明示的に /rite:workflow で起動する。auto-activate しない。
   起動: /rite:workflow
+argument-hint: ""
 ---
 
 # /rite:workflow
@@ -22,7 +23,7 @@ When this command is executed, run the following phases in order.
 Check whether `rite-config.yml` exists in the project root:
 
 ```bash
-ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
+ls rite-config.yml 2>/dev/null || ls .claude/rite-config.yml 2>/dev/null
 ```
 
 **If it does not exist:**
@@ -30,7 +31,7 @@ ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
 ```
 rite workflow が初期化されていません
 
-まず /rite:init を実行してセットアップを完了してください
+まず /rite:setup を実行してセットアップを完了してください
 ```
 
 Stop here and do not execute any subsequent phases.
@@ -62,46 +63,36 @@ Display the following diagram:
 │                     ワークフロー全体図                      │
 └─────────────────────────────────────────────────────────────┘
 
+  /rite:unknowns <テーマ> (構想フェーズ・任意の前段)
+        │  盲点洗い出し・ブレスト・プロトタイプ・インタビュー
+        │  → 探索サマリ出力
+        ▼
   /rite:issue-list (Issue 確認)
         │
         ▼
   /rite:issue-create (新規 Issue 作成)
         │                              Status: Todo
         ▼
-  /rite:open <番号> (ブランチ作成)
+  /rite:open <番号> (実装 → draft PR)
         │                              Status: In Progress
+        │  内部: ブランチ作成 → 実装計画 → 実装
+        │        → /rite:lint → draft PR 作成
+        │  （作業メモリ更新は /rite:issue-update）
         ▼
-  ┌─────────────────────┐
-  │     実装作業        │
-  │  └─ /rite:issue-update │ (作業メモリ更新)
-  └─────────────────────┘
+  /rite:iterate <pr> (レビュー/修正ループ)
+        │  内部: /rite:pr-review ⇄ /rite:fix を
+        │        mergeable になるまで自律実行
+        ▼
+  /rite:ready <pr> (レビュー待ちに変更)
+        │                              Status: In Review
+        ▼
+  /rite:merge <pr> (squash マージ)
         │
         ▼
-  /rite:lint (品質チェック)
-        │
+  /rite:cleanup (後片付け)
+        │  ブランチ削除・Issue クローズ・Wiki 統合
         ▼
-  /rite:pr-create (ドラフト PR 作成)
-        │
-        ▼
-  /rite:review (セルフレビュー)
-        │
-        ▼
-  ┌───指摘あり？──┐
-  │               │
-  YES             NO
-  │               │
-  ▼               │
-  /rite:fix     │
-  (指摘対応)      │
-  │               │
-  └─→ /rite:review  │
-     (再レビュー)    │
-     └─→ (ループ)    │
-                     ▼
-              /rite:ready (レビュー待ちに変更)
-                     │                              Status: In Review
-                     ▼
-              PR マージ → Issue 自動クローズ       Status: Done
+  完了                                 Status: Done
 
 ┌─────────────────────────────────────────────────────────────┐
 │  Status 遷移: Todo → In Progress → In Review → Done         │
@@ -120,27 +111,32 @@ Display the following list:
 └─────────────────────────────────────────────────────────────┘
 
 【セットアップ】
-  /rite:init            初回セットアップウィザード
+  /rite:setup           初回セットアップウィザード
   /rite:workflow        このガイドを表示
+
+【構想（任意）】
+  /rite:unknowns        実装前探索セッション（盲点洗い出し・ブレスト・プロトタイプ・インタビュー）
 
 【Issue 管理】
   /rite:issue-list      Issue 一覧を表示
   /rite:issue-create    新規 Issue を作成
-  /rite:open     Issue の作業を開始（ブランチ作成）
+  /rite:open            Issue の作業を開始（実装 → draft PR）
   /rite:issue-update    作業メモリを更新
   /rite:issue-close     Issue の完了状態を確認
 
 【PR 管理】
-  /rite:pr-create       ドラフト PR を作成
-  /rite:ready        Ready for review に変更
-  /rite:review       マルチレビュアーレビュー
+  /rite:iterate         レビュー/修正ループ（review ⇄ fix を自律実行）
+  /rite:ready           Ready for review に変更
+  /rite:merge           PR を squash マージ
+  /rite:cleanup         マージ後クリーンアップ（ブランチ削除・Issue クローズ）
+  /rite:pr-create       ドラフト PR を作成（Issue なしの単発 PR 用）
 
 【ユーティリティ】
   /rite:lint            品質チェックを実行
   /rite:template-reset  テンプレートを再生成
-  /rite:resume          中断した作業を再開
+  /rite:recover          中断した作業を再開
 
-💡 Tips: Context limit reached で中断した場合は /clear → /rite:resume で再開できます
+💡 Tips: Context limit reached で中断した場合は /clear → /rite:recover で再開できます
 💡 Tips: 複数セッションで別 Issue を並行する場合、rite-config.yml の
          multi_session.enabled: true（デフォルト ON）により
          セッション別 worktree (.rite/worktrees/issue-{N}) に分離されます
@@ -163,15 +159,15 @@ Based on the state confirmed in Phase 1, suggest the next action.
   作業中の Issue: #{issue-number}
 
   【次のステップ】
-  1. 実装を続ける
+  1. 実装を続ける（/rite:open が lint → draft PR 作成まで実行します）
   2. /rite:issue-update で作業メモリを更新
-  3. 完了したら /rite:lint で品質チェック
-  4. /rite:pr-create でドラフト PR を作成
+  3. draft PR 作成後は /rite:iterate <pr> でレビュー/修正ループ
+  4. /rite:ready <pr> → /rite:merge <pr> → /rite:cleanup で完了
 ```
 
 > **multi-session 時の注意**: `multi_session.enabled: true` の場合、この作業は
 > セッション worktree（`.rite/worktrees/issue-{N}`）内で進行しています。中断後は
-> `/rite:resume` がその worktree へ自動で再入場します（消失していればブランチから
+> `/rite:recover` がその worktree へ自動で再入場します（消失していればブランチから
 > 再構築）。main checkout のカレントブランチは base（`branch.base`）のままにしておく
 > こと — rite は main checkout のブランチを切り替えません。詳細は
 > `docs/designs/multi-session-worktree.md` 参照。
@@ -252,6 +248,6 @@ The workflow diagram and command list in Phase 2 should switch output according 
 | Status display | `Status: Todo` | `Status: Todo` (common) |
 | Section heading | `【セットアップ】` | `【Setup】` |
 | Action guidance | `次のステップ:` | `Next Steps:` |
-| Tips | `💡 Tips: Context limit reached で中断した場合は /clear → /rite:resume で再開できます` | `💡 Tips: If interrupted by context limit, run /clear → /rite:resume to resume` |
+| Tips | `💡 Tips: Context limit reached で中断した場合は /clear → /rite:recover で再開できます` | `💡 Tips: If interrupted by context limit, run /clear → /rite:recover to resume` |
 
 **Note**: Status values (Todo, In Progress, etc.) use the GitHub Projects setting values as-is, so they are common regardless of the language setting.

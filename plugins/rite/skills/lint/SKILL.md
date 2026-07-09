@@ -264,7 +264,7 @@ When the user enters/selects a command:
 
 1. Execute Phase 2 onward using the entered command
 2. Do not save to `rite-config.yml` (temporary use only)
-3. If saving to configuration is needed, guide the user to `/rite:init` or manual editing
+3. If saving to configuration is needed, guide the user to `/rite:setup` or manual editing
 
 ---
 
@@ -471,7 +471,7 @@ fi
 
 ### 3.6 Plugin-specific Checks (Bang-Backtick Adjacency Detection)
 
-Execute the bang-backtick check script to detect Skill loader triggering patterns (backtick + bang adjacency) in **`plugins/rite/commands/**/*.md`** and **`plugins/rite/skills/**/*.md`** (plugin-scoped; the script walks the rite plugin tree specifically and does not scan repository-root `commands/` or `skills/` directories that may belong to other plugins). This is the static lint counterpart to the incident where inline-code bang adjacency broke Skill loading via bash history expansion. See the script header comment at `plugins/rite/hooks/scripts/bang-backtick-check.sh` for concrete detection patterns.
+Execute the bang-backtick check script to detect Skill loader triggering patterns (backtick + bang adjacency) in **`plugins/rite/skills/**/*.md`**, **`plugins/rite/agents/**/*.md`**, and **`plugins/rite/references/**/*.md`** (plugin-scoped; the script walks the rite plugin tree specifically and does not scan repository-root `skills/` or similar directories that may belong to other plugins). This is the static lint counterpart to the incident where inline-code bang adjacency broke Skill loading via bash history expansion. See the script header comment at `plugins/rite/hooks/scripts/bang-backtick-check.sh` for concrete detection patterns.
 
 **Condition**: Always execute when the script exists.
 
@@ -504,7 +504,7 @@ fi
 
 ### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
 
-Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/skills/review/SKILL.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/skills/pr-review/SKILL.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
 **Condition**: Always execute when the script exists.
 
@@ -535,9 +535,42 @@ fi
 - `doc_heavy_drift_finding_count`: Extract from `doc_heavy_drift_output` by matching the line `==> Total doc-heavy-patterns-drift findings: N` (regex: `/Total doc-heavy-patterns-drift findings: (\d+)/`). If no match found, default to 0
 - `doc_heavy_drift_output`: Script output (truncated if >50 lines)
 
+### 3.7.1 Plugin-specific Checks (Reviewer Registry Drift Detection)
+
+Execute the reviewer registry drift check script to detect divergence across the 3 places that must stay in sync when a reviewer is added or removed: `plugins/rite/agents/*-reviewer.md` (profile files), and the `Available Reviewers` / `Reviewer Type Identifiers` tables in `plugins/rite/skills/reviewers/SKILL.md`. A half-registered reviewer either never spawns or spawns a nonexistent subagent. See the script header at `plugins/rite/hooks/scripts/reviewer-registry-drift-check.sh` for the invariant contract, and CONTRIBUTING.md "Adding a New Reviewer" for the full edit procedure.
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/reviewer-registry-drift-check.sh ]; then
+  reviewer_registry_drift_output=$(bash {plugin_root}/hooks/scripts/reviewer-registry-drift-check.sh --all 2>&1)
+  reviewer_registry_drift_exit_code=$?
+else
+  reviewer_registry_drift_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `reviewer_registry_drift_status` | Action |
+|-----------|----------------------------------|--------|
+| 0 | `success` | Registry in sync across the 3 points — continue to Phase 4 |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Drift detection results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
+
+**Record drift results** for Phase 4 reporting:
+- `reviewer_registry_drift_status`: `success` / `warning` / `error` / `skipped`
+- `reviewer_registry_drift_finding_count`: Extract from `reviewer_registry_drift_output` by matching the line `==> Total reviewer-registry-drift findings: N` (regex: `/Total reviewer-registry-drift findings: (\d+)/`). If no match found, default to 0
+- `reviewer_registry_drift_output`: Script output (truncated if >50 lines)
+
 ### 3.8 Plugin-specific Checks (Wiki Growth Check)
 
-Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `skills/review/SKILL.md` ステップ 6.5.W / `skills/fix/SKILL.md` ステップ 4.6.W / `skills/issue-close/SKILL.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and the 3-layer defense rationale.
+Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `skills/pr-review/SKILL.md` ステップ 6.5.W / `skills/fix/SKILL.md` ステップ 4.6.W / `skills/issue-close/SKILL.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and the 3-layer defense rationale.
 
 **Condition**: Always execute when the script exists.
 
@@ -640,7 +673,7 @@ fi
 
 ### 3.11 Plugin-specific Checks (Hardcoded Line-Number Check)
 
-Execute the hardcoded line-number check script to detect prose-level hardcoded line-number references in `plugins/rite/commands/**/*.md`. This complements the Phase 3.5 distributed fix drift check by catching three drift-prone patterns that the existing `(line N, M)`-only propagation scan missed:
+Execute the hardcoded line-number check script to detect prose-level hardcoded line-number references in `plugins/rite/skills/**/*.md`. This complements the Phase 3.5 distributed fix drift check by catching three drift-prone patterns that the existing `(line N, M)`-only propagation scan missed:
 
 - **P-A** parenthesized form `(line N)` / `(line N, M)`
 - **P-B** Japanese prose form (qualifier `直前` / `直後` / `上記` / `下記` / `上方` / `下方` / `本セクション` near `line N`)
@@ -762,7 +795,7 @@ fi
 
 ### 3.14 Plugin-specific Checks (Direct gh issue create Invocation)
 
-Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/commands/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the existing direct-invocation guard by extending its enforcement scope from the two original files (`commands/issue/start.md` plus the now-deleted `commands/issue/parent-routing.md`) to every command/sub-skill markdown file. The original incident showed that scope-creep follow-up Issue creation invoked at orchestration time — specifically the canonical Issue creation paths in `skills/review/SKILL.md` and `skills/fix/SKILL.md` — could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
+Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/skills/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the existing direct-invocation guard by extending its enforcement scope from the two original files (the retired `commands/issue/start.md` plus the now-deleted `commands/issue/parent-routing.md`) to every skill / sub-skill markdown file. The original incident showed that scope-creep follow-up Issue creation invoked at orchestration time — specifically the canonical Issue creation paths in `skills/pr-review/SKILL.md` and `skills/fix/SKILL.md` — could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
 
 Detected pattern (after stripping fenced code blocks / blockquotes / Markdown comments / inline backticks):
 
@@ -801,7 +834,7 @@ fi
 
 ### 3.15 Plugin-specific Checks (Orphan Reference File Detection)
 
-Execute the orphan reference lint guard to detect reference files (`plugins/rite/{commands,references,skills,agents}/**/*.md`) that exist but have zero inbound references AND no test pin protection. The motivation comes from a real incident where `plugins/rite/commands/issue/references/projects-status-update-callsites.md` (146 lines) was found to be a complete orphan — no other file referenced it, no test pinned its content, and it survived multiple workflow refactorings undetected. This check catches the same class of orphan accumulation mechanically before it grows into a maintenance burden.
+Execute the orphan reference lint guard to detect reference files (`plugins/rite/{references,skills,agents}/**/*.md`) that exist but have zero inbound references AND no test pin protection. The motivation comes from a real incident where `plugins/rite/commands/issue/references/projects-status-update-callsites.md` (146 lines) was found to be a complete orphan — no other file referenced it, no test pinned its content, and it survived multiple workflow refactorings undetected. This check catches the same class of orphan accumulation mechanically before it grows into a maintenance burden.
 
 Detection logic (see `plugins/rite/hooks/scripts/orphan-reference-check.sh` for the exact algorithm):
 
@@ -881,7 +914,7 @@ fi
 
 ### 3.17 Plugin-specific Checks (Operational Bash Block Heaviness)
 
-Execute the operational bash block heaviness check to detect "heavy" bash blocks in command markdown under **`plugins/rite/commands/**/*.md`** that violate the "operational bash block heaviness convention" added to `skills/rite-workflow/references/coding-principles.md`. That convention's origin: large operational bash blocks (python inline / nested `$()` / multiple heredocs / long line counts) malformed Claude's tool-call parsing and silently ended the turn with no error. The convention was added as prose, but prose-only enforcement cannot stop new drift — this check surfaces it mechanically. See the script header at `plugins/rite/hooks/scripts/bash-heaviness-check.sh` for the heaviness model.
+Execute the operational bash block heaviness check to detect "heavy" bash blocks in skill markdown under **`plugins/rite/skills/**/*.md`** that violate the "operational bash block heaviness convention" added to `skills/rite-workflow/references/coding-principles.md`. That convention's origin: large operational bash blocks (python inline / nested `$()` / multiple heredocs / long line counts) malformed Claude's tool-call parsing and silently ended the turn with no error. The convention was added as prose, but prose-only enforcement cannot stop new drift — this check surfaces it mechanically. See the script header at `plugins/rite/hooks/scripts/bash-heaviness-check.sh` for the heaviness model.
 
 A block is flagged only when it exhibits **2 or more** of these signals (a single signal — e.g. a lone helper call passing one JSON heredoc, or one block writing a long template — is intentionally not flagged, keeping false positives low):
 
@@ -892,7 +925,7 @@ A block is flagged only when it exhibits **2 or more** of these signals (a singl
 
 Heredoc bodies are treated as data: the python-inline / nested-cmdsub signals are evaluated only on real shell lines, so a template heredoc containing `$(...)` or `python3 -c` example text does not produce a finding.
 
-Exclusions: `plugins/rite/commands/**/tests/` fixtures, and any block containing the `drift-check-ignore` marker on one of its lines (exempts intentional / already-reviewed heavy blocks).
+Exclusions: `plugins/rite/skills/**/tests/` fixtures, and any block containing the `drift-check-ignore` marker on one of its lines (exempts intentional / already-reviewed heavy blocks).
 
 **Condition**: Always execute when the script exists.
 
@@ -997,6 +1030,39 @@ fi
 - `number_ref_finding_count`: Extract from `number_ref_output` by matching the line `==> Total number-ref findings: N` (regex: `/Total number-ref findings: (\d+)/`). If no match found, default to 0
 - `number_ref_output`: Script output (truncated if >50 lines)
 
+### 3.20 Plugin-specific Checks (Sentinel Contract Drift Detection)
+
+Execute the sentinel contract check to detect drift between the sentinel SoT (`plugins/rite/references/sentinel-contract.md` `## Sentinel 一覧` table) and the actual emitter/consumer skill files. Sentinels (bracketed literal strings such as `[review:mergeable]` / `[lint:success]` / `[fix:error]`) are the implicit string-matching contract sub-skills use to hand off control between each other; a rename in one file without the others causes silent orchestration breakage that only surfaces at runtime. The check reports (a) SoT-declared sentinels whose literal string is missing from their declared emitter or consumer skill file, and (b) sentinel-shaped literals found under `plugins/rite/skills/` (recursive `*.md`) or directly under `plugins/rite/hooks/` (`*.sh`, non-recursive — runtime hook helper scripts such as `review-comment-post.sh`) that are not declared in the SoT. See the script header at `plugins/rite/hooks/scripts/sentinel-contract-check.sh` for the invariant contract, and `plugins/rite/references/sentinel-contract.md` for the full sentinel list.
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/sentinel-contract-check.sh ]; then
+  sentinel_contract_output=$(bash {plugin_root}/hooks/scripts/sentinel-contract-check.sh --all 2>&1)
+  sentinel_contract_exit_code=$?
+else
+  sentinel_contract_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `sentinel_contract_status` | Action |
+|-----------|----------------------------|--------|
+| 0 | `success` | No drift — continue to Phase 4 |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (bad args, malformed SoT table) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Sentinel contract check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.19 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). CI runs this same script independently (`.github/workflows/sentinel-contract-check.yml`) as the always-on gate; `/rite:lint` surfaces it here for local visibility.
+
+**Record sentinel contract check results** for Phase 4 reporting:
+- `sentinel_contract_status`: `success` / `warning` / `error` / `skipped`
+- `sentinel_contract_finding_count`: Extract from `sentinel_contract_output` by matching the line `==> Total sentinel-contract findings: N` (regex: `/Total sentinel-contract findings: (\d+)/`). If no match found, default to 0
+- `sentinel_contract_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -1086,6 +1152,13 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {doc_heavy_drift_output}
 ```
 
+**Reviewer registry drift appendix** (both standalone and E2E): When `reviewer_registry_drift_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy:
+
+```
+⚠️ Reviewer registry drift check: {reviewer_registry_drift_finding_count} findings detected ({reviewer_registry_drift_status}, non-blocking)
+{reviewer_registry_drift_output}
+```
+
 **Wiki growth check appendix** (both standalone and E2E): When `wiki_growth_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy:
 
 ```
@@ -1170,7 +1243,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {number_ref_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, bash-heaviness, projects-board-drift, or number-reference warnings/invocation errors.
+**Sentinel contract appendix** (both standalone and E2E): When `sentinel_contract_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as Phase 3.5–3.19 checks. When status is `warning` (exit 1, drift detected), the appendix output includes each `FAIL: ...` line so the author can see which sentinel/emitter/consumer triple drifted:
+
+```
+⚠️ Sentinel contract check: {sentinel_contract_finding_count} findings detected ({sentinel_contract_status}, non-blocking)
+{sentinel_contract_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, reviewer-registry-drift, wiki-growth, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, bash-heaviness, projects-board-drift, number-reference, or sentinel-contract warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -1244,6 +1324,7 @@ Analyze the error content and present fix suggestions when possible:
 | Drift チェック | {drift_status} ({drift_finding_count} findings) |
 | Bang-backtick check | {bang_backtick_status} ({bang_backtick_finding_count} findings) |
 | Doc-heavy patterns drift check | {doc_heavy_drift_status} ({doc_heavy_drift_finding_count} findings) |
+| Reviewer registry drift check | {reviewer_registry_drift_status} ({reviewer_registry_drift_finding_count} findings) |
 | Wiki growth check | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
 | Gitignore health check | {gitignore_health_status} ({gitignore_health_finding_count} findings) |
 | Backlink format check | {backlink_format_status} ({backlink_format_finding_count} findings) |
@@ -1256,6 +1337,7 @@ Analyze the error content and present fix suggestions when possible:
 | Operational bash block heaviness check | {bash_heaviness_status} ({bash_heaviness_finding_count} findings) |
 | Projects board drift check | {projects_board_drift_status} ({projects_board_drift_finding_count} findings) |
 | Number reference check | {number_ref_status} ({number_ref_finding_count} findings) |
+| Sentinel contract check | {sentinel_contract_status} ({sentinel_contract_finding_count} findings) |
 | 所要時間 | {duration} |
 
 次のステップ:
@@ -1266,7 +1348,7 @@ Analyze the error content and present fix suggestions when possible:
 > **注**: `/rite:open` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
 ```
 
-**Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift チェック` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `Drift チェック` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). The `Orphan reference check` row follows the same policy: omit when `orphan_check_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no orphans; `warning` = orphan file(s) detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Shell-prose cross-ref check` row follows the same policy: omit when `sh_cross_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no inconsistent references; `warning` = dangling number / keyword mismatch detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Operational bash block heaviness check` row follows the same policy: omit when `bash_heaviness_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no heavy blocks; `warning` = block with >= 2 heaviness signals detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Projects board drift check` row follows the same policy: omit when `projects_board_drift_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no drift / legitimate no-op when Projects is disabled; `warning` = CLOSED+COMPLETED Issue(s) on the board with Status != Done; `error` = invocation failure / gh / network / malformed API response). The `Number reference check` row follows the same policy: omit when `number_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no Issue/PR number references; `warning` = `#NNN` reference detected on the number-free surface; `error` = invocation failure / usage error / missing repo-root). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`, 3.15 `Orphan reference check`, 3.16 `Shell-prose cross-ref check`, 3.17 `Operational bash block heaviness check`, 3.18 `Projects board drift check`, 3.19 `Number reference check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift チェック` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Reviewer registry drift check` row follows the same policy: omit when `reviewer_registry_drift_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = registry in sync; `warning` = agents/ と reviewers/SKILL.md 2 表の間で drift 検出; `error` = invocation failure). The `Wiki growth check` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `Drift チェック` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). The `Orphan reference check` row follows the same policy: omit when `orphan_check_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no orphans; `warning` = orphan file(s) detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Shell-prose cross-ref check` row follows the same policy: omit when `sh_cross_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no inconsistent references; `warning` = dangling number / keyword mismatch detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Operational bash block heaviness check` row follows the same policy: omit when `bash_heaviness_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no heavy blocks; `warning` = block with >= 2 heaviness signals detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Projects board drift check` row follows the same policy: omit when `projects_board_drift_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no drift / legitimate no-op when Projects is disabled; `warning` = CLOSED+COMPLETED Issue(s) on the board with Status != Done; `error` = invocation failure / gh / network / malformed API response). The `Number reference check` row follows the same policy: omit when `number_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no Issue/PR number references; `warning` = `#NNN` reference detected on the number-free surface; `error` = invocation failure / usage error / missing repo-root). The `Sentinel contract check` row follows the same policy: omit when `sentinel_contract_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = SoT and skill files in sync; `warning` = a declared sentinel missing from its emitter/consumer file, or an undeclared sentinel-shaped literal found; `error` = invocation failure / usage error / malformed SoT table). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.7.1 `Reviewer registry drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`, 3.15 `Orphan reference check`, 3.16 `Shell-prose cross-ref check`, 3.17 `Operational bash block heaviness check`, 3.18 `Projects board drift check`, 3.19 `Number reference check`, 3.20 `Sentinel contract check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

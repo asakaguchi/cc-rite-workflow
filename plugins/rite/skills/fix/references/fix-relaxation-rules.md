@@ -26,7 +26,7 @@ Findings are classified by **severity × scope**. Scope was added in schema 1.1.
 | LOW | follow-up | **禁止セル** (SoT: [`severity-levels.md` §Severity × Scope Matrix](../../../references/severity-levels.md#severity--scope-matrix)) | LOW × follow-up は意味論的禁止 (LOW は本 PR で修正するか nit として受け流すかの二択)。reviewer 側で reject される — fix loop には到達しない |
 | LOW | nit-noted | **blocking 対象外** | Reply-only via Phase 2.4 `nit-noted-reply` |
 
-> **scope=nit-noted は blocking 対象外**: 上表で「blocking 対象外」の行は (a) `/rite:fix` Phase 1.3 で「nit (認知のみ)」セクションに分類、(b) Phase 1.4 で auto-select 対象から除外、(c) Phase 2.1 を skip して Phase 2.4 へ直行、(d) fix commit 対象からも完全除外、(e) Phase 4.6 サマリで `acknowledged_nit_count` として独立カウントされる。`/rite:review` Phase 5.3 評価では `overall_assessment` に影響せず、mergeable 判定 countdown 対象からも除外される (詳細は [`assessment-rules.md`](./assessment-rules.md) §5.3.1 / §5.3.3 参照)。
+> **scope=nit-noted は blocking 対象外**: 上表で「blocking 対象外」の行は (a) `/rite:fix` Phase 1.3 で「nit (認知のみ)」セクションに分類、(b) Phase 1.4 で auto-select 対象から除外、(c) Phase 2.1 を skip して Phase 2.4 へ直行、(d) fix commit 対象からも完全除外、(e) Phase 4.6 サマリで `acknowledged_nit_count` として独立カウントされる。`/rite:pr-review` Phase 5.3 評価では `overall_assessment` に影響せず、mergeable 判定 countdown 対象からも除外される (詳細は [`assessment-rules.md`](./assessment-rules.md) §5.3.1 / §5.3.3 参照)。
 
 ## Practical Impact Demotion
 
@@ -69,9 +69,9 @@ The review-fix loop exits via:
 | Exit Type | Condition | Result |
 |-----------|-----------|--------|
 | **Normal** | 0 blocking findings remaining | `[review:mergeable]` → `/rite:iterate` がループ終了 |
-| **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:resume` で復帰 |
+| **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:recover` で復帰 |
 
-`/rite:iterate` には cycle counter / N 回上限 / quality-signal escalation / ping-pong サーキットブレーカー は**存在しない**。「指摘ゼロまでループする」の契約に忠実で、停止する場合はユーザー判断のみ。
+`/rite:iterate` は「指摘ゼロ（mergeable）までループする」契約を基本とし、加えて `safety.max_review_cycles`（既定 5）到達で発火する cycle 上限サーキットブレーカーを唯一の自動安全網として持つ（#1701）。quality-signal escalation / 同一 fingerprint 検出といった細粒度の安全網は持たない。上限到達時は、対話実行では AskUserQuestion（継続 / 中止 / draft のまま停止）、`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進む。Ctrl+C による手動中断も従来どおり可能。
 
 `fix.md` ステップ 3 の Root Cause Gate は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
 

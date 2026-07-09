@@ -108,7 +108,7 @@ For each bash error handling construct identified in Step 5:
   # (auth errors, network failures, gh internal errors).
   #
   # This example follows the repository's standard bash safety convention used in
-  # plugins/rite/skills/review/SKILL.md ステップ 2.2.1 and plugins/rite/skills/fix/SKILL.md ステップ 4.5.2:
+  # plugins/rite/skills/pr-review/SKILL.md ステップ 2.2.1 and plugins/rite/skills/fix/SKILL.md ステップ 4.5.2:
   # (1) path declared before trap, (2) trap installed before mktemp, (3) signal-specific
   # exit codes (EXIT/INT/TERM/HUP), (4) explicit mktemp failure handling, (5) gh api wrapped
   # in if/else to surface stderr in both success and failure branches, (6) `mktemp` uses a
@@ -119,7 +119,7 @@ For each bash error handling construct identified in Step 5:
   # traceability when many phases share /tmp. This reviewer example is a generic pattern not
   # tied to a specific phase, so we use the simpler 2-segment form `/tmp/rite-<purpose>-XXXXXX`.
   # When adapting this example into a phase-scoped script, extend the template to match
-  # (for example, `/tmp/rite-review-gh-api-err-XXXXXX` inside skills/review/SKILL.md).
+  # (for example, `/tmp/rite-review-gh-api-err-XXXXXX` inside skills/pr-review/SKILL.md).
   gh_err=""
   _pa_cleanup() { rm -f "${gh_err:-}"; }
   trap 'rc=$?; _pa_cleanup; exit $rc' EXIT
@@ -156,9 +156,9 @@ For each bash error handling construct identified in Step 5:
   - **Pattern B** — When you want the full JSON response and explicit failure handling, but don't care about stderr warnings on the success path (deprecation notices). Simpler than Pattern A. Best for scripts where `gh api` failures must fail fast with a clear message and success-path warnings are low-value.
   - **Pattern C** — When you only need a single parsed field and don't care about stderr warnings at all. Most concise but loses access to the full JSON response (cannot parse additional fields later).
 
-  > **Why not hardcoded `/tmp/gh.err`?** The previous revision of this example used a hardcoded path, which is vulnerable to hardcoded-path race conditions (filename collisions when the script runs concurrently, symlink attacks on multi-user systems). The rest of this repository uniformly uses `mktemp` for temp files (see `plugins/rite/skills/review/SKILL.md` ステップ 2.2.1, `plugins/rite/skills/fix/SKILL.md` ステップ 4.5.2). Example code in a reviewer file must not teach patterns that the reviewer itself would flag.
+  > **Why not hardcoded `/tmp/gh.err`?** The previous revision of this example used a hardcoded path, which is vulnerable to hardcoded-path race conditions (filename collisions when the script runs concurrently, symlink attacks on multi-user systems). The rest of this repository uniformly uses `mktemp` for temp files (see `plugins/rite/skills/pr-review/SKILL.md` ステップ 2.2.1, `plugins/rite/skills/fix/SKILL.md` ステップ 4.5.2). Example code in a reviewer file must not teach patterns that the reviewer itself would flag.
   >
-  > **Why the full path-declare → trap → mktemp pattern?** Two kinds of race conditions exist: (a) **hardcoded-path race** (filename collisions, symlink attacks — solved by `mktemp`), and (b) **signal-delivery race window** (a SIGTERM/SIGINT/SIGHUP arriving between `mktemp` success and `trap` installation leaves the tmp file orphaned — solved by declaring the path variable first, installing the trap, then running `mktemp`). The repository's standard convention (`plugins/rite/skills/review/SKILL.md` ステップ 2.2.1, `plugins/rite/skills/fix/SKILL.md` ステップ 4.5.2) addresses both. Pattern A mirrors that convention.
+  > **Why the full path-declare → trap → mktemp pattern?** Two kinds of race conditions exist: (a) **hardcoded-path race** (filename collisions, symlink attacks — solved by `mktemp`), and (b) **signal-delivery race window** (a SIGTERM/SIGINT/SIGHUP arriving between `mktemp` success and `trap` installation leaves the tmp file orphaned — solved by declaring the path variable first, installing the trap, then running `mktemp`). The repository's standard convention (`plugins/rite/skills/pr-review/SKILL.md` ステップ 2.2.1, `plugins/rite/skills/fix/SKILL.md` ステップ 4.5.2) addresses both. Pattern A mirrors that convention.
   >
   > **Why signal-specific trap entries (INT/TERM/HUP)?** Relying on a bare `trap '...' EXIT` alone to handle signals is risky for two independent reasons. First, when you install an explicit signal-specific trap (e.g., `trap 'cleanup' INT`), bash's default behavior after the handler is to **continue executing** the script rather than exit — unless the handler explicitly calls `exit`. If you forget the `exit`, your script silently keeps running after an interrupt. Second, bash's signal dispatch for a bare EXIT trap (with no signal-specific entry) is **context-sensitive**: it varies with interactive vs non-interactive mode, whether a foreground child is running, and which signal was received. Rather than depending on those details, install signal-specific entries for INT/TERM/HUP that (a) run `_pa_cleanup`, and (b) explicitly `exit` with POSIX-conventional codes (SIGINT=130, SIGTERM=143, SIGHUP=129). This guarantees three things regardless of the execution context: cleanup runs with the correct per-signal exit code, the script exits deterministically rather than continuing, and callers see standard exit codes. The EXIT trap still fires as a belt-and-braces catch-all for the normal-exit and non-signal-failure cases. For the full details of bash's signal handling, see `man bash` section "SIGNALS".
   >
@@ -184,8 +184,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **85**: `.catch(() => defaultValue)` where the caller's behavior changes significantly based on the returned value, confirmed by `Read` of the caller
 - **70**: Broad `catch(Error)` where a specific `catch(NetworkError)` would be more appropriate, but no `NetworkError` class exists in the project — move to recommendations
 - **50**: "Should use a custom error class" without evidence that the project uses custom error classes — do NOT report
-
-## Detailed Checklist
 
 ## Expertise Areas
 

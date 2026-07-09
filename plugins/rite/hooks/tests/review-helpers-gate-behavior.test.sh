@@ -2,9 +2,9 @@
 # review-helpers-gate-behavior.test.sh
 #
 # Gate-behavior self-tests for the 3 review helpers:
-#   - hooks/review-skip-notification.sh (review.md ステップ 6.1.c)
-#   - hooks/review-comment-post.sh      (review.md ステップ 6.1.b)
-#   - hooks/review-result-save.sh       (review.md ステップ 6.1.a)
+#   - hooks/review-skip-notification.sh (pr-review.md ステップ 6.1.c)
+#   - hooks/review-comment-post.sh      (pr-review.md ステップ 6.1.b)
+#   - hooks/review-result-save.sh       (pr-review.md ステップ 6.1.a)
 #
 # shift2-loop-hardening.test.sh は shift-loop no-hang の 1 軸のみをカバーし、これらの helper の
 # 中核 invariant である gate 分岐 (reason 語彙 / exit code / [CONTEXT] emit) には届かない。
@@ -385,6 +385,6 @@ assert "TC-3.10 CRITICAL×nit-noted: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-3.10 reason=critical_high_scope_nit_noted_invariant emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=critical_high_scope_nit_noted_invariant'
 
 if ! print_summary "$(basename "$0")" \
-  "drift: review helper 3 件 (review-skip-notification / review-comment-post / review-result-save) の gate 分岐・reason 語彙・exit code 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/review/SKILL.md ステップ 6.1 を確認すること。"; then
+  "drift: review helper 3 件 (review-skip-notification / review-comment-post / review-result-save) の gate 分岐・reason 語彙・exit code 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 6.1 を確認すること。"; then
   exit 1
 fi

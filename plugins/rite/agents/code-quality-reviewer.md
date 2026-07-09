@@ -84,8 +84,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Code "looks" overly complex but no concrete metric or comparison point — move to recommendations
 - **50**: Style preference not backed by existing codebase patterns — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - Code duplication and DRY principle

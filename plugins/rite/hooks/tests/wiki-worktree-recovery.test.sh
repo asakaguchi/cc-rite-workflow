@@ -36,7 +36,10 @@ done
 
 WORK=""
 cleanup() { [ -n "$WORK" ] && rm -rf "$WORK"; }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 # Build a fixture repo with a dev branch + a wiki branch, then leave an orphaned
 # .rite/wiki-worktree directory whose `.git` pointer is stale. Echoes the repo

@@ -103,6 +103,7 @@ violations_c=$(grep -rnE 'head -c [0-9]+' "$HOOKS_DIR" --include='*.sh' \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   | grep -v 'work-memory-lock.sh:.*lock_pid=' \
+  | grep -v 'work-memory-lock.sh:.*stored_token=' \
   || true)
 assert "TC-3: un-neutralized head -c emission sites" "" "$violations_c"
 if [ -n "$violations_c" ]; then

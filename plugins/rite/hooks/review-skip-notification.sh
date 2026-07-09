@@ -1,8 +1,8 @@
 #!/bin/bash
 # rite workflow - Review Result Skip Notification
-# Deterministic helper for skills/review/SKILL.md ステップ 6.1.c (Skip Notification)。
+# Deterministic helper for skills/pr-review/SKILL.md ステップ 6.1.c (Skip Notification)。
 #
-# review.md ステップ 6.1.c の skip notification 処理 (post_comment_mode gate + pr_number /
+# pr-review.md ステップ 6.1.c の skip notification 処理 (post_comment_mode gate + pr_number /
 # file_timestamp / local_save_failed の fail-fast gate + LOCAL_SAVE_FAILED に基づく 2 ケース分岐)
 # を担う。本文側の巨大 inline bash (機械強制 case 分割 + 2 つの cat heredoc) を helper に切り出す
 # ことで、単一 Bash invocation での malform 無言停止を回避する (6.1.b の
@@ -15,14 +15,14 @@
 #     --file-timestamp <YYYYMMDDHHMMSS|unknown> \
 #     --local-save-failed <0|1|"">
 #
-#   caller (review.md ステップ 6.1.c) は以下を会話コンテキストから読み取り literal substitute する:
+#   caller (pr-review.md ステップ 6.1.c) は以下を会話コンテキストから読み取り literal substitute する:
 #     - --post-comment-mode: ステップ 1.0 の [CONTEXT] POST_COMMENT_MODE= の値
 #     - --pr: 正規化済 pr_number
 #     - --file-timestamp: ステップ 6.1.a の [CONTEXT] FILE_TIMESTAMP= の値 (成功時 YYYYMMDDHHMMSS、失敗時 "unknown")
 #     - --local-save-failed: ステップ 6.1.a の [CONTEXT] LOCAL_SAVE_FAILED= の値 ("1" または未 emit=空文字)。
 #       空文字を確実に渡すため caller は必ずクォートして渡すこと (例: --local-save-failed "")。
 #
-# 契約 (review.md ステップ 6.1.c と verbatim 一致):
+# 契約 (pr-review.md ステップ 6.1.c と verbatim 一致):
 #   - 実行条件: post_comment_mode=false の経路専用 (true 経路は 6.1.b の成功/失敗ログで完結する)。
 #   - post_comment_mode machine-enforced gate: false→続行 /
 #     true→ERROR + [review:error] + exit 1 / その他→ERROR + [review:error] + exit 1。
@@ -160,9 +160,9 @@ if [ "$LOCAL_SAVE_FAILED" = "1" ]; then
 
   復旧方法 (いずれかを選択):
   1. このセッション内で即座に /rite:fix を実行する (Priority 1: 会話コンテキストから直接読取)
-  2. /rite:review --post-comment で PR コメントに投稿して永続化する
+  2. /rite:pr-review --post-comment で PR コメントに投稿して永続化する
   3. rite-config.yml で pr_review.post_comment: true を設定して全 review を永続化する
-  4. LOCAL_SAVE_FAILED の reason を解決してから /rite:review を再実行する
+  4. LOCAL_SAVE_FAILED の reason を解決してから /rite:pr-review を再実行する
 EOF
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable; local_save_failed=1; post_comment_mode=false" >&2
   echo "[review:error]"

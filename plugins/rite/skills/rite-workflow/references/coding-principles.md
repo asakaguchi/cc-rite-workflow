@@ -213,23 +213,30 @@ Issue の内容に矛盾があります:
 ## 実装計画
 
 ### 変更対象ファイル
-| ファイル | 変更内容 |
-|---------|---------|
-| src/auth.ts | 認証ロジックの追加 |
-| src/middleware.ts | 認証ミドルウェアの追加 |
+- src/auth.ts: 認証ロジックの追加
+- src/middleware.ts: 認証ミドルウェアの追加
 
-### 実装ステップ（依存グラフ）
+### 参考実装
+| 参考ファイル | 参考理由 |
+|-------------|---------|
+| src/session.ts | 同様の認証状態管理パターンを踏襲 |
 
-| Step | 内容 | depends_on | 並列グループ |
-|------|------|------------|-------------|
-| S1 | 認証ロジックの実装 | — | A |
-| S2 | ミドルウェアの統合 | S1 | B |
-| S3 | テストの追加 | S1, S2 | C |
+### 実装ステップ
+1. 認証ロジックの実装
+2. ミドルウェアの統合
+3. テストの追加
+
+### 受入基準マッピング
+- AC1 → step 1
+- AC2 → step 2
+
+### 注意点
+- 既存セッション管理との整合性に注意
 
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [`skills/open/SKILL.md`](../../../skills/open/SKILL.md) ステップ 3 (実装計画)。
+**Note**: This example mirrors the actual plan template. See [`skills/open/SKILL.md`](../../../skills/open/SKILL.md) ステップ 3.3 (実装計画生成) for the canonical template definition.
 
 ---
 
@@ -364,7 +371,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 | Method | Pattern | Example |
 |--------|---------|---------|
-| Same directory | Same extension files in target directory | `commands/issue/*.md` |
+| Same directory | Same extension files in target directory | `skills/issue-create/references/*.md` |
 | Name pattern | Files matching `*-{suffix}.{ext}` | `*-handler.ts`, `*-service.ts` |
 | Test correspondence | Test file ↔ implementation file | `foo.ts` ↔ `foo.test.ts` |
 
@@ -417,11 +424,11 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 **Example**:
 
 ```text
-実装で /rite:issue-resume コマンドを /rite:resume にリネームした
+実装で /rite:issue-resume コマンドを /rite:recover にリネームした
 
 ドキュメント影響調査:
-- Grep "/rite:issue-resume" → README.md L142, docs/getting-started.md L88, plugins/rite/skills/init/SKILL.md L23
-- 全 3 ファイルを Edit ツールで /rite:resume に更新
+- Grep "/rite:issue-resume" → README.md L142, docs/getting-started.md L88, plugins/rite/skills/setup/SKILL.md L23
+- 全 3 ファイルを Edit ツールで /rite:recover に更新
 - 同じブランチでステージし、実装と同じコミットに含める
 ```
 
@@ -492,7 +499,6 @@ These conventions apply to authoring Markdown files loaded by the Claude Code Sk
 **Applicable file paths** (Skill loader 経路にある全カテゴリ):
 
 - `plugins/rite/skills/**/*.md`
-- `plugins/rite/commands/**/*.md`
 - `plugins/rite/agents/**/*.md`
 - `plugins/rite/references/**/*.md`
 - `plugins/rite/templates/**/*.md`
@@ -530,7 +536,7 @@ OK patterns:
 
 **Summary**: command / reference 本文の operational bash ブロックは軽量に保つ — **1 ブロック 1 目的・<= 25 行を目安**とし、python inline (`python3 -c`)・入れ子 `$()`・複数 heredoc を 1 ブロックに密集させない。tmpfile や中間変数を process 境界を跨いで渡す必要がある場合は、1 本の Bash invocation に詰め込まず `hooks/` または `scripts/` の helper script へ切り出す。
 
-**Failure pattern** (observed incident): 過去に複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
+**Failure pattern** (observed incident): 過去に複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/pr-review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
 
 **Rules**:
 1. 1 ブロック = 1 目的。operational bash ブロックは <= 25 行を目安とする。
@@ -538,14 +544,14 @@ OK patterns:
 3. 入れ子 `$()` (`$(cmd "$(jq -n ...)")` 等) を避ける。pipe (`jq -n ... | cmd`) もしくは stdin / tmpfile を読む helper を優先する。
 4. 1 ブロック内の複数 heredoc を避ける。file body が必要なら Write tool で tmpfile に書き出し、helper には `--content-file <tmp>` / `--body-file <tmp>` で渡す。
 5. 値を process 境界を跨いで渡す必要があるときは helper へ切り出す (work-memory / state 系は `hooks/`、issue / projects 系は `scripts/`)。その際**既存のワークフロー契約 (sentinel emit / non-blocking / trap cleanup) を verbatim で引き継ぐ**こと。
-6. `gh {pr,issue} create` の `--title` に長文 / 特殊文字（全角記号・`≠`・括弧・コロン等）の literal を**インライン展開しない**。title を **Write tool** でファイル化して bash で変数に読み込む（`pr_title=$(cat title.txt)` → `--title "$pr_title"`）か、helper の `--arg title` 経由で渡す。`gh` に `--title-file` は無い（body の `--body-file` と非対称）ため「変数経由」が canonical。先例: `pr/create.md` Phase 3.4 / `issue/create.md` 5.5 decompose path（`gh {pr,issue} create` のインライン特殊文字 title が malformed tool-call の dominant trigger だった）。
+6. `gh {pr,issue} create` の `--title` に長文 / 特殊文字（全角記号・`≠`・括弧・コロン等）の literal を**インライン展開しない**。title を **Write tool** でファイル化して bash で変数に読み込む（`pr_title=$(cat title.txt)` → `--title "$pr_title"`）か、helper の `--arg title` 経由で渡す。`gh` に `--title-file` は無い（body の `--body-file` と非対称）ため「変数経由」が canonical。先例: `skills/pr-create/SKILL.md` の pr_title.txt 変数経由パターン / `skills/issue-create/SKILL.md` の decompose path（`gh {pr,issue} create` のインライン特殊文字 title が malformed tool-call の dominant trigger だった）。
 
 **Precedents**: `projects-status-update.sh` / `local-wm-update.sh` / `issue-body-safe-update.sh` / `issue-comment-wm-sync.sh` / `create-issue-with-projects.sh` — 重い操作を positional-JSON または stdin 入力 + tmpfile body file で helper に委譲済の前例。
 
 **Where to Apply**:
-- `commands/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
+- `plugins/rite/skills/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
 
-**Mechanical enforcement**: 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `commands/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
+**Mechanical enforcement**: 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `plugins/rite/skills/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
 
 | シグナル | 判定 | 対応 Rule |
 |---------|------|----------|
@@ -607,9 +613,9 @@ OK patterns:
 
 - [SKILL.md](../SKILL.md) - Principle summary
 - [Phase Mapping](./phase-mapping.md) - Phase details
-- [PR Open Workflow](../../../skills/open/SKILL.md) - pr/open.md (Issue → branch → 実装 → lint → draft PR)
+- [PR Open Workflow](../../../skills/open/SKILL.md) - Issue → branch → 実装 → lint → draft PR
 - [PR Create Command](../../../skills/pr-create/SKILL.md) - Unaddressed issues check before PR creation (Phase 2.5)
-- [PR Review](../../../skills/review/SKILL.md) - review.md
+- [PR Review](../../../skills/pr-review/SKILL.md) - Multi-reviewer PR review workflow
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)

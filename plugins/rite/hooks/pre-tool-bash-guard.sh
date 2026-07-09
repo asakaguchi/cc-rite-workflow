@@ -13,6 +13,19 @@
 # Exit behavior:
 #   exit 0 — allow (no output)
 #   stdout JSON with permissionDecision: "deny" — block
+#
+# Fail direction is pattern-specific: Patterns 1-3 (convenience) fail OPEN so an
+# edge-case parse crash never false-blocks a legitimate command; Pattern 4 (the
+# reviewer state-mutating-git security boundary) fails CLOSED so a parse crash
+# never silently bypasses the guard. See the two ERR traps below.
+#
+# hooks.json timeout: this hook is registered in hooks.json (PreToolUse:Bash) with
+# a 10s timeout. hooks.json is strict JSON (no comments), so the rationale lives
+# here: the guard is a fast, synchronous pre-execution gate that runs on every
+# Bash command using only bash built-ins plus a couple of jq calls, so 10s is a
+# generous ceiling that bounds a pathological hang without risking false timeouts —
+# aligned with the other lightweight synchronous gates (Stop=10s, the Edit/Write
+# bang-backtick hook=10s).
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -130,15 +143,43 @@ _rite_btg_pattern13_fail_open() {
   fi
   exit 0
 }
+# Fail-closed ERR trap for Pattern 4 (the reviewer state-mutating-git security
+# boundary): if normalization / token-loop evaluation crashes on edge-case input,
+# DENY the command (deny JSON + exit 2 + stderr WARNING) instead of allowing it.
+# This is the OPPOSITE failure direction from the fail-open trap above: convenience
+# patterns must not false-block, but the security pattern must not false-allow — a
+# single parse crash must never silently bypass the reviewer read-only guard. This
+# trap is installed only for the Pattern 4 block (swapped in at block entry,
+# restored to the fail-open trap at block exit), so non-reviewer sessions — which
+# never enter that block — are never denied by it.
+_rite_btg_pattern4_fail_closed() {
+  local _rc=$?
+  trap - ERR  # prevent re-entrancy while emitting the deny
+  # Visibility: record that the security boundary crashed and we fell closed.
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer git guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
+  if [ -n "${RITE_DEBUG:-}" ]; then
+    printf '[%s] pre-tool-bash-guard: Pattern 4 ERR trap fired (rc=%s) — deny fail-closed\n' \
+      "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_rc" \
+      >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+  fi
+  local _reason="BLOCKED (reviewer-state-mutating-git): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer read-only guard. See the bash-guard stderr WARNING for the crash context."
+  # Mirror the result-section emit contract: jq for the payload, printf fallback
+  # via _bash_guard_escape_deny_reason so a jq failure still emits a valid deny.
+  if ! jq -n --arg reason "$_reason" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }' 2>/dev/null; then
+    local _escaped
+    _escaped=$(_bash_guard_escape_deny_reason "$_reason" 2>/dev/null) \
+      || _escaped="BLOCKED: reviewer git command denied (Pattern 4 crash, fail-closed)."
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_escaped"
+  fi
+  exit 2
+}
 trap '_rite_btg_pattern13_fail_open' ERR
-
-# --- Heredoc-safe command extraction ---
-# Strip heredoc content to avoid false positives on text inside commit messages,
-# PR descriptions, etc. Only check the command prefix before the first heredoc marker.
-# Known limitation: Piped heredoc patterns (e.g., `cat <<EOF | gh pr diff`) bypass
-# this stripping because the command before `<<` is `cat`, not the target pattern.
-# Risk is limited since such patterns are rare in practice.
-CMD_CHECK="${COMMAND%%<<*}"
 
 # --- Denylist check (Bash built-ins only) ---
 
@@ -150,14 +191,63 @@ BLOCKED_ALTERNATIVE=""
 # message can explain why a read-only wrapper probe is blocked.
 BLOCKED_SUBKIND=""
 
+# --- Reviewer command length guard (O(1), primary fail-closed bound) ---
+# Runs BEFORE the heredoc strip and every pattern check because that downstream work
+# is whole-string and at least two operations degrade to catastrophically slow on a
+# large enough input: the `${COMMAND%%<<*}` heredoc strip below is O(n²) in bash
+# (empirically ~45s on ~1.3MB), and Pattern 2's `[[ =~ ]]` regex is O(n²) on a few MB
+# of meta chars (empirically >2min). A timed-out PreToolUse hook fails OPEN (Claude
+# Code cancels it and lets the tool run), so a reviewer subagent could pad a
+# state-mutating git — with huge flag VALUES, thousands of flags, or a giant meta-char
+# string — until one of those operations times out, dropping the deny and bypassing
+# the guard. The ERR trap cannot catch a timeout (the process is killed externally). A
+# legitimate reviewer git command is at most a few KB, so any oversized command is
+# denied fail-closed here, before ANY O(n) work: setting BLOCKED_PATTERN both skips the
+# O(n²) heredoc strip (below) and short-circuits Patterns 1-4 (all now guarded by
+# `[ -z "$BLOCKED_PATTERN" ]`). Guards on the RAW ${#COMMAND} (fast, O(1)-ish) so the
+# check itself never triggers the slow path. Scoped to reviewer subagents
+# (IS_SUBAGENT=1), so normal main-session Bash is never blocked by size (MUST NOT — the
+# pre-existing main-session slowdown on huge input is a separate, out-of-scope
+# convenience-pattern concern). The per-flag iteration cap inside the Pattern 4 block
+# is a secondary bound on fork COUNT for sub-ceiling commands padded with many flags.
+_RITE_BTG_MAX_SUBAGENT_CMD_BYTES=65536
+if [ "$IS_SUBAGENT" = "1" ] && [ "${#COMMAND}" -gt "$_RITE_BTG_MAX_SUBAGENT_CMD_BYTES" ]; then
+  BLOCKED_PATTERN="reviewer-state-mutating-git"
+  # This path builds its own reason/alternative below and never reaches the Pattern 4
+  # block's message section (that block is skipped because BLOCKED_PATTERN is now set),
+  # so BLOCKED_SUBKIND is intentionally left unset here — it would be an inert write.
+  BLOCKED_REASON="This reviewer command is abnormally large (${#COMMAND} bytes, ceiling ${_RITE_BTG_MAX_SUBAGENT_CMD_BYTES}). A command this size could make the guard's parsing exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so oversized reviewer commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard."
+  BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
+fi
+
+# --- Heredoc-safe command extraction ---
+# Strip heredoc content to avoid false positives on text inside commit messages,
+# PR descriptions, etc. Only check the command prefix before the first heredoc marker.
+# Known limitation: Piped heredoc patterns (e.g., `cat <<EOF | gh pr diff`) bypass
+# this stripping because the command before `<<` is `cat`, not the target pattern.
+# Risk is limited since such patterns are rare in practice.
+# Skipped for an already-denied (oversized) command: `${COMMAND%%<<*}` is O(n²) on
+# huge input and would itself time out the fail-open hook (the whole reason the length
+# guard runs first). CMD_CHECK is unused in that case (the command is already denied).
+if [ -z "$BLOCKED_PATTERN" ]; then
+  CMD_CHECK="${COMMAND%%<<*}"
+else
+  CMD_CHECK=""
+fi
+
 # Pattern 1: gh pr diff --stat
-case "$CMD_CHECK" in
-  *"gh pr diff"*" --stat"*)
-    BLOCKED_PATTERN="gh-pr-diff-stat"
-    BLOCKED_REASON="gh pr diff does not support the --stat flag."
-    BLOCKED_ALTERNATIVE="Use: gh pr view {pr_number} --json files --jq '.files[] | {path, additions, deletions}'"
-    ;;
-esac
+# Guarded by `[ -z "$BLOCKED_PATTERN" ]` so the length guard above short-circuits it
+# (the `*A*B*` glob would otherwise run over an oversized string). Normally
+# BLOCKED_PATTERN is empty here, so this runs exactly as before.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  case "$CMD_CHECK" in
+    *"gh pr diff"*" --stat"*)
+      BLOCKED_PATTERN="gh-pr-diff-stat"
+      BLOCKED_REASON="gh pr diff does not support the --stat flag."
+      BLOCKED_ALTERNATIVE="Use: gh pr view {pr_number} --json files --jq '.files[] | {path, additions, deletions}'"
+      ;;
+  esac
+fi
 
 # Pattern 2: gh pr diff -- <path> (file filter)
 # `[^|]*` (zero-or-more) covers both forms: `gh pr diff 123 -- file` and
@@ -210,6 +300,35 @@ fi
 #   (4) Long-form flag coverage: `git branch --delete/--force/--move/--copy`
 #       are treated the same as the short forms `-d/-f/-m/-c/-C`.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
+  # Pattern 4 is the security boundary: swap the Patterns 1-3 fail-OPEN trap for a
+  # fail-CLOSED one so an unexpected crash while evaluating a reviewer's git command
+  # denies rather than allows. Restored to the fail-open trap at block exit (below)
+  # so the shared result-emit section keeps its original fail-open behavior.
+  trap '_rite_btg_pattern4_fail_closed' ERR
+  # Test-only fault injection for the fail-CLOSED region (no effect in production):
+  # Pattern 4 uses only bash built-ins, so — unlike the deny-emit path (see test
+  # TC-118) — it cannot be crashed by faking an external binary. This lets the
+  # fail-closed regression test raise an ERR deterministically inside the guarded
+  # region. Gated on an env var that is never set outside the test suite.
+  # Deliberately fail-CLOSED-only: if the env var is ever set in production, the
+  # only effect is a DENY (the guard becomes more restrictive) — it can never turn
+  # the guard into allow-all. A symmetric fail-OPEN injection was intentionally NOT
+  # added, because an env-triggered fail-open path would be an allow-all backdoor to
+  # a security boundary. AC-3 (Patterns 1-3 stay fail-open) is instead pinned
+  # structurally by the test (default trap is fail-open + restored at block exit).
+  if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4" ]; then
+    false
+  fi
+  # Secondary bound: cap the global-flag normalization iterations (see the loops
+  # below). The PRIMARY bound is the length guard above, which denies any command
+  # large enough to time out before it is normalized; this cap additionally bounds
+  # the fork COUNT for sub-ceiling commands padded with many small global flags (so
+  # the per-flag regex+fork loop can't run thousands of times within the byte
+  # ceiling). A legitimate reviewer git command has well under this many global
+  # flags, so 128 (>10x the realistic maximum) denies such padding while never
+  # tripping on a real command. Bounded together with the length guard, the total
+  # normalization work is at most ~128 iterations over a <64KB string.
+  _RITE_BTG_MAX_GLOBAL_FLAG_NORM=128
   # Normalize whitespace AND shell meta-characters into a single space so that
   # `;git reset` / `(git checkout ...)` / `$(git commit)` / multi-line commands
   # are recognized as `git <verb>` with proper word boundaries.
@@ -285,12 +404,37 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     s="${s//\[/\\[}"
     printf '%s' "$s"
   }
+  # Global-flag normalization iteration cap (fail-closed on abnormally many flags).
+  # The per-flag regex + fork loops below are super-linear in the number of git
+  # global flags, and the PreToolUse hook timeout is fail-OPEN (a timed-out hook
+  # allows the command — Claude Code cancels the hook and lets the tool proceed). A
+  # reviewer subagent could therefore pad a state-mutating git with thousands of
+  # `-C x` global flags so this normalization exceeds the hook timeout; the deny is
+  # never emitted and the padded git executes, bypassing the guard. The ERR trap
+  # cannot catch a timeout (the process is killed externally), so this iteration cap
+  # is what keeps that failure mode fail-CLOSED. A legitimate reviewer git command
+  # has only a handful of global flags, so exceeding the cap means the input is
+  # adversarial → deny. The counter is shared across both loops so the total work is
+  # bounded regardless of which flag family is padded.
+  _gf_norm_iters=0
   while [[ " $CMD_NORMALIZED " =~ \ git\ (-C|--git-dir|--work-tree|--exec-path|--namespace|-c|--config-env)(=[^[:space:]]+|[[:space:]]+[^[:space:]]+)\  ]]; do
+    _gf_norm_iters=$((_gf_norm_iters + 1))
+    if [ "$_gf_norm_iters" -gt "$_RITE_BTG_MAX_GLOBAL_FLAG_NORM" ]; then
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+      BLOCKED_SUBKIND="oversized-normalization"
+      break
+    fi
     _matched="${BASH_REMATCH[0]}"
     _lit=$(_escape_glob_meta "${_matched# }")
     CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
   done
   while [[ " $CMD_NORMALIZED " =~ \ git\ (--bare|--no-replace-objects|--paginate|--no-pager|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--info-path|--man-path|--html-path)\  ]]; do
+    _gf_norm_iters=$((_gf_norm_iters + 1))
+    if [ "$_gf_norm_iters" -gt "$_RITE_BTG_MAX_GLOBAL_FLAG_NORM" ]; then
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+      BLOCKED_SUBKIND="oversized-normalization"
+      break
+    fi
     _matched="${BASH_REMATCH[0]}"
     _lit=$(_escape_glob_meta "${_matched# }")
     CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
@@ -551,7 +695,19 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       BLOCKED_REASON="Shell-command wrappers (eval / bash -c / sh -c / zsh -c / ksh -c / dash -c / fish -c) are blocked in reviewer contexts because their quoted argument is opaque to this guard's word-boundary matching and can hide state-mutating git commands. They are therefore blocked unconditionally — even when the wrapped command is read-only. $BLOCKED_REASON"
       BLOCKED_ALTERNATIVE="For a read-only probe, drop the wrapper: run the command directly, group multiple commands in a subshell '( cmd1; cmd2 )', or put them in a file and run 'bash <script.sh>'. $BLOCKED_ALTERNATIVE"
     fi
+    # (oversized-normalization) The command has an abnormally large number of git
+    # global flags, which would make normalization exceed the fail-open hook timeout.
+    # Denied fail-closed to prevent a timeout-based bypass — explain that rather than
+    # showing the generic state-mutating message (the command may even be read-only).
+    if [ "$BLOCKED_SUBKIND" = "oversized-normalization" ]; then
+      BLOCKED_REASON="This reviewer command carries an abnormally large number of git global flags (e.g. many repeated -C / -c). Normalizing that many flags could exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so such oversized commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard. $BLOCKED_REASON"
+      BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations never need this many global flags. $BLOCKED_ALTERNATIVE"
+    fi
   fi
+  # Restore the Patterns 1-3 fail-open trap for the shared result-emit section
+  # below: a crash there keeps the original (pre-fix) fail-open behavior, and the
+  # section already has its own fail-closed fallback for the deny-emit path.
+  trap '_rite_btg_pattern13_fail_open' ERR
 fi
 
 # --- Result ---

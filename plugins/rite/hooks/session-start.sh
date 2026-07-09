@@ -62,7 +62,7 @@ if [ ! -d "$CWD" ]; then
   case "$CWD" in
     */worktrees/issue-*)
       echo "[rite] 作業ディレクトリ '$(printf '%s' "$CWD" | neutralize_ctrl)' が存在しません（session worktree が削除済みの可能性）。" >&2
-      echo "[rite] /clear が 'Path does not exist' で失敗する場合の復旧: リポジトリ root で新しいセッションを開始するか、作業を続けるには有効なディレクトリで /rite:resume を実行してください。" >&2
+      echo "[rite] /clear が 'Path does not exist' で失敗する場合の復旧: リポジトリ root で新しいセッションを開始するか、作業を続けるには有効なディレクトリで /rite:recover を実行してください。" >&2
       ;;
   esac
   exit 0
@@ -166,10 +166,10 @@ if [ "$SOURCE" = "startup" ]; then
       fi
       case "$_sv_lang" in
         ja)
-          echo "[rite] ⚠️ rite-config.yml のスキーマが古くなっています (v${_current_sv} → v${_latest_sv})。/rite:init --upgrade を実行してください。" >&2
+          echo "[rite] ⚠️ rite-config.yml のスキーマが古くなっています (v${_current_sv} → v${_latest_sv})。/rite:setup --upgrade を実行してください。" >&2
           ;;
         *)
-          echo "[rite] ⚠️ rite-config.yml schema is outdated (v${_current_sv} → v${_latest_sv}). Run /rite:init --upgrade to update." >&2
+          echo "[rite] ⚠️ rite-config.yml schema is outdated (v${_current_sv} → v${_latest_sv}). Run /rite:setup --upgrade to update." >&2
           ;;
       esac
     fi
@@ -422,7 +422,7 @@ fi
 # --- Dangling session-worktree self-heal (multi-session §8 / Issue #1524) ---
 # If the recorded `worktree` path no longer exists (e.g. it was reaped by another
 # session's lazy GC while this session was paused), null the field so neither the
-# orchestrator's re-entry path (open.md Step 0.5 / resume.md) nor a later
+# orchestrator's re-entry path (open.md Step 0.5 / recover.md) nor a later
 # EnterWorktree is aimed at a dead directory. The harness's own /clear cwd-restore
 # cannot be intercepted by rite, so this is the SECONDARY defense (the primary is
 # the reap-side cross-session liveness guard in pr-cycle-cleanup.sh). Runs on both
@@ -484,16 +484,20 @@ _reset_active_state() {
   # 3 field を single composite jq read で読む。3 read に分けると mid-write 中断などで
   # .phase だけ valid / .issue_number 以降が corrupt な partial-failure を WARNING の有無で
   # 区別できなくなり、reset reason の triage が不能になる経路ができる。
+  # IFS=$'\t' + @tsv collapses empty fields under POSIX whitespace rules: an empty
+  # issue_number shifts _branch's value into _issue, leaving _branch empty. The
+  # unit separator \x1f preserves empty fields safely (see post-compact.sh / the
+  # ACTIVE-fallback read below for the same convention).
   local _reset_jq_err _composite
   _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
-  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // "")] | @tsv' \
-    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\t\t'
+  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // "")] | join("\u001f")' \
+    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\x1f\x1f'
   if [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ]; then
     echo "rite: session-start: WARNING: _reset_active_state jq read failed (STATE_FILE may be corrupt)" >&2
     head -3 "$_reset_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
-  IFS=$'\t' read -r _phase _issue _branch <<< "$_composite"
+  IFS=$'\x1f' read -r _phase _issue _branch <<< "$_composite"
 
   # Session ownership check runs on the normal execution path, not just RITE_DEBUG.
   # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
@@ -514,7 +518,7 @@ _reset_active_state() {
 
   # Atomic write: jq to temp file, then mv. No trap — explicit cleanup on failure.
   # Silent jq failure here leaves .active=true forever and ALL operators (user
-  # waiting for /rite:resume, peer sessions checking ownership) see a permanent
+  # waiting for /rite:recover, peer sessions checking ownership) see a permanent
   # "another session is active" block with no diagnosable cause. Capture stderr.
   local _tmp _reset_jq_err _reset_mv_err
   _tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _tmp="${STATE_FILE}.tmp.$$"
@@ -539,12 +543,12 @@ _reset_active_state() {
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
   _cleanup_stale_compact
-  # Silent reset for completed workflows: no message, no /rite:resume suggestion
+  # Silent reset for completed workflows: no message, no /rite:recover suggestion
   if [ "$_phase" = "completed" ]; then
     exit 0
   fi
   if [ -n "$_issue" ]; then
-    echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${_issue}, branch: ${_branch})。再開するには /rite:resume を使用してください。"
+    echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${_issue}, branch: ${_branch})。再開するには /rite:recover を使用してください。"
   fi
   exit 0
 }
@@ -587,7 +591,7 @@ _tsv_output=$(jq -r '[
   (.phase // "unknown")
 ] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
 if [ "$_tsv_rc" -ne 0 ]; then
-  echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
+  echo "rite: Warning - state file contains invalid JSON. Use /rite:recover to recover." >&2
   [ -n "$_tsv_err" ] && [ -s "$_tsv_err" ] && head -3 "$_tsv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
   exit 0
@@ -597,16 +601,16 @@ IFS=$'\x1f' read -r ISSUE PHASE <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
-  echo "rite: Warning - state file exists but issue_number is missing. Use /rite:resume to recover."
+  echo "rite: Warning - state file exists but issue_number is missing. Use /rite:recover to recover."
   exit 0
 fi
 
 # Quiet interruption notice (degraded from the former multi-line CRITICAL block).
-# Cross-turn recovery is preserved: /rite:resume reconstructs phase / next_action /
+# Cross-turn recovery is preserved: /rite:recover reconstructs phase / next_action /
 # loop from flow-state. The former coercive multi-line directive ("IMPORTANT: First
 # inform the user ... Use bash {plugin_root}/...") was removed in v0.7 because it
 # contaminated unrelated /goal turns whenever a session started in a rite-active cwd.
-echo "rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:resume を実行してください。"
+echo "rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:recover を実行してください。"
 
 # --- Session ID notification ---
 # session_id is now auto-read from .rite-session-id by flow-state.sh.

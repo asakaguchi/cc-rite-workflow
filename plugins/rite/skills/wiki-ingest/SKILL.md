@@ -305,7 +305,7 @@ fi
 
 ```
 未 Ingest の Raw Source は見つかりませんでした。
-新しい経験則を蓄積するには /rite:review や /rite:fix の完了後に再実行してください。
+新しい経験則を蓄積するには /rite:pr-review や /rite:fix の完了後に再実行してください。
 ```
 
 **処理対象が確定したら**: ステップ 2.1 で初期化した `n_raw_sources` を件数に上書きする。各 Raw Source の完全な本文 (frontmatter + body) を Read ツールで取得し、会話コンテキストに保持する（ステップ 5 の Write/Edit phase で参照）。

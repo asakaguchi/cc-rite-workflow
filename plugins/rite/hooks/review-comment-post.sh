@@ -1,8 +1,8 @@
 #!/bin/bash
 # rite workflow - Review Result PR Comment Post
-# Deterministic helper for skills/review/SKILL.md ステップ 6.1.b (PR Comment Post)。
+# Deterministic helper for skills/pr-review/SKILL.md ステップ 6.1.b (PR Comment Post)。
 #
-# review.md ステップ 6.1.b の PR コメント投稿処理 (post_comment_mode gate + 複数 case gate +
+# pr-review.md ステップ 6.1.b の PR コメント投稿処理 (post_comment_mode gate + 複数 case gate +
 # scope 限定 awk sentinel 置換 + 2 つの post-condition + atomic mv + gh pr comment + signal 検出)
 # を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash invocation での malform
 # 無言停止を回避する。PR コメント本文 (Markdown + Raw JSON
@@ -16,7 +16,7 @@
 #     --iso-timestamp <ISO8601> \
 #     --content-file <path>
 #
-#   caller (review.md ステップ 6.1.b) は以下を行う:
+#   caller (pr-review.md ステップ 6.1.b) は以下を行う:
 #     1. ステップ 5.4 統合レポート (Markdown) + ステップ 6.1.a と構造的に同一の Raw JSON
 #        (timestamp フィールドに literal sentinel "__RITE_TS_PLACEHOLDER_7f3a9b2c__") を含む
 #        PR コメント本文を生成し、**Write tool** で tmpfile に保存する。
@@ -24,7 +24,7 @@
 #        --iso-timestamp / --json-saved に渡す。
 #     3. 本 helper を実行する。
 #
-# 契約 (review.md ステップ 6.1.b と verbatim 一致):
+# 契約 (pr-review.md ステップ 6.1.b と verbatim 一致):
 #   - post_comment_mode machine-enforced gate: true→続行 / false→exit 0 silent skip
 #     (gh pr comment を絶対に実行しない) / その他→ERROR + [review:error] + exit 1。
 #   - ブロッキング: 失敗は `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=...` を emit し exit 1

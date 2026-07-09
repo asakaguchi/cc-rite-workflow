@@ -87,6 +87,7 @@ issue:
 # Review settings
 review:
   min_reviewers: 1      # Fallback when no reviewers match
+  max_reviewers: 6      # Cost cap: max reviewers spawned per review (default 6, silent capping prohibited)
   criteria:
     - file_types
     - content_analysis
@@ -104,26 +105,13 @@ review:
     enabled: true
     max_claims: 20                    # External claim のみに適用（Internal Likelihood は枠外）
     use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
-    verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/skills/review/references/fact-check.md
+    verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/skills/pr-review/references/fact-check.md
   scope_assignment:
     # scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
-    # findings[].scope に基づく fix loop routing 制御。
-    # feature flag scaffolding。新規キー (`review.scope_assignment.*`) は本テンプレ側
-    # でも必ず宣言する (init で展開される値が runtime と drift しないため)。`enabled: false` で
-    # scope-based routing 全体を opt-out し、fix.md は schema 1.0 互換動作 (severity-based default
-    # mapping のみ) にフォールバックする。
-    # ロールアウト戦略: テンプレートは新規 init ユーザ向けに保守的 default として **false** を維持
-    # (本プロジェクト rite-config.yml は検証 pass 後に true 化済、テンプレ側の bump は別途再評価)。
-    enabled: false           # scope-based routing 全体の opt-in/out (template default; 新規 init では false 維持)
-    auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる。`enabled: false` の場合は本キーは effectively false 扱い (将来の runtime gating で wiring 予定)
-
-# Fix settings
-fix:
-  # Fail-Fast Response Principle: throw/raise 優先の修正方針を必須化
-  # 詳細: plugins/rite/skills/fix/SKILL.md ステップ 2 Fail-Fast Response Principle
-  # NOTE (known limitation): config scaffolding (宣言のみ)。現時点では fix.md が
-  # ハードコードで挙動を強制しており、false にしても挙動は変わりません。
-  fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
+    # findings[].scope に基づく fix loop routing 制御。auto_demote_low は
+    # plugins/rite/scripts/review-findings-maps.sh と plugins/rite/skills/fix/SKILL.md が
+    # rite-config.yml から直接読み取って適用する（配線済み）。
+    auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる
 
 # Language setting (auto = auto-detect)
 language: auto  # auto | ja | en
@@ -150,7 +138,7 @@ wiki:
 # Disk cost: each session worktree is a FULL working-tree clone — build artifacts
 # (node_modules, venv, build caches) are NOT shared and may be rebuilt per worktree.
 # Declared ABOVE the `--- Advanced ---` marker (like wiki) so
-# /rite:init new-generation emits it as an active block (so new projects actually
+# /rite:setup new-generation emits it as an active block (so new projects actually
 # get the default-on behavior). On --upgrade it is back-added with `enabled: true`
 # to existing configs (see init.md Step 4 classification) so upgraded
 # projects receive the same default-on behavior; an existing explicit
@@ -166,14 +154,31 @@ multi_session:
 # `commands.test` is null (Red/Green auto-run is then skipped). A config that
 # omits the `tdd:` key is treated as `enabled: true` (opt-out convention).
 # Declared ABOVE the `--- Advanced ---` marker (like wiki / multi_session) so
-# /rite:init new-generation emits it as an active block (new projects get the
+# /rite:setup new-generation emits it as an active block (new projects get the
 # default-on behavior). On --upgrade it is back-added with `enabled: true` to
 # existing configs; an existing explicit `enabled: false` is preserved.
 tdd:
   enabled: true   # true: implementation phase runs the Canon TDD cycle (default: true, opt-out)
 
+# Safety settings (fail-closed thresholds)
+# Hard limits that stop runaway autonomous loops (implementation rounds, review-fix
+# cycles, repeated failures). Declared ABOVE the `--- Advanced ---` marker (like
+# wiki / multi_session / tdd) so /rite:setup new-generation emits it as an active
+# block — new projects can discover and tune the safety ceilings from the generated
+# config. Consumers read each value with an internal default, so a config that omits
+# `safety:` (or any single key) keeps the documented default behavior (backward
+# compatible). On --upgrade the section is back-added with these defaults; an
+# existing custom value is preserved. Values are UNCHANGED from the previous
+# Advanced (commented) block — only the position moved.
+safety:
+  max_implementation_rounds: 20   # implementation round hard limit per Issue (default: 20)
+  max_review_cycles: 5            # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
+  time_budget_minutes: 120        # advisory time budget per Issue (not enforced by timer)
+  auto_stop_on_repeated_failure: true   # stop after repeated same-class failures
+  repeated_failure_threshold: 3   # consecutive same-class failures that trigger auto-stop
+
 # --- Advanced (below this line) ---
-# These sections are omitted during new generation (/rite:init).
+# These sections are omitted during new generation (/rite:setup).
 # They are added as comments during --upgrade.
 # Uncomment and configure as needed.
 
@@ -196,13 +201,6 @@ pr_review:
 # metrics:
 #   enabled: true
 #   baseline_issues: 3
-
-# Safety settings (fail-closed thresholds)
-# safety:
-#   max_implementation_rounds: 20
-#   time_budget_minutes: 120
-#   auto_stop_on_repeated_failure: true
-#   repeated_failure_threshold: 3
 
 # Wiki settings are declared above the `--- Advanced ---` marker (active by default).
 # See docs/designs/experience-heuristics-persistence-layer.md for full specification.

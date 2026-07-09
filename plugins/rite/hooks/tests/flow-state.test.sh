@@ -789,10 +789,10 @@ assert "TC-H2: handoff absent when --handoff omitted" "ABSENT" "$(jq -r '.handof
 echo ""
 echo "=== TC-H3: consume-handoff prints value + deletes it (one-shot) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
 state_file="$d/.rite/sessions/${sid}.flow-state"
 first=$(cd "$d" && bash "$HOOK" consume-handoff)
-assert "TC-H3: first consume returns value" "/rite:review 99" "$first"
+assert "TC-H3: first consume returns value" "/rite:pr-review 99" "$first"
 assert "TC-H3: handoff deleted after consume" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 second=$(cd "$d" && bash "$HOOK" consume-handoff)
 assert "TC-H3: second consume is empty (one-shot)" "" "$second"
@@ -828,8 +828,8 @@ echo ""
 echo "=== TC-H5: set --handoff then set without --handoff clears it (terminal transition) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 state_file="$d/.rite/sessions/${sid}.flow-state"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
-assert "TC-H5: handoff present after continuation set" "/rite:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
+assert "TC-H5: handoff present after continuation set" "/rite:pr-review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 (cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next "terminal")
 assert "TC-H5: handoff cleared by subsequent no-handoff set" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 
@@ -842,7 +842,7 @@ echo "=== TC-H6: consume-handoff fail-closed on _atomic_write failure ==="
 # この correctness path に test がないと print-then-delete への revert を検出できないため pin する。
 # 書込失敗の強制は TC-8b-e/g と同じ DAC-probe (chmod 0555) を流用する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
 state_file="$d/.rite/sessions/${sid}.flow-state"
 # DAC probe (同 TC-8b-e/g): root / fakeroot / CAP_DAC_OVERRIDE 環境では chmod 0555 が無効化され
 # write-failure path を強制できないため、実機 write probe で強制可能性を検出し silent false-pass を防ぐ。
@@ -880,7 +880,7 @@ else
     val="${out%__RC=*}"; val="${val%$'\n'}"
     assert "TC-H6: value withheld on write failure (stdout empty)" "" "$val"
     assert "TC-H6: rc 0 on write failure (Stop hook will allow stop)" "0" "$rc"
-    assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+    assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:pr-review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
     # 診断 ERROR が stderr に出ること (observability: write 失敗時の triage 用。cmd_set / _atomic_write の ERROR emission と対称)
     if [ "$_tch6_stderr" = "/dev/null" ]; then
       pass "TC-H6: 診断 ERROR assert を skip (stderr capture tempfile 取得不可)"
@@ -907,7 +907,7 @@ echo "=== TC-H7: consume-handoff on corrupt JSON → WARNING + empty + rc 0 ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 state_file="$d/.rite/sessions/${sid}.flow-state"
 # 正規 set で sessions dir + valid file を作ってから corrupt JSON で上書き (実際の FS corruption を模倣)
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
 printf '{ this is not valid json' > "$state_file"
 _tch7_stderr=$(mktemp /tmp/rite-tch7-stderr-XXXXXX 2>/dev/null) || _tch7_stderr="/dev/null"
 out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch7_stderr"); echo "__RC=$?" )
@@ -1123,6 +1123,85 @@ assert "TC-26: present → write completes (phase recorded, symmetric with case 
 # (c) backward compat: without --require-worktree → NO marker (unchanged behavior)
 out_plain=$( (cd "$d" && bash "$HOOK" set --phase branch --issue 1595 --branch "fix/issue-1595" --pr 0 --next "n") 2>&1 )
 assert "TC-26: backward compat → no WORKTREE_INVARIANT marker without flag" "0" "$(echo "$out_plain" | grep -c 'WORKTREE_INVARIANT')"
+
+# --- TC-27: cycle_count is a merge-preserved additive field (#1701 review⇄fix circuit breaker) ---
+echo ""
+echo "=== TC-27: --cycle-count merge-preserve + reset (review⇄fix circuit breaker) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sfile="$d/.rite/sessions/${sid}.flow-state"
+# (a) set --cycle-count 3 → recorded
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n" --cycle-count 3) >/dev/null
+assert "TC-27: cycle_count=3 recorded" "3" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
+assert "TC-27: get returns 3" "3" "$(cd "$d" && bash "$HOOK" get --field cycle_count --default 0)"
+# (b) merge-preserve: a set WITHOUT --cycle-count (e.g. review/fix phase transition) keeps the value
+(cd "$d" && bash "$HOOK" set --phase fix --issue 700 --branch "feat/700" --pr 42 --next "n2") >/dev/null
+assert "TC-27: cycle_count preserved across --cycle-count-less set" "3" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
+# (c) a later set overwrites cycle_count with a new value (increment is the caller's job, not the hook's)
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n3" --cycle-count 4) >/dev/null
+assert "TC-27: later set overwrites cycle_count to a new value (increment scenario)" "4" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
+# (d) reset with --cycle-count 0 removes the key (get falls back to default; fresh-entry reset)
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n4" --cycle-count 0) >/dev/null
+assert "TC-27: --cycle-count 0 removes the key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
+assert "TC-27: get after reset returns default 0" "0" "$(cd "$d" && bash "$HOOK" get --field cycle_count --default 0)"
+# (d2) reset while OMITTING issue/branch/pr (the actual iterate ステップ0.6 fresh-reset call shape):
+#      --cycle-count 0 removes the key AND merge-preserve keeps issue/branch intact
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "seed" --cycle-count 3) >/dev/null
+(cd "$d" && bash "$HOOK" set --phase review --next "fresh reset" --cycle-count 0) >/dev/null
+assert "TC-27: reset with issue/branch omitted removes cycle_count key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
+assert "TC-27: reset merge-preserves issue_number" "700" "$(jq -r '.issue_number' "$sfile")"
+assert "TC-27: reset merge-preserves branch" "feat/700" "$(jq -r '.branch' "$sfile")"
+# (e) backward compat: a fresh session that never sets --cycle-count has no cycle_count key
+result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
+sfile2="$d2/.rite/sessions/${sid2}.flow-state"
+(cd "$d2" && bash "$HOOK" set --phase branch --issue 701 --branch "feat/701" --pr 0 --next "n") >/dev/null
+assert "TC-27: backward compat → no cycle_count key without --cycle-count" "false" "$(jq -r 'has("cycle_count")' "$sfile2")"
+
+# --- TC-28: wm_comment_id is merge-preserved across cmd_set (#1810) ---
+# wm_comment_id has NO --flag — it's written directly by issue-comment-wm-sync.sh's
+# cache_comment_id() via `jq '. + {wm_comment_id: ...}'`, mirroring how post-tool-wm-sync.sh
+# writes last_synced_phase. Repro: cache_comment_id writes the field, then any other skill's
+# ordinary phase-transition `set` (no wm_comment_id awareness) must NOT wipe it.
+echo ""
+echo "=== TC-28: wm_comment_id merge-preserve across ordinary phase-transition set ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sfile="$d/.rite/sessions/${sid}.flow-state"
+(cd "$d" && bash "$HOOK" set --phase init --issue 1810 --branch "" --pr 0 --next "n") >/dev/null
+# simulate cache_comment_id() writing directly to the state file
+jq '. + {wm_comment_id: 999888}' "$sfile" > "$sfile.tmp" && mv "$sfile.tmp" "$sfile"
+assert "TC-28: wm_comment_id=999888 written directly" "999888" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile")"
+# an ordinary phase-transition set (no wm_comment_id flag exists) must preserve it
+(cd "$d" && bash "$HOOK" set --phase branch --issue 1810 --branch "fix/issue-1810" --pr 0 --next "n2") >/dev/null
+assert "TC-28: wm_comment_id preserved across unrelated phase-transition set" "999888" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile")"
+assert "TC-28: phase transition itself still applied" "branch" "$(jq -r '.phase' "$sfile")"
+# backward compat: a fresh session that never had wm_comment_id written has no such key
+result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
+sfile2="$d2/.rite/sessions/${sid2}.flow-state"
+(cd "$d2" && bash "$HOOK" set --phase branch --issue 1811 --branch "feat/1811" --pr 0 --next "n") >/dev/null
+assert "TC-28: backward compat → no wm_comment_id key when never written" "false" "$(jq -r 'has("wm_comment_id")' "$sfile2")"
+# write-time failure: a corrupted (non-numeric) wm_comment_id already on disk must make the
+# unrelated set fail loud (rc!=0) via tonumber, not silently succeed with a wiped/garbage value
+result=$(new_sandbox); d3="${result%|*}"; sid3="${result#*|}"
+sfile3="$d3/.rite/sessions/${sid3}.flow-state"
+(cd "$d3" && bash "$HOOK" set --phase init --issue 1812 --branch "" --pr 0 --next "n") >/dev/null
+jq '. + {wm_comment_id: "not-a-number"}' "$sfile3" > "$sfile3.tmp" && mv "$sfile3.tmp" "$sfile3"
+corrupt_set_rc=0
+(cd "$d3" && bash "$HOOK" set --phase branch --issue 1812 --branch "fix/issue-1812" --pr 0 --next "n2") >/dev/null 2>&1 || corrupt_set_rc=$?
+assert "TC-28: corrupt non-numeric wm_comment_id makes unrelated set fail (rc!=0)" "1" "$corrupt_set_rc"
+# security fix (cycle 2 #1810): the write-side jq stderr (which quotes the corrupt raw value)
+# must go through the same _emit_jq_err_snippet / neutralize_ctrl convention as the read side,
+# not straight to the terminal unneutralized. Same TC-23.2 pattern: inject an ESC byte and
+# assert it never reaches stderr raw.
+result=$(new_sandbox); d4="${result%|*}"; sid4="${result#*|}"
+sfile4="$d4/.rite/sessions/${sid4}.flow-state"
+(cd "$d4" && bash "$HOOK" set --phase init --issue 1813 --branch "" --pr 0 --next "n") >/dev/null
+esc=$(printf '\033')
+jq --arg v "${esc}[31mnot-a-number" '. + {wm_comment_id: $v}' "$sfile4" > "$sfile4.tmp" && mv "$sfile4.tmp" "$sfile4"
+corrupt_set_stderr=$( (cd "$d4" && bash "$HOOK" set --phase branch --issue 1813 --branch "fix/issue-1813" --pr 0 --next "n2") 2>&1 1>/dev/null || true )
+if printf '%s' "$corrupt_set_stderr" | LC_ALL=C grep -q "$esc"; then
+  fail "TC-28: corrupt wm_comment_id 由来の生 ESC が write エラー出力に残存 (control-char 中和が機能していない): '$(printf '%s' "$corrupt_set_stderr" | cat -v)'"
+else
+  pass "TC-28: corrupt wm_comment_id 由来の write エラー出力の生 ESC が中和されている"
+fi
 
 # --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
 echo ""

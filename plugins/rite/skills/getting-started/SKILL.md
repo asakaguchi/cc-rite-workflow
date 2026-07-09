@@ -126,9 +126,9 @@ Stop here if not a valid repository.
 
 ```
 Quick Start (3 steps):
-  1. Setup (one-time):   /rite:init
+  1. Setup (one-time):   /rite:setup
   2. Start an Issue:     /rite:issue-create → /rite:open <番号>
-  3. Complete & submit:  /rite:iterate <PR> → /rite:ready <PR> → /rite:merge <PR> → /rite:cleanup <PR>
+  3. Complete & submit:  /rite:iterate <pr> → /rite:ready <pr> → /rite:merge <pr> → /rite:cleanup
 
 詳細なフロー図とコマンド一覧は /rite:workflow で表示できます。
 ```
@@ -143,36 +143,36 @@ Explain the setup process:
 └─────────────────────────────────────────────────────────────┘
 
 Run the initialization wizard:
-  /rite:init
+  /rite:setup
 
-What /rite:init configures:
+What /rite:setup configures:
   ✓ Creates rite-config.yml with project settings
   ✓ Configures GitHub Projects integration (optional)
   ✓ Sets up branch naming conventions
   ✓ Configures iteration settings (optional)
   ✓ Installs workflow hooks for state management
 
-This is a one-time setup. You can reconfigure later by running /rite:init again.
+This is a one-time setup. You can reconfigure later by running /rite:setup again.
 ```
 
-**Upgrading an existing project (`/rite:init --upgrade`)**
+**Upgrading an existing project (`/rite:setup --upgrade`)**
 
 If you have been using rite workflow on this project for a while, the bundled
 configuration schema may have moved ahead of your local `rite-config.yml`. In
-that case, run the upgrade variant instead of a fresh `/rite:init`:
+that case, run the upgrade variant instead of a fresh `/rite:setup`:
 
 ```
-/rite:init --upgrade
+/rite:setup --upgrade
 ```
 
 When to run it:
 
 - After updating the rite workflow plugin and seeing a warning that
   `rite-config.yml` schema is outdated. The exact wording differs slightly
-  by emitter: `/rite:init` emits `rite-config.yml のスキーマが古くなっています
-  (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
+  by emitter: `/rite:setup` emits `rite-config.yml のスキーマが古くなっています
+  (v{current} → v{latest})。/rite:setup --upgrade でアップグレードできます。`
   and the session-start hook emits a variant ending in
-  `/rite:init --upgrade を実行してください。` Both signal the same situation
+  `/rite:setup --upgrade を実行してください。` Both signal the same situation
 - When release notes (`CHANGELOG.md`) announce new
   configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from
   your local `rite-config.yml`
@@ -180,7 +180,7 @@ When to run it:
   from the bundled template in
   `plugins/rite/templates/config/rite-config.yml`
 
-What `/rite:init --upgrade` does:
+What `/rite:setup --upgrade` does:
 
   ✓ Creates a timestamped backup (`rite-config.yml.bak.YYYYMMDD-HHMMSS`)
   ✓ Compares your current `schema_version` against the latest template version
@@ -196,7 +196,7 @@ What `/rite:init --upgrade` does:
     missing sub-keys — idempotently and without an additional prompt (the
     preview/confirm step is shown only on the schema-upgrade path)
   ✓ Appends the `wiki:` section if it is absent, so the Wiki
-    auto-initialization step of `/rite:init` can run for existing projects
+    auto-initialization step of `/rite:setup` can run for existing projects
   ✓ Back-adds the `multi_session:` section with `enabled: true` if it is
     absent, so upgraded projects get the default-on per-session worktree
     behavior; an existing explicit `enabled: false` is preserved
@@ -213,13 +213,13 @@ missing drift (all active sections, their sub-keys, and the `multi_session` /
 `wiki:` sections are already present) and Wiki is already initialized, the
 command makes no changes to `rite-config.yml` itself — it still creates a
 timestamped backup, reports "configuration is up to date", then runs the Wiki
-auto-initialization idempotency check of `/rite:init` and displays a final
+auto-initialization idempotency check of `/rite:setup` and displays a final
 Wiki status line before exiting.
 
 Check if `rite-config.yml` exists:
 
 ```bash
-ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
+ls rite-config.yml 2>/dev/null || ls .claude/rite-config.yml 2>/dev/null
 ```
 
 **If it exists:**
@@ -233,14 +233,14 @@ You can skip Step 1 and proceed to Step 2.
 described in the "Upgrading an existing project" section above, or the
 top-level `schema_version` in your `rite-config.yml` differs from the
 bundled template in `plugins/rite/templates/config/rite-config.yml`, run
-`/rite:init --upgrade` before proceeding to Step 2 to bring the configuration
+`/rite:setup --upgrade` before proceeding to Step 2 to bring the configuration
 up to date.
 ```
 
 **If it does not exist:**
 
 ```
-⚡ Action Required: Run /rite:init to set up rite workflow
+⚡ Action Required: Run /rite:setup to set up rite workflow
 
 After setup is complete, return here or proceed directly to working on Issues.
 ```
@@ -261,16 +261,22 @@ Option A: Work on an existing Issue
      (Replace 42 with the Issue number)
 
 Option B: Create a new Issue
-  1. Create an Issue with a description:
+  1. (Optional) If your idea isn't fully formed yet, explore it first:
+     /rite:unknowns <topic>
+     (Blind-spot pass, brainstorming, throwaway prototypes, and interview —
+      ends with an exploration summary you can feed into step 2)
+
+  2. Create an Issue with a description:
      /rite:issue-create Add user authentication
 
-  2. rite will automatically create the Issue and start working on it
+  3. Then start working on the created Issue:
+     /rite:open <issue number from step 2>
 
 What happens when you start an Issue:
   ✓ Creates a feature branch (e.g., feat/issue-42-description)
   ✓ Updates Issue status to "In Progress" (if Projects is configured)
   ✓ Initializes work memory for context tracking
-  ✓ Provides guidance for implementation
+  ✓ Implements changes, runs quality checks (/rite:lint), and opens a draft PR
 ```
 
 ### 3.4 Step 3: Complete and Submit
@@ -280,27 +286,24 @@ What happens when you start an Issue:
 │              Step 3: Complete and Submit                    │
 └─────────────────────────────────────────────────────────────┘
 
-After implementing your changes:
+/rite:open runs quality checks (/rite:lint) and creates a draft PR for you.
+After the draft PR is created:
 
-1. Run quality checks:
-   /rite:lint
+1. Run the review/fix loop until the PR is mergeable:
+   /rite:iterate <pr>
+   (Multi-reviewer analysis — code quality, security, tests, etc. —
+    with fixes applied automatically in a review ⇄ fix loop)
 
-2. Create a draft PR:
-   /rite:pr-create
-
-3. Review your changes:
-   /rite:review
-   (Multi-reviewer analysis: code quality, security, tests, etc.)
-
-4. If issues are found, fix them:
-   /rite:fix
-   (Then run /rite:review again)
-
-5. When ready for team review:
-   /rite:ready
+2. When ready for team review:
+   /rite:ready <pr>
    (Marks PR as "Ready for review")
 
-6. After PR is merged, the Issue is automatically closed
+3. Merge the PR:
+   /rite:merge <pr>
+
+4. Clean up after the merge:
+   /rite:cleanup
+   (Deletes the branch, closes the Issue, updates Projects status)
 ```
 
 > **Test-Driven Development (Canon TDD) is on by default.** During implementation
@@ -332,7 +335,7 @@ Common Issues and Solutions:
    Solution: Ensure you're in a Git repository that's pushed to GitHub
    Check with: gh repo view
 
-3. "Projects not found" during /rite:init
+3. "Projects not found" during /rite:setup
    Solution: Projects is optional. Choose "Skip Projects integration"
    or create a Project manually on GitHub first
 
@@ -341,7 +344,7 @@ Common Issues and Solutions:
    Check with: git branch --show-current
 
 5. "Context limit reached" during work
-   Solution: Use /clear to compact context, then /rite:resume to continue
+   Solution: Use /clear to compact context, then /rite:recover to continue
    The workflow state is preserved and automatically restored
 
 6. PR creation fails
@@ -395,7 +398,7 @@ Operating rules (important):
     exists and git works (the harness mis-detected the launch directory as
     non-git at startup): RESTART Claude Code from the repository ROOT and
     re-run the same command. The already-created worktree is preserved and
-    reused (WT_CASE=reuse on /rite:open, WT_ENSURE=reenter on /rite:resume),
+    reused (WT_CASE=reuse on /rite:open, WT_ENSURE=reenter on /rite:recover),
     so nothing is rebuilt. rite never silently falls back to git switch -c.
 
   • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).
@@ -413,10 +416,10 @@ Operating rules (important):
     do (it never silently steals the claim). Claims are always on, even when
     multi_session is off.
 
-  • After a crash / restart: just run /rite:resume — it re-enters the session
+  • After a crash / restart: just run /rite:recover — it re-enters the session
     worktree (or rebuilds it from the branch if it was removed) and continues.
 
-  • .gitignore must contain .rite/worktrees/ (/rite:init adds it; /rite:lint
+  • .gitignore must contain .rite/worktrees/ (/rite:setup adds it; /rite:lint
     warns if it is missing while multi_session is enabled).
 
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
@@ -446,17 +449,17 @@ Now that you understand the basics:
 🚀 Try these workflows:
   - Start with a simple Issue to practice the flow
   - Use /rite:issue-update during work to save progress
-  - Experiment with /rite:review to see multi-reviewer analysis
+  - Experiment with /rite:iterate to see multi-reviewer analysis
 
 💡 Tips:
   - Work memory is automatically saved and restored
-  - Use /rite:resume if interrupted by context limits
+  - Use /rite:recover if interrupted by context limits
   - Check current workflow state with /rite:workflow
 
 🔧 Advanced features:
   - Iteration tracking: enable `iteration` in rite-config.yml (auto-assign on /rite:open, --sprint / --backlog filters in /rite:issue-list)
   - Template customization: Edit template files in the plugin's templates/ directory
-  - Multi-agent PR reviews: Automatic in /rite:review
+  - Multi-agent PR reviews: Automatic in /rite:iterate
 
 Ready to start? Try:
   /rite:issue-list    (to view existing Issues)

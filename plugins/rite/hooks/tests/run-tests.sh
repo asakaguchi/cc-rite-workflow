@@ -19,8 +19,22 @@ PASSED=0
 FAILED=0
 FAILED_TESTS=()
 
-for test_file in "$SCRIPT_DIR"/*.test.sh; do
-  [ -f "$test_file" ] || continue
+# Discover test files from BOTH conventions/locations (Issue #1719):
+#   1. this dir's `*.test.sh` — the hook/entry-point suite
+#   2. the sibling `hooks/scripts/tests/test-*.sh` — the checker suite for
+#      hooks/scripts/ scripts. It uses a `test-*.sh` name in a separate
+#      directory, so the `*.test.sh` glob never reached it and those tests
+#      ran nowhere despite existing. Collecting both into one list keeps a
+#      single runner as the single source of test execution.
+test_files=()
+for f in "$SCRIPT_DIR"/*.test.sh; do
+  [ -f "$f" ] && test_files+=("$f")
+done
+for f in "$SCRIPT_DIR"/../scripts/tests/test-*.sh; do
+  [ -f "$f" ] && test_files+=("$f")
+done
+
+for test_file in "${test_files[@]}"; do
   test_name="$(basename "$test_file")"
   TOTAL=$((TOTAL + 1))
   echo "=== Running: $test_name ==="

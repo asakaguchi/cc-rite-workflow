@@ -44,7 +44,7 @@
 #     Step 4.5 deletes ONLY recorded entries, never by guessing names (AC-4/D-05).
 #
 # Variation history:
-#   - `cycle{N}`: orchestrator-created (`/rite:review` cycle worktrees)
+#   - `cycle{N}`: orchestrator-created (`/rite:pr-review` cycle worktrees)
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
 #     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is enforced primarily by
@@ -738,7 +738,7 @@ _rite_worktree_protected_by_flow_state() {
 
 # After a session worktree is reaped, clear the `worktree` reference from every
 # flow-state that still records it, so neither rite's own re-entry path
-# (open.md Step 0.5 / resume.md) nor a later harness cwd-restore is pointed at the
+# (open.md Step 0.5 / recover.md) nor a later harness cwd-restore is pointed at the
 # now-deleted directory (Issue #1524 MUST: reap → null the owner's flow-state
 # worktree). The write is routed through `flow-state.sh clear-worktree` to honor
 # the `_atomic_write` convention; per-session failure WARNs and is non-blocking

@@ -2,16 +2,16 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.7.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.7.2)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.8.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
 
 ## Demo
 
-From Issue to PR — see Rite Workflow turn development into a *rite*. A ~115-second intro (English).
+From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
 
-https://github.com/user-attachments/assets/39d7aac7-5a4f-46b6-998f-9c061391af31
+https://github.com/user-attachments/assets/abc7455a-ed0a-40c9-964e-cee8c4262f35
 
 ## Why "Rite"?
 
@@ -27,7 +27,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Automated**: Auto-detection and auto-configuration
 - **Customizable**: Flexible configuration via YAML
 - **Integrated**: GitHub Projects
-- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/skills/review/references/internal-consistency.md`](plugins/rite/skills/review/references/internal-consistency.md) for the full verification protocol
+- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/skills/pr-review/references/internal-consistency.md`](plugins/rite/skills/pr-review/references/internal-consistency.md) for the full verification protocol
 - **External Review Integration**: `/rite:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
 - **Iteration Tracking**: Optional GitHub Projects Iteration field integration (auto-assign on `/rite:open`, `--sprint` / `--backlog` filters in `/rite:issue-list`)
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
@@ -51,12 +51,33 @@ Rite Workflow uses a two-step installation: first register the marketplace, then
 /plugin install rite@rite-marketplace
 ```
 
-**Verify installation**: Run `/rite:init` to confirm the plugin is working.
+**Verify installation**: Run `/rite:setup` to confirm the plugin is working.
+
+## Uninstallation
+
+Remove the plugin with:
+
+```bash
+/plugin uninstall rite@rite-marketplace
+```
+
+This removes the plugin code but leaves behind the artifacts it created in your project. Most are harmless if left in place, but here's the full list with removal steps:
+
+| Artifact | Location | Harmful if left? | Removal |
+|----------|----------|-------------------|---------|
+| `rite-config.yml` | Committed to your repo | No | `git rm rite-config.yml && git commit -m "chore: remove rite-config.yml"` |
+| `.gitignore` entries | Committed (lines added by `/rite:setup`, e.g. `.rite-work-memory/`, `.rite/sessions/`) | No | Manually remove the added lines |
+| Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete <branch>`, where `<branch>` is `wiki.branch_name` in `rite-config.yml` (default `wiki`) |
+| Local generated files (gitignored) | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
+| `.rite/` internal directories (gitignored, may hold live git worktrees) | `.rite/wiki-worktree/` (Wiki `separate_branch` strategy), `.rite/worktrees/issue-*` (per-session worktrees when `multi_session` is enabled) | Yes if removed with a plain `rm -rf` — this can orphan git worktree metadata and destroy uncommitted work | Check `git worktree list` first; if either path is registered, run `git worktree remove <path>` (confirming no uncommitted changes) then `git worktree prune`. Only after that, remove the rest of `.rite/` with `rm -rf .rite` |
+| Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove any hook entries whose command path contains `rite/` and `hooks/` as path segments — a plugin version segment may appear in between (e.g. `.../rite/hooks/foo.sh` or `.../rite/0.7.0/hooks/foo.sh` — not `favorite/hooks/foo.sh`) |
+
+None of these block reinstallation or affect other tooling — clean them up at your convenience.
 
 ## Quick Start
 
 ```bash
-/rite:init
+/rite:setup
 ```
 
 This will:
@@ -69,10 +90,11 @@ This will:
 
 | Command | Description |
 |---------|-------------|
-| `/rite:init` | Initial setup wizard |
-| `/rite:init --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
+| `/rite:setup` | Initial setup wizard |
+| `/rite:setup --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
 | `/rite:getting-started` | Interactive onboarding guide |
 | `/rite:workflow` | Show workflow guide |
+| `/rite:unknowns` | Pre-implementation exploration session (blind-spot pass, brainstorming, throwaway prototypes, interview) — optional, manual only |
 | `/rite:issue-list` | List Issues |
 | `/rite:issue-create` | Create new Issue |
 | `/rite:issue-update` | Update work memory |
@@ -83,7 +105,7 @@ This will:
 | `/rite:merge` | Squash-merge the PR |
 | `/rite:pr-create` | Create draft PR |
 | `/rite:ready` | Mark as Ready for review |
-| `/rite:review` | Multi-reviewer review |
+| `/rite:pr-review` | Multi-reviewer review |
 | `/rite:fix` | Address review feedback |
 | `/rite:cleanup` | Post-merge cleanup |
 | `/rite:investigate` | Structured code investigation |
@@ -93,7 +115,7 @@ This will:
 | `/rite:wiki-query` | Query Wiki pages for heuristics matching keywords |
 | `/rite:wiki-ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
 | `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
-| `/rite:resume` | Resume interrupted work |
+| `/rite:recover` | Resume interrupted work |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills |
 
 ## Workflow
@@ -104,7 +126,7 @@ This will:
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover.
 
 Status Transitions:
 ```
@@ -142,7 +164,7 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all options.
 
 | Issue | Solution |
 |-------|----------|
-| `Context limit reached` during long-running commands | Run `/clear` then `/rite:resume` to continue |
+| `Context limit reached` during long-running commands | Run `/clear` then `/rite:recover` to continue |
 
 ## Documentation
 

@@ -1415,6 +1415,244 @@ rm -rf "$fake_bin_118"
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-119〜124: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
+#   Issue #1717: Pattern 4 (reviewer state-mutating-git denylist) shared the
+#   fail-OPEN ERR trap with the convenience patterns, so a parse crash inside
+#   Pattern 4 converged to exit 0 (allow) and silently bypassed the security
+#   boundary. The fix installs a fail-CLOSED ERR trap over the Pattern 4 block
+#   (deny + exit 2 + WARNING) and restores fail-open afterwards. Pattern 4 uses
+#   only bash built-ins, so — unlike the deny-emit path faked in TC-118 — it
+#   cannot be crashed via a fake external binary; the hook exposes a test-only,
+#   fail-CLOSED-ONLY fault-injection env var (RITE_BTG_TEST_CRASH=pattern4) that
+#   raises an ERR inside the fail-closed trap region (TC-119). A symmetric
+#   fail-OPEN injection was deliberately NOT added — an env-triggered fail-open
+#   path would be an allow-all backdoor to a security boundary — so AC-3 (Patterns
+#   1-3 stay fail-open) is pinned structurally instead (TC-120). TC-123 covers the
+#   timeout-bypass guard: an oversized global-flag command denies fail-closed before
+#   the super-linear normalization can time out the fail-open hook. These TCs drive
+#   the hook directly (the run_guard_* helpers do not thread extra env through the pipe).
+# --------------------------------------------------------------------------
+echo "TC-119: Pattern 4 crash in reviewer subagent → deny + exit 2 + stderr WARNING (AC-1)"
+rc=0
+tc119_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc119_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$rc" = "2" ]; then
+  pass "TC-119 Pattern 4 crash exits 2 (fail-closed, not the old exit 0 allow)"
+else
+  fail "TC-119 expected rc=2, got rc=$rc"
+fi
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-119 emits deny JSON with reviewer-state-mutating-git reason"
+else
+  fail "TC-119 expected deny (reviewer-state-mutating-git), got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"WARNING"* ]] && [[ "$stderr_log" == *"Pattern 4"* ]]; then
+  pass "TC-119 stderr WARNING makes the fail-closed firing visible"
+else
+  fail "TC-119 expected stderr WARNING for Pattern 4, got: $stderr_log"
+fi
+echo ""
+
+echo "TC-120: Patterns 1-3 fail-open invariant is structurally preserved (AC-3)"
+# AC-3 requires that a crash in the Patterns 1-3 region still resolves to allow.
+# This is guaranteed structurally: the default ERR trap is the fail-OPEN handler,
+# and the fail-CLOSED trap is installed ONLY inside the reviewer-only Pattern 4
+# block and restored to fail-open at that block's exit. We deliberately do NOT ship
+# a fail-open fault-injection env var to drive this behaviorally — such a var would
+# be an allow-all backdoor to the security boundary (Issue #1717 review F-02). So we
+# pin the three invariants that guarantee AC-3 by inspecting the hook source.
+tc120_src=$(cat "$HOOK")
+# (a) the default (pre-Pattern-4) ERR trap is the fail-OPEN handler
+if [[ "$tc120_src" == *"trap '_rite_btg_pattern13_fail_open' ERR"* ]]; then
+  pass "TC-120 default ERR trap is the fail-open handler (Patterns 1-3 fail open)"
+else
+  fail "TC-120 default fail-open ERR trap not found in hook source"
+fi
+# (b) the fail-CLOSED trap is installed inside the Pattern 4 block (swap-in present)
+if [[ "$tc120_src" == *"trap '_rite_btg_pattern4_fail_closed' ERR"* ]]; then
+  pass "TC-120 fail-closed trap is swapped in for the Pattern 4 block"
+else
+  fail "TC-120 fail-closed swap line not found in hook source"
+fi
+# (c) the fail-OPEN trap is restored at Pattern 4 block exit. Pin the EXECUTABLE
+# statement, not a comment: the fail-open trap line must appear at least TWICE — once
+# as the default install (before Pattern 4) and once as the restore (block exit). This
+# is now the only guard for AC-3's block-exit fail-open restoration (behavioral
+# injection was removed as an allow-all backdoor, F-02), so it must catch deletion of
+# the actual restore statement — not just its comment (Issue #1717 review F-04).
+tc120_restore_count=$(printf '%s\n' "$tc120_src" | grep -c "trap '_rite_btg_pattern13_fail_open' ERR")
+if [ "${tc120_restore_count:-0}" -ge 2 ]; then
+  pass "TC-120 fail-open trap statement appears >=2x (default install + block-exit restore)"
+else
+  fail "TC-120 expected the fail-open trap statement >=2x (install+restore), found $tc120_restore_count"
+fi
+# (d) no fail-open fault-injection backdoor remains (F-02): the env var must never
+# trigger an allow (fail-open) path. Assert the removed pattern13 injection is gone.
+if [[ "$tc120_src" != *'RITE_BTG_TEST_CRASH:-}" = "pattern13"'* ]]; then
+  pass "TC-120 no fail-open (pattern13) fault-injection backdoor remains"
+else
+  fail "TC-120 fail-open (pattern13) injection backdoor is still present in hook source"
+fi
+echo ""
+
+echo "TC-121: Pattern 4 crash injection on a MAIN session → allow (no false deny; MUST NOT)"
+# The fail-closed trap must be scoped to the reviewer-only Pattern 4 block. A main
+# session never enters that block, so even with the injection var set it must not be
+# denied — proves the fix does not add false denies to normal (non-reviewer) Bash.
+rc=0
+tc121_input=$(jq -n --arg cmd "git status" --arg tp "$MAIN_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc121_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-121 main-session Bash is not denied by the Pattern 4 fail-closed trap"
+else
+  fail "TC-121 expected allow (rc=0, empty) for main session, got rc=$rc output=$output"
+fi
+echo ""
+
+echo "TC-122: hooks.json PreToolUse:Bash has a timeout (AC-4)"
+HOOKS_JSON="$SCRIPT_DIR/../hooks.json"
+if jq empty "$HOOKS_JSON" 2>/dev/null; then
+  pass "TC-122 hooks.json is valid JSON"
+else
+  fail "TC-122 hooks.json is not valid JSON"
+fi
+tc122_timeout=$(jq -r '.hooks.PreToolUse[]?.hooks[]? | select((.command // "") | test("pre-tool-bash-guard")) | .timeout // empty' "$HOOKS_JSON" 2>/dev/null)
+if [ -n "$tc122_timeout" ] && [[ "$tc122_timeout" =~ ^[0-9]+$ ]]; then
+  pass "TC-122 pre-tool-bash-guard hook has a numeric timeout ($tc122_timeout)"
+else
+  fail "TC-122 expected a numeric timeout on the PreToolUse:Bash hook, got '$tc122_timeout'"
+fi
+# Pin the exact value (Issue #1717 review F-03): the .sh header comment documents
+# "a 10s timeout", but nothing tied that prose to the config. Pin 10 here so that
+# changing hooks.json without updating the header comment fails this test (drift
+# detection). Update BOTH this literal and the .sh header if the value ever changes.
+if [ "$tc122_timeout" = "10" ]; then
+  pass "TC-122 timeout value is 10 (matches the value documented in the .sh header)"
+else
+  fail "TC-122 expected timeout=10 (as documented in pre-tool-bash-guard.sh header), got '$tc122_timeout'"
+fi
+echo ""
+
+echo "TC-123: many-global-flag command → iteration-cap fail-closed deny (F-01 secondary bound)"
+# The Pattern 4 global-flag normalization is super-linear, and the PreToolUse hook
+# timeout is fail-OPEN. A reviewer subagent could pad a git command with thousands of
+# global flags so normalization times out → the deny is dropped → the git runs. The
+# per-flag iteration cap denies fail-closed past 128 flags (a secondary bound; the
+# length guard in TC-124 is the primary one). Use a READ-ONLY verb (`status`) under
+# the byte ceiling so this exercises the CAP, not the length guard, and so the deny is
+# genuinely attributable to the cap: without the cap the command would normalize to
+# `git status` and be ALLOWED — with the cap it is denied (Issue #1717 review F-05).
+rc=0
+tc123_pad=$(printf -- '-C x %.0s' $(seq 1 400))
+tc123_cmd="git ${tc123_pad}status"
+tc123_input=$(jq -n --arg cmd "$tc123_cmd" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc123_input" | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-123 many-global-flag READ-ONLY reviewer command is denied by the cap (allow→deny flip)"
+else
+  fail "TC-123 expected deny (cap fires on 400 flags), got decision=$decision rc=$rc"
+fi
+if [[ "$reason" == *"abnormally large"* ]]; then
+  pass "TC-123 deny reason explains the oversized-command / timeout-bypass rationale"
+else
+  fail "TC-123 expected oversized-command explanation in reason, got: $reason"
+fi
+# Guard scope: the same command on a MAIN session must NOT be denied (main sessions
+# never enter Pattern 4 — the cap must not add false denies to non-reviewer Bash).
+rc=0
+tc123_main_input=$(jq -n --arg cmd "$tc123_cmd" --arg tp "$MAIN_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc123_main_input" | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-123 many-global-flag MAIN-session command is not denied by the reviewer-only cap"
+else
+  fail "TC-123 expected allow (rc=0, empty) for oversized main-session command, got rc=$rc output=$output"
+fi
+echo ""
+
+echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths (F-01b)"
+# The PRIMARY F-01 bound (Issue #1717 review F-01b showed the iteration cap alone was
+# insufficient): any reviewer command over the byte ceiling is denied fail-closed
+# BEFORE the O(n²) heredoc strip (${COMMAND%%<<*}, ~45s on ~1.3MB) and the O(n²) Pattern
+# 2 regex (>2min on a few MB) — both of which would otherwise time out the fail-open
+# hook and let the padded git run. Build huge commands via temp file + --rawfile to
+# avoid argv limits, and pin that the deny is FAST (proves the O(n²) work is skipped).
+tc124_dir=$(mktemp -d)
+tc124_bigval=$(printf 'x%.0s' $(seq 1 10000))
+# (a) 1.28MB state-mutating (checkout) padded with huge flag values → fast deny
+{ printf 'git '; for _i in $(seq 1 128); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'checkout evil'; } > "$tc124_dir/cmd.txt"
+jq -n --rawfile cmd "$tc124_dir/cmd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/in.json"
+rc=0
+_t0=$(date +%s%N)
+output=$(timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=$?
+_t1=$(date +%s%N)
+_ms=$(( (_t1 - _t0) / 1000000 ))
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [ "$rc" != "124" ]; then
+  pass "TC-124 oversized (1.3MB) reviewer command is denied fail-closed"
+else
+  fail "TC-124 expected deny for oversized command, got decision=$decision rc=$rc"
+fi
+if [ "$_ms" -lt 5000 ]; then
+  pass "TC-124 oversized deny completes fast (${_ms}ms < 5s — O(n²) paths skipped, no timeout→fail-open)"
+else
+  fail "TC-124 oversized deny too slow (${_ms}ms) — length guard is not short-circuiting the O(n²) work"
+fi
+# (b) oversized (~80KB) READ-ONLY command → deny (allow→deny flip; a small `git status` allows)
+{ printf 'git '; for _i in $(seq 1 8); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'status'; } > "$tc124_dir/ro.txt"
+jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/roin.json"
+rc=0
+output=$(timeout 15 bash "$HOOK" < "$tc124_dir/roin.json" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-124 oversized READ-ONLY reviewer command is denied (length guard, allow→deny flip)"
+else
+  fail "TC-124 expected deny for oversized read-only command, got decision=$decision rc=$rc"
+fi
+# (c) oversized because of a huge heredoc BODY, with a READ-ONLY prefix → deny.
+# The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
+# so it fires here. Non-vacuous (Issue #1717 review F-06): the prefix `git status` is
+# read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
+# command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
+# front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
+# length guard's use of the full command length, not the O(n²) strip skip; the O(n²)
+# no-heredoc path is covered by (a).)
+{ printf 'git status <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
+jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
+rc=0
+output=$(timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-124 heredoc-body-oversized READ-ONLY command is denied (length guard uses full command length)"
+else
+  fail "TC-124 expected deny for heredoc-body-oversized read-only command, got decision=$decision rc=$rc"
+fi
+# (d) oversized (~80KB) MAIN-session command → must NOT be denied (MUST NOT — reviewer-only guard)
+jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/mainin.json"
+rc=0
+output=$(timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" != "deny" ]; then
+  pass "TC-124 oversized MAIN-session command is not denied by the reviewer-only length guard"
+else
+  fail "TC-124 oversized main-session command was wrongly denied (MUST NOT violation)"
+fi
+rm -rf "$tc124_dir"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

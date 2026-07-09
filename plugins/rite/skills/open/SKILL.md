@@ -2,7 +2,7 @@
 name: open
 description: |
   rite workflow の Issue→draft PR ステップ: 指定 Issue を起点に準備→ブランチ→計画→実装→
-  lint→draft PR まで一気通貫で実行する。/rite:run・/rite:cleanup から呼ばれる sub-step、
+  lint→draft PR まで一気通貫で実行する。/rite:batch-run・/rite:cleanup から呼ばれる sub-step、
   または手動 /rite:open <issue>。汎用の「Issue に着手」ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:open <issue_number>
 argument-hint: "<issue_number>"
@@ -17,7 +17,7 @@ argument-hint: "<issue_number>"
 
 Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → PR」までを一気通貫で実行する。レビュー/修正は `/rite:iterate`、Ready 化は `/rite:ready`、マージは `/rite:merge` で実施する。
 
-**途中で止まったら**: `/rite:resume` が flow-state ファイル (`.rite/sessions/{session_id}.flow-state`) の phase から復帰する。本コマンドの Step 0 が Resume Dispatch を担う。
+**途中で止まったら**: `/rite:recover` が flow-state ファイル (`.rite/sessions/{session_id}.flow-state`) の phase から復帰する。本コマンドの Step 0 が Resume Dispatch を担う。
 
 ## Arguments
 
@@ -39,7 +39,7 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 
 ---
 
-## ステップ 0: Resume Dispatch（`/rite:resume` から呼ばれた場合のジャンプ）
+## ステップ 0: Resume Dispatch（`/rite:recover` から呼ばれた場合のジャンプ）
 
 セッション開始時に flow-state を読み、再開かどうかを判定する。新規セッション (state file 不在 or `active=false` or `issue_number` 不一致) の場合は何もせずステップ 1 に進む:
 
@@ -58,7 +58,7 @@ fi
 
 `{plugin_root}/hooks/flow-state.sh get --default ""` は session 解決失敗 / file 不在 / jq parse 失敗のいずれでも default を stdout に書く設計のため、外側 `|| ...` は helper validation 失敗 (`--field` 引数欠落 / invalid field name) 経路のみを catch する defensive fallback。stderr は WARNING channel として残し、`2>/dev/null` で握りつぶさない (想定外 ERROR を context に残すため)。
 
-**LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む)。本表は **本コマンド内部の Step jump 用** の routing。`phase=review/fix/ready/cleanup` を含む外部スキルへの routing 全体は [skills/resume/SKILL.md](../resume/SKILL.md) Phase 5.3 Phase enum → Step mapping (SoT) を参照:
+**LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む)。本表は **本コマンド内部の Step jump 用** の routing。`phase=review/fix/ready/cleanup` を含む外部スキルへの routing 全体は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 Phase enum → Step mapping (SoT) を参照:
 
 | `RESUME_DISPATCH` value + `phase` | LLM action |
 |---|---|
@@ -87,7 +87,7 @@ echo "[CONTEXT] WORKTREE_REENTRY=$([ -n "$resume_wt" ] && [ "$resume_wt" != "$cu
 
 - `WORKTREE_REENTRY=needed`（flow-state `worktree` が現在の作業ツリーと不一致）→ `EnterWorktree` ツールを `path: {worktree}` で呼び出し（`{worktree}` は上記 marker の値）、その後にステップ 0 の routing 表で決まった復帰先ステップへジャンプする。
 - `WORKTREE_REENTRY=none` → そのまま復帰先ステップへ。
-- 入場後に worktree が消失している等で `EnterWorktree` が失敗した場合は、ステップ 8（resume / S8）の worktree 再構築経路に委ねる（本コマンドでは新規 worktree を作らず、ユーザーに `/rite:resume {issue_number}` を案内する）。
+- 入場後に worktree が消失している等で `EnterWorktree` が失敗した場合は、recover.md Phase 3.1.5 の worktree 再構築経路に委ねる（本コマンドでは新規 worktree を作らず、ユーザーに `/rite:recover {issue_number}` を案内する）。
 
 `MULTI_SESSION_ENABLED=false` または flow-state に `worktree` が無い場合は no-op。
 
@@ -134,7 +134,7 @@ ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {prin
 echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 ```
 
-新規プロジェクトはテンプレート config が `enabled: true`（デフォルト ON）のため `MULTI_SESSION_ENABLED=true` となりステップ 2 で 2.2-W / 2.3-W（セッション worktree）を実行する。`MULTI_SESSION_ENABLED=false`（`enabled: false` を明示設定 / `multi_session:` ブロックが存在しない旧 config — 上記 `case` の fallback）のときは従来の Step 2.2 / 2.3 をそのまま実行し、挙動は単一セッション時と完全一致する。`multi_session:` キー欠落時の fallback を `false` に保つことで既存プロジェクトの後方互換を担保する（デフォルト変更が効くのは新規 `/rite:init` 生成時のみ）。
+新規プロジェクトはテンプレート config が `enabled: true`（デフォルト ON）のため `MULTI_SESSION_ENABLED=true` となりステップ 2 で 2.2-W / 2.3-W（セッション worktree）を実行する。`MULTI_SESSION_ENABLED=false`（`enabled: false` を明示設定 / `multi_session:` ブロックが存在しない旧 config — 上記 `case` の fallback）のときは従来の Step 2.2 / 2.3 をそのまま実行し、挙動は単一セッション時と完全一致する。`multi_session:` キー欠落時の fallback を `false` に保つことで既存プロジェクトの後方互換を担保する（デフォルト変更が効くのは新規 `/rite:setup` 生成時のみ）。
 
 ### 1.5 Iteration 自動 assign
 
@@ -269,7 +269,7 @@ worktree を作成・再利用したら、`.rite-plugin-root` を worktree root 
 
 - **EnterWorktree が不在 / 失敗の場合**: **silent fallback はしない**。まず失敗原因を切り分ける（補助情報として `git -C "{wt_path}" rev-parse --is-inside-work-tree` の結果を提示してよい）:
   - **(A) harness の git 誤判定**（`.git` が存在し `git -C "{wt_path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。これは harness がセッション起動時に launch ディレクトリを git リポジトリと認識できなかったことが原因で、プラグインからは直せない。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:open {issue_number}` を再実行すれば、作成済み worktree が 2.2-W で `WT_CASE=reuse` と判定され**再作成せず継続**できる」と案内する。worktree は保持済みのため破壊しない。
-  - **(B) worktree path 消失などの別要因**（harness 誤判定以外）→ 既存どおりステップ 8（resume / S8）の worktree 再構築経路 / `/rite:resume {issue_number}` に委譲する（本コマンドでは新規 worktree を作らない。再起動案内へ誤誘導しない）。
+  - **(B) worktree path 消失などの別要因**（harness 誤判定以外）→ 既存どおり recover.md Phase 3.1.5 の worktree 再構築経路 / `/rite:recover {issue_number}` に委譲する（本コマンドでは新規 worktree を作らない。再起動案内へ誤誘導しない）。
   - **(C) エスケープハッチ**（ユーザーが明示選択した場合のみ）: 「従来 `git switch -c` で続行」は **recommended にしない**。worktree 分離を破棄する明示的な選択肢としてのみ残し、他セッション併走中は作業ツリーを破壊し合う危険がある旨を**警告**した上でステップ 2.3 にフォールバックする。
   - Bash 永続 cwd 駆動（cwd を main checkout に残したまま絶対パスで操作する経路）は**導入しない**（main tree を誤更新するリスクのため）。
 
@@ -350,6 +350,11 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 ### 変更対象ファイル
 - {file_path_1}: {responsibility}
 
+### 参考実装
+| 参考ファイル | 参考理由 |
+|-------------|---------|
+| {reference_file_1} | {reason_1} |
+
 ### 実装ステップ
 1. {step_1}
 2. {step_2}
@@ -360,6 +365,10 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 ### 注意点
 - {note_1}
 ```
+
+**volatile-first 提示ルール**: `## 実装計画` の直後・`### 変更対象ファイル` の前に、ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）があれば「要判断ポイント」として箇条書きで列挙する。ステップ 3.4 の承認時にユーザーが本質的な判断へ注意を集中できるようにするため（出典: Thariq (Anthropic) "A Field Guide to Fable: Finding Your Unknowns" (2026) — "lead with the decisions I'm most likely to tweak"）。**「実装ステップ」自体の並び順（= 実行順）は変更しない**（issue-implement 側の実行順序決定に影響を与えないため）。該当項目がない計画ではこのブロックを出力しない。
+
+**参考実装セクション**: `reference_discovery` 原則（[coding-principles.md](../rite-workflow/references/coding-principles.md)）のルール 4「発見した参照を実装計画に記録」に従い、ステップ 3.2 で発見した既存の参考実装（同ディレクトリの類似ファイル、命名パターンが一致するファイル等）を記録する。参考実装が見つからない場合（新規ディレクトリ、初めてのファイルパターン等）は、テーブルの代わりに `参考実装: なし（新規ディレクトリまたは初めてのファイルパターン）` の 1 行を出力する。
 
 ### 3.4 ユーザー確認
 
@@ -457,7 +466,7 @@ skill: rite:pr-create
 sub-skill (`rite:pr-create` / `rite:issue-implement` / `rite:lint`) のターンが sentinel を 1 つも emit せず無言で終了した場合、flow-state には直前 phase が保持されているため作業は失われない。orchestrator は以下で回復する:
 
 1. **既存 draft PR の検出**: `gh pr list --head {branch_name} --json number,url,isDraft` で当該ブランチの PR が既に作成済みか確認する。存在すれば実質 `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む (push/PR は冪等に再開可能)
-2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」を提示する。中止時は flow-state の phase が保持されるため `/rite:resume` で本ステップから再開できる旨を案内する
+2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」を提示する。中止時は flow-state の phase が保持されるため `/rite:recover` で本ステップから再開できる旨を案内する
 
 > Phase 3.4 の Write tool 委譲 は Cause B (インライン heredoc / 特殊文字 title による malform 増幅) を除去して発生確率を下げる対策であり、Cause A 自体は消せない。そのため本回復契約が最終的な堅牢化の担保となる。
 
@@ -490,7 +499,7 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 - マージ: /rite:merge {pr_number}
 - クリーンアップ (merge 後): /rite:cleanup {pr_number}
 
-途中で止まったら /rite:resume で復帰します。
+途中で止まったら /rite:recover で復帰します。
 ```
 
 ---
@@ -498,6 +507,6 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 ## エラー時の方針
 
 - どこで止まっても flow-state.json に phase が記録されている
-- `/rite:resume` 経由で本コマンドの該当ステップから再開する
+- `/rite:recover` 経由で本コマンドの該当ステップから再開する
 - sub-skill (`rite:issue-implement` / `rite:lint` / `rite:pr-create`) の sentinel drop に備え、各 invoke 後に sentinel 検出を確認、不在なら AskUserQuestion で「再試行 / 中止」
-- **malformed tool-call による無言終了** (sub-skill が sentinel を 1 つも emit せずターン終了。Cause A: harness/transport 側ゆらぎ、rite では除去不能) も missing-sentinel として同様に扱う。PR 作成ステップの具体的な回復手順 (既存 draft PR 検出 → `/rite:resume`) はステップ 6.2「malformed tool-call 回復契約」を参照
+- **malformed tool-call による無言終了** (sub-skill が sentinel を 1 つも emit せずターン終了。Cause A: harness/transport 側ゆらぎ、rite では除去不能) も missing-sentinel として同様に扱う。PR 作成ステップの具体的な回復手順 (既存 draft PR 検出 → `/rite:recover`) はステップ 6.2「malformed tool-call 回復契約」を参照

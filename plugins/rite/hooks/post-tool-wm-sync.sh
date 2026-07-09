@@ -25,6 +25,42 @@ INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
 
+# Lightweight rite-project gate (subprocess-free early-exit).
+# Before spawning state-path-resolve.sh (git rev-parse ×2) and flow-state.sh
+# path below, cheaply check whether CWD is inside a rite project by walking up
+# for a rite marker using bash built-ins only — no git / helper subprocess. A
+# non-rite project has neither marker and exits here, so every Bash tool call in
+# projects that do not use rite pays only this walk instead of the resolver
+# spawns. The marker is `rite-config.yml` (a tracked file, so it is checked out
+# in multi_session worktrees where the .rite state dir lives only in the main
+# checkout) OR the `.rite` state dir (present in the main checkout). Whenever the
+# resolver would have found an active flow-state, one of these markers exists at
+# or above CWD, so the gate never skips real work. Parent-walk uses `${d%/*}`
+# (not dirname) to stay subprocess-free. Read-only: no marker is written
+# (Issue #1716 MUST NOT). A permission-denied ancestor makes the `[ -f ]` / `[ -d ]`
+# marker test false, but that requires the repo root itself to be unreadable
+# mid-workflow, where the flow is already broken — the optimized path is the
+# common non-rite one.
+_rite_gate_dir="$CWD"
+_rite_gate_found=0
+while : ; do
+  if [ -f "$_rite_gate_dir/rite-config.yml" ] || [ -d "$_rite_gate_dir/.rite" ]; then
+    _rite_gate_found=1
+    break
+  fi
+  [ "$_rite_gate_dir" = "/" ] && break
+  _rite_gate_parent="${_rite_gate_dir%/*}"
+  # `${x%/*}` leaves a slashless segment unchanged — for a relative CWD (e.g.
+  # `a/b/c` reduced to `a`) there is no `/` to strip, so the value stops
+  # changing. Break on no-progress to avoid an infinite loop; an empty result
+  # means the segment sat directly under root, so continue from `/`. (The
+  # harness supplies an absolute .cwd in practice, but a relative one would
+  # otherwise spin forever here.)
+  [ "$_rite_gate_parent" = "$_rite_gate_dir" ] && break
+  _rite_gate_dir="${_rite_gate_parent:-/}"
+done
+[ "$_rite_gate_found" = "1" ] || exit 0
+
 # Resolve state root (git root or CWD)
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"

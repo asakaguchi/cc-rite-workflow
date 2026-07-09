@@ -1,8 +1,8 @@
 #!/bin/bash
 # rite workflow - Review Result Local Save
-# Deterministic helper for skills/review/SKILL.md ステップ 6.1.a (Local JSON File Save).
+# Deterministic helper for skills/pr-review/SKILL.md ステップ 6.1.a (Local JSON File Save).
 #
-# review.md ステップ 6.1.a のローカル JSON 保存処理 (timestamp 注入 / 多段 jq validation /
+# pr-review.md ステップ 6.1.a のローカル JSON 保存処理 (timestamp 注入 / 多段 jq validation /
 # 同秒衝突回避 / atomic mv) を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash
 # invocation での malform 無言停止を回避する。JSON body は
 # caller が Write tool で tmpfile に書き出し `--content-file` で渡す (heredoc malform 源を撤廃)。
@@ -10,7 +10,7 @@
 # Usage:
 #   bash review-result-save.sh --pr <number> --content-file <path> [--results-dir <dir>]
 #
-#   caller (review.md ステップ 6.1.a) は以下を行う:
+#   caller (pr-review.md ステップ 6.1.a) は以下を行う:
 #     1. review-result-schema.md に従う JSON body を生成し、`"timestamp"` フィールドに
 #        literal sentinel "__RITE_TS_PLACEHOLDER_7f3a9b2c__" を書き込んだ上で **Write tool** で
 #        tmpfile (例: /tmp/rite-review-result-<pr>.json) に保存する。
@@ -23,7 +23,7 @@
 #   --content-file  JSON body tmpfile path (required)
 #   --results-dir   保存先ディレクトリ (default: .rite/review-results)
 #
-# 契約 (review.md ステップ 6.1.a / D-04 と verbatim 一致):
+# 契約 (pr-review.md ステップ 6.1.a / D-04 と verbatim 一致):
 #   - 非ブロッキング: 全失敗経路で `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit し
 #     exit 0 (ステップ 6 全体を fail させない)。
 #   - 14 reason 語彙: pr_number_placeholder_residue / date_command_failure / mkdir_failure /
@@ -231,7 +231,7 @@ if ! jq -e '
 fi
 
 # NOTE:
-#   review.md ステップ 6.1.a の原実装は `[.findings[].id] | unique | length == (.findings | length)`
+#   pr-review.md ステップ 6.1.a の原実装は `[.findings[].id] | unique | length == (.findings | length)`
 #   と書いており、jq では `length == (.findings | length)` の `.findings` がパイプ後の配列
 #   (unique 結果) に対して評価され "Cannot index array with string findings" でエラーになる。
 #   その結果 findings を 1 件でも持つレビューは本 check が常に jq エラー → `! jq -e` が true →
@@ -285,7 +285,7 @@ if [ -e "$json_path" ]; then
   if [ -e "$json_path_alt" ]; then
     echo "WARNING: collision suffix 付与後も再衝突を検出しました ($json_path_alt)。保存を skip します" >&2
     echo "  原因候補: 同秒 3 回目以降の連続実行 / \$RANDOM が fallback '0' に落ちた / parallel race" >&2
-    echo "  対処: 1 秒待機してから /rite:review を再実行してください" >&2
+    echo "  対処: 1 秒待機してから /rite:pr-review を再実行してください" >&2
     echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=collision_resolution_exhausted; original=$json_path; resolved_attempt=$json_path_alt" >&2
     json_saved="false"
     exit 0

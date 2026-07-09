@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - Measure Review Findings
-# Extract structured findings statistics from /rite:review PR comments.
+# Extract structured findings statistics from /rite:pr-review PR comments.
 #
 # Purpose: Provide a quantitative measurement tool for review quality
 #          (used by Phase D quantitative validation).
@@ -106,7 +106,7 @@ fi
 # --- Source acquisition ---
 # Path-first-declare → trap-first-set → mktemp-last order to eliminate the
 # race window between mktemp success and trap registration where SIGTERM/SIGINT
-# could leave an orphan tempfile (matches review.md / fix.md project pattern).
+# could leave an orphan tempfile (matches pr-review.md / fix.md project pattern).
 # All mktemp results below MUST be assigned to a variable that is already
 # tracked by this trap.
 tmpfile=""

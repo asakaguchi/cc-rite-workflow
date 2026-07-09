@@ -86,13 +86,13 @@ cd -  # parent repo に戻る (HEAD 変更なし、stash なし)
 | `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
 | `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |
 
-**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること。各 invariant は `skills/review/SKILL.md` ステップ 5.0.A 経由で `post-review-state-verify.sh` により automatic check される (state vector は branch / stash count / branch list の 3 軸 — working tree の差分判定は `git status --porcelain` hash の cost が高く、本 PR では未 enforce):
+**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること。各 invariant は `skills/pr-review/SKILL.md` ステップ 5.0.A 経由で `post-review-state-verify.sh` により automatic check される (state vector は branch / stash count / branch list の 3 軸 — working tree の差分判定は `git status --porcelain` hash の cost が高く、本 PR では未 enforce):
 
 1. `git branch --show-current` の値が reviewer 起動時と同一 (state vector axis 1: branch、`--original-branch` で check)
 2. `git stash list` の長さが reviewer 起動時と同一 (state vector axis 2: stash count、`--original-stash-count` で check)
 3. `git branch --list` の出力が reviewer 起動時と同一 (state vector axis 3: branch_list hash、`--original-branch-list-hash` で check — 新規 named branch leak 検出)
 
-これらの invariant 違反は orchestrator 側 (`skills/review/SKILL.md` ステップ 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
+これらの invariant 違反は orchestrator 側 (`skills/pr-review/SKILL.md` ステップ 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
 
 ## Reviewer Mindset
 
@@ -256,7 +256,7 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
 | `devops-reviewer.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
 | `dependencies-reviewer.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
 
-**実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md`) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
+**適用**: 本 4 reviewer では、reviewer が「nit として受け流したい」と判断した finding も `scope=nit-noted` にはできない。必ず `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに assign し直すこと。blocker 級リスクが `acknowledged` 経路で silent に蓄積することを防ぐための制約であり、CRITICAL/HIGH × nit-noted の FAIL invariant と同じ趣旨を全 severity 帯へ広げたもの。
 
 ### Likelihood-Evidence との関係
 
@@ -313,18 +313,17 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 トークン検出時の判定順序は以下に従う (順序を入れ替えると false positive が増える):
 
 1. **SoT Whitelist 表との突合** (substring match): SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) の表に列挙されたジャーゴンであれば許容。
-2. **`rite-config.yml` の `comment_best_practices.jargon_whitelist` 拡張** (将来予約 — MVP では未実装): プロジェクト固有 Whitelist の拡張・上書き。schema は SoT 末尾の YAML 想定例を参照。
-3. **一般辞書チェック**: 英語・日本語の一般単語・略語・標準ライブラリ識別子であれば許容。
-4. **プロジェクト内独立登場頻度チェック**: `Grep -r '{token}' plugins/` で 3 件以上 (本コメント・近接コメント以外) の独立登場があれば事実上の慣習語として許容 (Severity LOW 据え置き判定)。
-5. **上記すべて該当しない造語のみ finding として発行**: Severity LOW (孤立 1 hit) 〜 MEDIUM (本 PR で複数箇所新規導入) を判断。
+2. **一般辞書チェック**: 英語・日本語の一般単語・略語・標準ライブラリ識別子であれば許容。
+3. **プロジェクト内独立登場頻度チェック**: `Grep -r '{token}' plugins/` で 3 件以上 (本コメント・近接コメント以外) の独立登場があれば事実上の慣習語として許容 (Severity LOW 据え置き判定)。
+4. **上記すべて該当しない造語のみ finding として発行**: Severity LOW (孤立 1 hit) 〜 MEDIUM (本 PR で複数箇所新規導入) を判断。
 
-> **実装ノート**: 上記 1 → 2 → 3 → 4 → 5 を必ずこの順で適用すること。順序の本質的意義は以下の 3 点である:
+> **実装ノート**: 上記 1 → 2 → 3 → 4 を必ずこの順で適用すること。順序の本質的意義は以下の 3 点である:
 >
-> 1. **意味的階層の保持**: project 固有の意図を最も明示する SoT Whitelist (順序 1) と `rite-config.yml` 拡張 (順序 2) が、一般辞書 (順序 3) や独立登場頻度ヒューリスティクス (順序 4) より先に評価されることで、reviewer は「Whitelist は project 固有意図、一般辞書は default」という階層を運用判断 (Whitelist 拡張提案) で見失わない
-> 2. **Substring 衝突の早期解決**: `sentinel` のような Whitelist 内ジャーゴンが部分文字列として他のトークン (例: `sentinelize`、`sentinel-marker`) に出現する場合、Whitelist 表マッチで早期確定することで `sentinel` 自体が独立登場頻度チェック (順序 4) で誤って造語と判定される経路を避けられる
-> 3. **計算コスト節約**: 早期 return により下流の Grep / LLM 判定 (順序 4) を skip できる
+> 1. **意味的階層の保持**: project 固有の意図を最も明示する SoT Whitelist (順序 1) が、一般辞書 (順序 2) や独立登場頻度ヒューリスティクス (順序 3) より先に評価されることで、reviewer は「Whitelist は project 固有意図、一般辞書は default」という階層を運用判断 (Whitelist 拡張提案) で見失わない
+> 2. **Substring 衝突の早期解決**: `sentinel` のような Whitelist 内ジャーゴンが部分文字列として他のトークン (例: `sentinelize`、`sentinel-marker`) に出現する場合、Whitelist 表マッチで早期確定することで `sentinel` 自体が独立登場頻度チェック (順序 3) で誤って造語と判定される経路を避けられる
+> 3. **計算コスト節約**: 早期 return により下流の Grep / LLM 判定 (順序 3) を skip できる
 >
-> 順序 1 と順序 3 はどちらも「許容」へ進む判定であり、入れ替えても最終的な finding 採否は変わらないが、上記 (1) (2) の意味的・運用的理由から **順序逆転は禁止** とする。
+> 順序 1 と順序 2 はどちらも「許容」へ進む判定であり、入れ替えても最終的な finding 採否は変わらないが、上記 (1) (2) の意味的・運用的理由から **順序逆転は禁止** とする。
 
 ## Fail-Fast First
 
@@ -423,7 +422,7 @@ When citing external specifications (library behavior, tool configuration, versi
 | **Flag uncertainty** | If unsure about external behavior, note "要検証" in the recommendation column to signal that fact-checking should prioritize this claim |
 | **Avoid speculation** | Do not claim specific library/tool behavior without concrete evidence from investigation or documentation |
 
-**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` ステップ 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
+**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`pr-review.md` ステップ 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
 
 ## Input
 
@@ -461,3 +460,5 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 WHY が省略された findings は修正エージェントの判断精度を下げる。WHAT のみで WHY が自明な場合でも、影響範囲や既存コードとの比較を含めること。
 
 See [Severity Levels](../references/severity-levels.md) for common severity definitions and the [Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) for allowed/forbidden combinations.
+
+**Review Checklist 見出しとの関係**: 各 reviewer ファイルの `## Review Checklist` 見出し(`Critical (Must Fix)` / `Important (Should Fix)` / `Recommendations`)はレビュー観点を投資領域ごとに整理するためのものであり、finding 発行時の **重要度** 列(schema enum 5 値)そのものではない。見出し⇄enum の変換は再定義せず [`severity-levels.md` Severity 語彙 3 系統 Crosswalk](../references/severity-levels.md#severity-vocabulary-crosswalk) を参照すること。

@@ -4,7 +4,7 @@
 # Detect drift in `doc_file_patterns` across 2 files that MUST agree on the
 # same set of glob tokens for tech-writer Activation / Doc-Heavy PR detection:
 #
-#   1. plugins/rite/skills/review/SKILL.md            (ステップ 1.2.7
+#   1. plugins/rite/skills/pr-review/SKILL.md            (ステップ 1.2.7
 #      `doc_file_patterns` pseudo-code block)
 #   2. plugins/rite/skills/reviewers/SKILL.md        (Reviewers table,
 #      Technical Writer row — source of truth for tech-writer Activation
@@ -12,8 +12,8 @@
 #      named-subagent definitions)
 #
 # This covers 系統 1 of the drift invariants catalogued in
-# skills/review/references/internal-consistency.md. 系統 2 (canonical category
-# name literal match) and 系統 3 (review.md ステップ 5.4 Doc-Heavy section 2-place
+# skills/pr-review/references/internal-consistency.md. 系統 2 (canonical category
+# name literal match) and 系統 3 (pr-review.md ステップ 5.4 Doc-Heavy section 2-place
 # duplication) are out of scope for this checker.
 #
 # The 2 files encode the same pattern list in 2 different textual forms
@@ -31,7 +31,7 @@
 # text elsewhere in the file (other skills, other pseudo-code, Note paragraphs
 # that repeat pattern examples) does NOT bleed into the comparison:
 #
-#   review.md      : only lines strictly between `doc_file_patterns = [` and
+#   pr-review.md      : only lines strictly between `doc_file_patterns = [` and
 #                    the subsequent closing `]` at column 0.
 #   SKILL.md       : only the single table row that begins with
 #                    `| Technical Writer |`.
@@ -45,10 +45,19 @@
 #   doc-heavy-patterns-drift-check.sh --all [--repo-root DIR] [--quiet]
 #
 # Exit codes:
-#   0  No drift detected across the 2 files
+#   0  No drift detected across the 2 files (or not applicable — invoked
+#      outside the rite plugin source tree, e.g. marketplace/consumer install)
 #   1  Drift detected (symmetric set difference non-empty)
-#   2  Invocation error (bad args, missing files, empty section)
+#   2  Invocation error (bad args, empty section)
 
+# `-e` is intentionally omitted for consistency with the sibling drift
+# checkers (reviewer-registry-drift-check.sh, distributed-fix-drift-check.sh),
+# where a `-euo` "correction" would let a no-match grep pipeline kill the
+# script before its extraction guard runs and misclassify an invocation
+# error as drift. This file's only pipeline (extract_review / extract_skill)
+# is already wrapped in `if !` below, which is exempt from `-e` regardless —
+# a future refactor that removes that `if !` wrapping would reintroduce the
+# same risk here, so `-e` stays omitted as a defensive baseline.
 set -uo pipefail
 
 REPO_ROOT=""
@@ -61,7 +70,7 @@ Usage: doc-heavy-patterns-drift-check.sh --all [options]
 
 Options:
   --all              Scan the 2 canonical doc_file_patterns files
-                     (review.md / SKILL.md) under plugins/rite/.
+                     (pr-review.md / SKILL.md) under plugins/rite/.
                      This is the only supported mode; the invariant
                      has no meaning for arbitrary targets.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
@@ -70,9 +79,9 @@ Options:
   -h, --help         Show this help
 
 Exit codes:
-  0  No drift detected across the 2 files
+  0  No drift detected across the 2 files (or not applicable)
   1  Drift detected (symmetric set difference non-empty)
-  2  Invocation error (bad args, missing files, empty section)
+  2  Invocation error (bad args, empty section)
 EOF
 }
 
@@ -99,14 +108,24 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
-REVIEW_FILE="plugins/rite/skills/review/SKILL.md"
+REVIEW_FILE="plugins/rite/skills/pr-review/SKILL.md"
 SKILL_FILE="plugins/rite/skills/reviewers/SKILL.md"
+
+if [ ! -f "$REVIEW_FILE" ] && [ ! -f "$SKILL_FILE" ]; then
+  # Neither canonical file exists: this is not the rite plugin source tree
+  # (e.g. a consumer repo that installs rite as a marketplace plugin only,
+  # with no plugins/rite/ markdown to gate). Treat as a clean skip rather
+  # than an invocation error, matching bang-backtick-check.sh's
+  # --skip-if-no-target precedent — this check has nothing to compare.
+  log "[doc-heavy-patterns-drift] not applicable: neither $REVIEW_FILE nor $SKILL_FILE found under $REPO_ROOT — clean skip"
+  exit 0
+fi
 
 for f in "$REVIEW_FILE" "$SKILL_FILE"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: required file not found: $f" >&2
-    echo "  Likely cause: invoked outside the rite plugin source tree (e.g. marketplace install layout)" >&2
-    echo "  Recovery: run from the rite plugin source tree, or pass --repo-root pointing there" >&2
+    echo "  Likely cause: partial checkout, or the sibling file was moved/renamed without updating this checker" >&2
+    echo "  Recovery: verify both $REVIEW_FILE and $SKILL_FILE exist, or pass --repo-root pointing to a complete rite plugin source tree" >&2
     exit 2
   fi
 done
@@ -130,7 +149,7 @@ WORK_DIR="$(mktemp -d)" || { echo "ERROR: mktemp -d failed" >&2; exit 2; }
 
 # --- Section extractors ------------------------------------------------------
 
-# review.md: the ステップ 1.2.7 pseudo-code block between `doc_file_patterns = [`
+# pr-review.md: the ステップ 1.2.7 pseudo-code block between `doc_file_patterns = [`
 # and the next line consisting of `]` at column 0.
 extract_review() {
   awk '
@@ -201,14 +220,14 @@ fi
 review_count=$(wc -l < "$WORK_DIR/review.set")
 skill_count=$(wc -l < "$WORK_DIR/skill.set")
 
-log "review.md        : ${review_count} glob tokens"
+log "pr-review.md        : ${review_count} glob tokens"
 log "SKILL.md         : ${skill_count} glob tokens"
 
 # Each section is expected to define at least 10 glob tokens (the canonical
 # list has 18 as of this writing). An empty or undersized set almost always
 # means the section markers changed and extraction fell off the end, so fail
 # fast with an invocation error rather than silently reporting a large drift.
-for kv in "review.md:${review_count}" "SKILL.md:${skill_count}"; do
+for kv in "pr-review.md:${review_count}" "SKILL.md:${skill_count}"; do
   file="${kv%:*}"
   count="${kv##*:}"
   if [ "$count" -lt 10 ]; then
@@ -236,10 +255,10 @@ report_diff() {
   fi
 }
 
-report_diff "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns" \
+report_diff "$WORK_DIR/review.set" "pr-review.md ステップ 1.2.7 doc_file_patterns" \
             "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row"
 report_diff "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row" \
-            "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns"
+            "$WORK_DIR/review.set" "pr-review.md ステップ 1.2.7 doc_file_patterns"
 
 log "==> Total doc-heavy-patterns-drift findings: ${diff_count}"
 

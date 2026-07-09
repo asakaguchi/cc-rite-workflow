@@ -1,6 +1,6 @@
 # Reviewer 指示テンプレート（Verification モード）
 
-`/rite:review` ステップ 4.5.1 で `review_mode == "verification"` のとき、通常テンプレート（[reviewer-prompt-generator.md](./reviewer-prompt-generator.md)）に**加えて**使用する検証レビュー指示のテンプレート。検証結果とフルレビュー結果は最終 assessment で統合される。SKILL.md 側の「Placeholder embedding method」表に従い `{placeholder}` を埋めて使用する。
+`/rite:pr-review` ステップ 4.5.1 で `review_mode == "verification"` のとき、通常テンプレート（[reviewer-prompt-generator.md](./reviewer-prompt-generator.md)）に**加えて**使用する検証レビュー指示のテンプレート。検証結果とフルレビュー結果は最終 assessment で統合される。SKILL.md 側の「Placeholder embedding method」表に従い `{placeholder}` を埋めて使用する。
 
 ```
 PR #{number}: {title} の検証レビューを {reviewer_type} として実行してください。

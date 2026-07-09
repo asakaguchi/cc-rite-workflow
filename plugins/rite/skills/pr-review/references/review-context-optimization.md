@@ -2,7 +2,7 @@
 
 > **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-Optimization rules for handling large PRs in `/rite:review`.
+Optimization rules for handling large PRs in `/rite:pr-review`.
 
 ## Change Scale Determination
 
@@ -107,4 +107,4 @@ Reviewers retrieve additional files with the Read tool in the following cases:
 - When tracking dependencies from import statements
 - When wanting to check details of files with many "additions" in the change summary table
 
-**Path specification method**: The "File" column in the change summary table contains paths relative to the repository root (e.g., `plugins/rite/skills/review/SKILL.md`). For the Read tool, specify this path as-is or convert it to an absolute path from the working directory.
+**Path specification method**: The "File" column in the change summary table contains paths relative to the repository root (e.g., `plugins/rite/skills/pr-review/SKILL.md`). For the Read tool, specify this path as-is or convert it to an absolute path from the working directory.

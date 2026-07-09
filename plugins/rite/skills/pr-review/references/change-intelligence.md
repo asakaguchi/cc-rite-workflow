@@ -83,7 +83,7 @@ Apply rules top-to-bottom; first match wins.
 ## Example Output
 
 ```
-Change Intelligence: Refactor — 8 files changed (5 source, 2 test, 0 config, 1 docs). 142+ / 89- lines. Focused on plugins/rite/commands/pr/.
+Change Intelligence: Refactor — 8 files changed (5 source, 2 test, 0 config, 1 docs). 142+ / 89- lines. Focused on plugins/rite/skills/pr-review/.
 ```
 
 ```
@@ -92,4 +92,4 @@ Change Intelligence: New Feature — 3 files changed (1 source, 1 test, 0 config
 
 ## Integration Point
 
-The generated summary is embedded as `{change_intelligence_summary}` in the reviewer prompt template (ステップ 4.5 of `review.md`). It appears before the diff content to provide upfront context.
+The generated summary is embedded as `{change_intelligence_summary}` in the reviewer prompt template (ステップ 4.5 of `pr-review.md`). It appears before the diff content to provide upfront context.

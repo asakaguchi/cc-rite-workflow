@@ -1,5 +1,5 @@
 #!/bin/bash
-# Static / offline drift + consistency tests for the `/rite:init --upgrade` config
+# Static / offline drift + consistency tests for the `/rite:setup --upgrade` config
 # follow-through.
 #
 # Sources the shared `_test-helpers.sh` for pass / fail /
@@ -37,7 +37,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
-INIT_MD="$REPO_ROOT/plugins/rite/skills/init/SKILL.md"
+INIT_MD="$REPO_ROOT/plugins/rite/skills/setup/SKILL.md"
 TEMPLATE="$REPO_ROOT/plugins/rite/templates/config/rite-config.yml"
 
 # --- Preconditions ---

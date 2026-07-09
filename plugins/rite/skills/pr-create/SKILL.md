@@ -722,7 +722,7 @@ Generate the PR body in **the same language determined in Phase 3.1**:
 | Boilerplate text | Description for `Closes #XX`, etc. |
 | Checklist items | `- [ ] Tests added` / `- [ ] テスト追加`, etc. |
 
-Information to include in the PR body: summary, related Issue (`Closes #{number}`), changes (from work memory or git diff), checklist. Generate all in the language determined in Phase 3.1.
+Information to include in the PR body: summary, related Issue (`Closes #{number}`), changes (from work memory or git diff), checklist, Implementation Notes summary (§3.2.2, when applicable). Generate all in the language determined in Phase 3.1.
 
 #### 3.2.1 Context Optimization During End-to-End Flow
 
@@ -730,7 +730,22 @@ When executed via an orchestrator's end-to-end flow (e.g. `/rite:open` ステッ
 
 **Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `skills/open/SKILL.md` 等の上位 orchestrator) is full-scale mitigation.
 
-**Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only. Applied automatically without user confirmation.
+**Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only, Implementation Notes -> capped per §3.2.2's E2E optimization cap rule. Applied automatically without user confirmation.
+
+#### 3.2.2 Implementation Notes Summary (Plan Deviation / Decision Log)
+
+Before finalizing the PR body, gather two additional sources so reviewers start with the same unknowns the implementer had (rather than re-deriving them from the diff alone):
+
+1. **Work memory Plan Deviation Log** (`### 計画逸脱ログ` table — see [Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#plan-deviation-log-section)). Read the local work memory file or, if absent, the Issue comment sync. If the table shows only `_計画逸脱はありません_` (or the section/file is absent), treat this source as 0 items — do not error.
+2. **Issue body Section 9 Decision Log** (`## 9. Decision Log` — see [Issue Template Structure](../../templates/issue/template-structure.md)). Read the Issue body already retained in conversation context. If the section is absent or contains no `D-xx:` entries, treat this source as 0 items — do not error.
+
+**Summarization rule**: For each item found, generate one line: `{種別}: {1 行要約} — {理由}`, where `種別` is `Deviation` / `逸脱` (from the Plan Deviation Log) or `Decision` / `判断` (from the Decision Log), following the language determined in Phase 3.1 — use the English label in `en` mode and the Japanese label in `ja` mode, matching the heading's language switch below. Keep each line to a single sentence — this is a pointer for the reviewer, not a full transcript.
+
+**Zero-item rule (MUST)**: If both sources yield 0 items, omit the entire section — heading included. Never emit an empty heading or an empty bullet list.
+
+**Section heading**: Follow the language determined in Phase 3.1 — `## Implementation Notes` (English) or `## 実装中の判断・計画逸脱` (Japanese). Place the section between `## Changes` and `## Checklist` (see `templates/pr/generic.md`).
+
+**E2E optimization cap**: When Phase 3.2.1's optimization conditions are met, cap the summary to the top 3 items — Plan Deviation items first, then Decision Log items, both in source order — and append a note stating how many were omitted (e.g. `(他 N 件省略)` / `(N more omitted)`).
 
 ### 3.3 Push to Remote
 
@@ -762,7 +777,7 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 
 > `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換する（`mktemp -d` 生成パスのため特殊文字を含まない）。冒頭で literal を shell 変数 `pr_workdir` に束縛し、以降の cat / `--body-file` / cleanup すべてで `$pr_workdir` を参照する（literal placeholder 置換漏れ時の `rm -rf "{...}"` 誤動作を防ぐ）。title は変数（ファイル読込）経由のため bash ブロックに inline しない。workdir の cleanup は inline `rm -rf` ではなく **signal-specific trap** で行い、空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP のすべての exit 経路で確実に削除する（同一ファイル他ブロック・`coding-principles.md` Rule 5・[bash-trap-patterns.md](../../references/bash-trap-patterns.md#signal-specific-trap-template) の canonical 形に準拠）。空 body / 空 title チェックは title / body が動的生成のため必須（body と title は対称にガードする）。
 >
-> **既知の trade-off (Cause A)**: 3 段プロトコルは workdir を (A)/(B Write)/(C) の **別プロセス**に跨がせるため、malformed tool-call で (A) 確保後・(C) 到達前に無言終了した場合（Cause A: harness/transport 側ゆらぎ、rite では除去不能）、`mktemp -d` した空 workdir が orphan として残る。本 trap は (C) 自身の中断のみカバーし、この cross-process orphan は救えない（OS の `/tmp` reaping と `/rite:resume` 再開で実害は限定的）。この `rite-pr-create-*` 孤児 workdir の能動的 GC は `pr-cycle-cleanup.sh` Step 3 で実装済み — review/fix/cleanup の各サイクルで `${TMPDIR:-/tmp}/rite-pr-create-*` のうち age 超過 (mtime > 24h) のものを回収する。age ガードにより in-flight workdir は誤回収されない。
+> **既知の trade-off (Cause A)**: 3 段プロトコルは workdir を (A)/(B Write)/(C) の **別プロセス**に跨がせるため、malformed tool-call で (A) 確保後・(C) 到達前に無言終了した場合（Cause A: harness/transport 側ゆらぎ、rite では除去不能）、`mktemp -d` した空 workdir が orphan として残る。本 trap は (C) 自身の中断のみカバーし、この cross-process orphan は救えない（OS の `/tmp` reaping と `/rite:recover` 再開で実害は限定的）。この `rite-pr-create-*` 孤児 workdir の能動的 GC は `pr-cycle-cleanup.sh` Step 3 で実装済み — review/fix/cleanup の各サイクルで `${TMPDIR:-/tmp}/rite-pr-create-*` のうち age 超過 (mtime > 24h) のものを回収する。age ガードにより in-flight workdir は誤回収されない。
 
 ```bash
 pr_workdir="{PR_CREATE_WORKDIR}"
@@ -802,7 +817,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 WM_SOURCE="create" \
   WM_PHASE="pr" \
   WM_PHASE_DETAIL="PR作成完了" \
-  WM_NEXT_ACTION="rite:review を実行" \
+  WM_NEXT_ACTION="rite:pr-review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
   WM_ISSUE_NUMBER="{issue_number}" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
@@ -864,7 +879,7 @@ rm -f "$files_tmp"
 # Part (A'): 次のステップ置換
 next_tmp=$(mktemp)
 trap 'rm -f "$next_tmp"' EXIT
-printf '%s' "- **コマンド**: /rite:review #{pr_number}
+printf '%s' "- **コマンド**: /rite:pr-review #{pr_number}
 - **状態**: 待機中
 - **備考**: PR 作成完了、レビュー準備完了" > "$next_tmp"
 
@@ -911,7 +926,7 @@ The 4.1.2 bash block performs the following updates:
 |---------|--------|
 | `進捗サマリー` table | `実装` → `✅ 完了`（v2）/ `- [x] 実装`（v1 fallback） |
 | `変更ファイル` section | Replace entire content with `{changed_files_md}` |
-| `次のステップ` section | Set to `/rite:review #{pr_number}` |
+| `次のステップ` section | Set to `/rite:pr-review #{pr_number}` |
 | `最終更新` timestamp | Replace with current timestamp |
 
 **(B) Append new sections** (via heredoc):
@@ -943,7 +958,7 @@ URL: {pr_url}
 
 次のステップ:
 1. PR の内容を確認
-2. `/rite:review` でセルフレビュー
+2. `/rite:pr-review` でセルフレビュー
 3. `/rite:ready` で Ready for review に変更
 ```
 
@@ -976,11 +991,11 @@ Output the following pattern based on PR creation result:
 | PR creation failed | `[pr-create-failed]` |
 
 **Important**:
-- Do **NOT** invoke `rite:review` via the Skill tool
+- Do **NOT** invoke `rite:pr-review` via the Skill tool
 - Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:open`)
 - The caller determines the next action based on this output pattern
 
-> **Missing-sentinel recovery contract**: Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr-create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:resume` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`skills/open/SKILL.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。
+> **Missing-sentinel recovery contract**: Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr-create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:recover` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`skills/open/SKILL.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。
 
 **Example output:**
 ```

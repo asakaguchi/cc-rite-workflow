@@ -9,7 +9,7 @@ Guide for using the common shell script that creates a GitHub Issue and register
 **Script location**: `{plugin_root}/scripts/create-issue-with-projects.sh`
 
 Referenced from:
-- `skills/review/SKILL.md` ステップ 7.4.2
+- `skills/pr-review/SKILL.md` ステップ 7.4.2
 - `skills/pr-create/SKILL.md` Phase 2.5.5
 - `skills/cleanup/SKILL.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
 - `skills/issue-create/SKILL.md` ステップ 4.3 (Single Issue creation)
@@ -80,7 +80,7 @@ args_json=$(jq -n \
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 ```
 
-**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `skills/review/SKILL.md` ステップ 7.4.2 / `skills/issue-create/references/fingerprint-cycling.md`。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
+**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `skills/pr-review/SKILL.md` ステップ 7.4.2 / `skills/issue-create/references/fingerprint-cycling.md`。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
 
 ### Step 3: Parse the Result
 
@@ -157,7 +157,7 @@ options:
 
 Each caller determines Priority using its own logic before passing it to the script.
 
-### review.md (ステップ 7.4): Severity-Based Mapping
+### pr-review.md (ステップ 7.4): Severity-Based Mapping
 
 | Finding Severity | Issue Priority | Reason |
 |-----------------|----------------|--------|
@@ -227,7 +227,7 @@ The script is hardened so that **Projects registration failures are never silent
 
 ### Static Guard for Direct `gh issue create` Invocations
 
-`plugins/rite/scripts/check-no-direct-gh-issue-create.sh` provides a mechanical check: every Issue creation path under `plugins/rite/commands/**/*.md` must go through this script. Two invocation modes are supported:
+`plugins/rite/scripts/check-no-direct-gh-issue-create.sh` provides a mechanical check: every Issue creation path under `plugins/rite/skills/**/*.md` must go through this script. Two invocation modes are supported:
 
 ```bash
 # Mode 1: explicit file list (original form)
@@ -236,8 +236,8 @@ bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
  plugins/rite/skills/issue-create/SKILL.md
 
 # Mode 2: --all auto-expansion
-# Scans every plugins/rite/commands/**/*.md file under the resolved repository root.
-# Used by /rite:lint Phase 3.14 to enforce the guard across every command/sub-skill.
+# Scans every plugins/rite/skills/**/*.md file under the resolved repository root.
+# Used by /rite:lint Phase 3.14 to enforce the guard across every skill / sub-skill.
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh --all
 ```
 

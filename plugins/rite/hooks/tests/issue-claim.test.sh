@@ -7,6 +7,8 @@
 #   AC-3: release removes only the OWN claim; another session's is untouched
 #   AC-4: release on an absent claim is idempotent (success)
 #   plus: free check, stale-steal, corrupt-claim → stale, live-other refusal (rc 10)
+#   Issue #1718: concurrent stale-STEAL CAS (TC-14, exactly one wins) + lone-steal
+#                non-regression (TC-15) + no-flock branch lone steal (TC-16, F-03)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -120,5 +122,77 @@ assert "TC-13 env-absent claim holder resolved via file sid (SID_B)" \
 assert "TC-13 env-absent check own (resolver returned file sid SID_B == holder)" \
   "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$IC" check --issue 711)"
 
+echo "=== TC-14 (Issue #1718 AC-1): concurrent stale-STEAL → exactly one 'claimed' ==="
+# TC-11 covers concurrent claim of a FREE issue (noclobber). This covers the
+# separate stale-STEAL path: N sessions all classify the SAME stale claim as
+# reclaimable out-of-lock, then race to overwrite it. Without the in-lock CAS
+# (_atomic_claim_steal), flock only serializes the mv and BOTH would "steal"
+# (double-commit). The CAS re-verifies the holder under the lock so exactly one
+# wins; the losers see the holder already swapped and abort with "other" (rc 10).
+SID_STALE="cccccccc-9999-8888-7777-666666666666"
+mk_active "$SID_STALE" 950
+assert "TC-14 stale-holder claims first" "claimed" "$(claim "$SID_STALE" 950)"
+bash "$FS" deactivate --session "$SID_STALE" --next done >/dev/null 2>&1  # holder now inactive → stale
+assert "TC-14 precondition: holder classified stale" "stale" "$(check "$SID_A" 950)"
+rm -f "$ROOT"/stealout.* 2>/dev/null || true
+for i in 1 2 3 4 5; do mk_active "d000000$i-1111-2222-3333-444444444444" 950; done
+for i in 1 2 3 4 5; do
+  ( bash "$IC" claim --session "d000000$i-1111-2222-3333-444444444444" --issue 950 > "$ROOT/stealout.$i" 2>/dev/null ) &
+done
+wait
+_stolen=0; _other=0
+for i in 1 2 3 4 5; do
+  case "$(cat "$ROOT/stealout.$i" 2>/dev/null)" in
+    claimed) _stolen=$((_stolen+1)) ;;
+    other)   _other=$((_other+1)) ;;
+  esac
+done
+assert "TC-14 exactly one stole the stale claim (AC-1)" "1" "$_stolen"
+assert "TC-14 the other four aborted with 'other'" "4" "$_other"
+
+echo "=== TC-15 (Issue #1718 AC-2): single-session stale-steal is non-regressed ==="
+# The CAS path must still let a lone stealer succeed (holder unchanged == expected).
+SID_STALE2="eeeeeeee-1010-1010-1010-101010101010"
+mk_active "$SID_STALE2" 951
+claim "$SID_STALE2" 951 >/dev/null 2>&1
+bash "$FS" deactivate --session "$SID_STALE2" --next done >/dev/null 2>&1
+assert "TC-15 lone steal → claimed" "claimed" "$(claim "$SID_A" 951)"
+assert "TC-15 holder now A" "$SID_A" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-951.json")"
+
+echo "=== TC-16 (Issue #1718 F-03): no-flock branch of _atomic_claim_steal steals a lone stale claim ==="
+# TC-14/15 always exercise the flock branch (flock is present on the test host), so the
+# best-effort no-flock branch of _atomic_claim_steal never runs. Force it by invoking
+# issue-claim.sh with a PATH stub that omits flock, proving the flock-absent path still
+# steals a lone stale claim (the else/mv path). Concurrent exactly-one is intentionally
+# NOT asserted — no-flock CAS is best-effort by design and cannot guarantee it. On the
+# abort side, TC-14's four losers prove the two guards TOGETHER prevent a double steal,
+# but do NOT isolate which guard fires: because every contender is mk_active'd the winner
+# is live, so a loser can abort on EITHER mismatch→10 (cur != expected, the winner already
+# swapped the holder) OR revive→10 (_holder_is_live "$cur"). Mutation-removing just one of
+# the two guards leaves TC-14 green; only removing both turns it red. So neither guard is
+# isolated by any current test — pinning mismatch alone would need an on-disk holder that
+# is ≠ expected AND not live, which the CLI cannot deterministically produce (revive→10 is
+# likewise a defensive TOCTOU guard exercised by no test).
+noflock_stub=$(mktemp -d)
+cleanup_dirs+=("$noflock_stub")
+for _c in bash sh cat date dirname git grep head jq mkdir mktemp mv rm sed tr wc sleep; do
+  _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$noflock_stub/$_c"
+done
+run_noflock() { PATH="$noflock_stub" bash "$IC" "$@" 2>/dev/null; }
+SID_NF="ffffffff-1111-2222-3333-444444444444"
+mk_active "$SID_NF" 960
+# Sanity probe: the stub must be able to run a claim at all. A curated PATH can miss a
+# host-specific tool path — skip (not fail) rather than mis-attribute a setup gap to the
+# no-flock logic (the same platform-fragility guard TC-014 in work-memory-lock applies).
+if [ "$(run_noflock claim --session "$SID_NF" --issue 960)" != "claimed" ]; then
+  pass "TC-16 skipped: no-flock PATH stub could not run a claim on this host (env-specific setup)"
+else
+  bash "$FS" deactivate --session "$SID_NF" --next done >/dev/null 2>&1  # holder now stale
+  assert "TC-16 precondition: holder classified stale" "stale" "$(check "$SID_A" 960)"
+  # Steal via the flock-absent branch: lone stealer → cur==expected, holder dead → mv → claimed.
+  assert "TC-16 no-flock lone steal → claimed (F-03)" "claimed" "$(run_noflock claim --session "$SID_A" --issue 960)"
+  assert "TC-16 holder now A" "$SID_A" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-960.json")"
+fi
+
 print_summary "$(basename "$0")" \
-  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity; _resolve_current_session_id env-first (Issue #1530)."
+  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity; stale-steal CAS via _atomic_claim_steal (Issue #1718, flock + no-flock branches); _resolve_current_session_id env-first (Issue #1530)."

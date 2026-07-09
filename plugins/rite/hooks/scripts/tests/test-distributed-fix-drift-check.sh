@@ -9,7 +9,12 @@ set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SCRIPT="$REPO_ROOT/plugins/rite/hooks/scripts/distributed-fix-drift-check.sh"
-BASELINE_COMMIT="cec0140"
+# Full SHA required (not the abbreviated "cec0140"): on a fresh shallow clone
+# there is no local object database yet to expand an abbreviated hash before
+# sending the "want" line, so `git fetch origin <short-sha>` fails with
+# "couldn't find remote ref" even though GitHub supports fetching arbitrary
+# reachable full SHAs (Issue #1738).
+BASELINE_COMMIT="cec0140cccd800873dba7086793f277e8b141775"
 
 if [ ! -x "$SCRIPT" ]; then
   echo "FAIL: $SCRIPT not executable" >&2
@@ -18,6 +23,7 @@ fi
 
 PASS=0
 FAIL=0
+SKIP=0
 
 assert() {
   local desc="$1" expected="$2" actual="$3"
@@ -59,13 +65,26 @@ trap 'rm -rf "${TMPFILES[@]}"' EXIT
 TMP_FIX=$(mktemp)
 TMPFILES+=("$TMP_FIX")
 
-# Verify baseline commit is reachable before running Test 3. On shallow clones
-# (typical CI setup), silently SKIP-ing would produce a false green. Fail the
-# suite instead so the problem is visible.
+# Verify baseline commit is reachable before running Test 3. Shallow clones
+# (CI default: fetch-depth 1) do not have this commit in history yet, so try
+# fetching it directly first (Issue #1738; GitHub supports fetching arbitrary
+# reachable commit SHAs). Only if that also fails do we SKIP — silently
+# passing would produce a false green, so the skip is always logged explicitly,
+# including the underlying fetch error (DNS/auth/"couldn't find remote ref"
+# etc.) so a real fetch failure isn't indistinguishable from "not reachable".
+FETCH_ERR=$(mktemp)
+TMPFILES+=("$FETCH_ERR")
 if ! git cat-file -e "${BASELINE_COMMIT}^{commit}" 2>/dev/null; then
-  echo "FAIL: baseline commit ${BASELINE_COMMIT} is not reachable" >&2
-  echo "  Hint: run 'git fetch --depth=1 origin ${BASELINE_COMMIT}' or unshallow the repo" >&2
-  FAIL=$((FAIL + 1))
+  git fetch --quiet --depth=1 origin "${BASELINE_COMMIT}" 2>"$FETCH_ERR" || true
+fi
+
+if ! git cat-file -e "${BASELINE_COMMIT}^{commit}" 2>/dev/null; then
+  echo "SKIP: baseline commit ${BASELINE_COMMIT} is not reachable even after 'git fetch --depth=1 origin ${BASELINE_COMMIT}'" >&2
+  echo "  Hint: unshallow the repo (git fetch --unshallow) or run this suite where network access to origin is available" >&2
+  if [ -s "$FETCH_ERR" ]; then
+    sed 's/^/  git: /' "$FETCH_ERR" >&2
+  fi
+  SKIP=$((SKIP + 1))
 elif git show "${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" > "$TMP_FIX" 2>/dev/null; then
   out=$("$SCRIPT" --target "$TMP_FIX" 2>&1)
   rc=$?
@@ -236,6 +255,60 @@ out=$("$SCRIPT" --target "$CJK_BROKEN" 2>&1)
 p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
 assert_ge "broken CJK anchor detected as drift" 1 "$p4_count"
 
+# --- Test 6b: comment-style rationale pointer anchor drift (Pattern 4) -------
+# `rationale: path#anchor` inside `# ...` / `<!-- ... -->` comments is not a
+# `[text](path#anchor)` markdown link, so it needs its own extraction path
+# (Issue #1775). Also covers the cross-skill `../other-skill/references/...`
+# pointer form.
+RATIONALE_DIR=$(mktemp -d)
+TMPFILES+=("$RATIONALE_DIR")
+mkdir -p "$RATIONALE_DIR/skill-a/references" "$RATIONALE_DIR/skill-b/references"
+RATIONALE_TARGET="$RATIONALE_DIR/skill-a/references/design-rationale.md"
+RATIONALE_CROSS_TARGET="$RATIONALE_DIR/skill-b/references/design-rationale.md"
+RATIONALE_CLEAN="$RATIONALE_DIR/skill-a/clean.md"
+RATIONALE_BROKEN="$RATIONALE_DIR/skill-a/broken.md"
+
+cat > "$RATIONALE_TARGET" <<'EOF'
+# Design Rationale
+
+## some-real-anchor
+Notes here.
+EOF
+
+cat > "$RATIONALE_CROSS_TARGET" <<'EOF'
+# Design Rationale (skill-b)
+
+## cross-skill-anchor
+Notes here.
+EOF
+
+cat > "$RATIONALE_CLEAN" <<'EOF'
+# Fixture
+
+# rationale: references/design-rationale.md#some-real-anchor
+echo hi
+
+<!-- rationale: references/design-rationale.md#some-real-anchor -->
+
+# rationale: ../skill-b/references/design-rationale.md#cross-skill-anchor
+EOF
+
+out=$("$SCRIPT" --target "$RATIONALE_CLEAN" 2>&1)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
+assert "comment-style rationale pointers resolve correctly (0 P4 drift)" "0" "$p4_count"
+
+cat > "$RATIONALE_BROKEN" <<'EOF'
+# Fixture
+
+# rationale: references/design-rationale.md#nonexistent-anchor
+
+<!-- rationale: references/design-rationale.md#also-nonexistent -->
+EOF
+
+out=$("$SCRIPT" --target "$RATIONALE_BROKEN" 2>&1)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
+assert "broken comment-style rationale anchor detected as drift (# and <!-- --> forms)" "2" "$p4_count"
+
 # --- Test 7: --pattern 2 filter outputs only P2 ------------------------------
 # Build a fixture that triggers BOTH Pattern-2 (reason-table drift) and
 # Pattern-3 (if-wrap drift). Without --pattern, the script would emit both
@@ -308,6 +381,6 @@ assert_ge "--all + --repo-root: drift line references fix.md by relative path" 1
 
 # --- Summary -----------------------------------------------------------------
 echo
-echo "Results: PASS=$PASS FAIL=$FAIL"
+echo "Results: PASS=$PASS FAIL=$FAIL SKIP=$SKIP"
 [ "$FAIL" -eq 0 ] || exit 1
 exit 0

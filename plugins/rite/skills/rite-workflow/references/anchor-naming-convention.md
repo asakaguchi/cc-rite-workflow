@@ -2,9 +2,9 @@
 
 > **Charter**: Subject to [Simplification Charter](./simplification-charter.md). Runtime に効かない経緯記述・cycle 番号引用・重複 confirmation は書かない。
 
-対象: `plugins/rite/commands/` 配下の Markdown 文書中に存在する `# === ... ===` 形式の **grep anchor**。本ファイルは anchor literal の構造を定める canonical 規約と、anchor を中心に発生する Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」failure mode の予防策を集約する。Wiki 経験則本体は `/rite:wiki-query` で参照 (cf. §5)。
+対象: `plugins/rite/skills/` 配下の Markdown 文書中に存在する `# === ... ===` 形式の **grep anchor**。本ファイルは anchor literal の構造を定める canonical 規約と、anchor を中心に発生する Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」failure mode の予防策を集約する。Wiki 経験則本体は `/rite:wiki-query` で参照 (cf. §4)。
 
-> **⚠️ コード層との境界**: 本 reference は anchor の **literal 構造** (文字列としての形態) を規定する。anchor が指し示す bash block の動作仕様・契約は anchor を抱える各文書 (`pr/fix.md` / `pr/review.md` / `issue/close.md`) に存在する。anchor literal を変更する場合は本 reference 更新後に、同 anchor を citation する全 site (note / blockquote / 他 anchor の rationale 段落) を grep で検出し同時更新すること。
+> **⚠️ コード層との境界**: 本 reference は anchor の **literal 構造** (文字列としての形態) を規定する。anchor が指し示す bash block の動作仕様・契約は anchor を抱える各文書 (`skills/fix/SKILL.md` / `skills/pr-review/SKILL.md` / `skills/issue-close/SKILL.md`) に存在する。anchor literal を変更する場合は本 reference 更新後に、同 anchor を citation する全 site (note / blockquote / 他 anchor の rationale 段落) を grep で検出し同時更新すること。
 
 ---
 
@@ -74,7 +74,7 @@ set +o pipefail
 # === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===
 ```
 
-(出典: `skills/fix/SKILL.md:1118` — refactor 候補として §4 audit に列挙)
+(本 anchor は現存しない)
 
 **何が問題か**:
 
@@ -101,34 +101,7 @@ set +o pipefail
 
 ---
 
-## 4. 既存 anchor の audit (本 reference 作成時点)
-
-<a id="audit"></a>
-
-本 reference 作成時点で `plugins/rite/commands/` 配下に存在する `# === ... ===` 形式 anchor のうち、§3.1 anti-pattern に該当する **parenthetical 付き anchor** を列挙する。実際の refactor は別 Issue で実施する (本 Issue scope は規約文書化のみ)。
-
-### 4.1 refactor 候補 (parenthetical 付き)
-
-| File | Line | 現状の anchor literal |
-|------|------|-----------------------|
-| `skills/fix/SKILL.md` | 1118 | `# === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===` |
-
-**refactor 方針** (別 Issue で実施):
-
-- `skills/fix/SKILL.md:1118` → anchor を `# === severity_map build ===` に最小化し、`local_file/explicit_file only` 条件と `pr_comment state transitions note` への back-reference は直前のコメント行に分離
-
-### 4.2 既に canonical な anchor (参考)
-
-以下は §2 基本原則に準拠した形で、本 reference の **good example** として参照可能:
-
-| File | Line | anchor literal |
-|------|------|----------------|
-| `skills/fix/SKILL.md` | 1084 | `# === ステップ 1.2.0 Selection logic block end ===` |
-| `skills/review/SKILL.md` | 668 | `# === all_files_excluded bash impl ===` |
-
----
-
-## 5. 関連 Wiki 経験則
+## 4. 関連 Wiki 経験則
 
 <a id="related-heuristics"></a>
 
@@ -137,7 +110,7 @@ set +o pipefail
 | 経験則タイトル | キーワード例 | 根拠となる文脈 |
 |----------------|-------------|---------------|
 | Asymmetric Fix Transcription (対称位置への伝播漏れ) | `asymmetric-fix-transcription`, `anchor drift` | fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる failure mode の包括的記録。本 reference は **recursive recurrence in fix layer** (anchor literal 自身が parenthetical context を含む形で導入され、note との byte 不一致を新規導入する mode) への構造的予防として作成 |
-| SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する | `sot-path-reference-existence-check`, `broken-ref` | 本 reference 内の path 参照 (`skills/fix/SKILL.md:1118` 等) は本 PR マージ時点の origin/develop で実在を verify した上で記載 |
+| SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する | `sot-path-reference-existence-check`, `broken-ref` | 本 reference 内の path 参照は各記載時点の origin/develop で実在を verify した上で記載する運用とする。ただし記載後の refactor で参照先 anchor 自体が消滅することがあるため、path 参照は永続的な保証ではなく記載時点のスナップショットである点に注意する |
 | Embedded markdown bash block の observability 三要素 | `embedded-bash-block-observability-trio` | anchor を citation する bash block 自体の observability 契約。anchor は observability 設計の一部 (citation 経路を機械検証する手段) として位置付ける |
 | Asymmetric Fix Transcription 解決の hub 化戦略 | `option-b`, `hub creation` | anchor literal の drift 源を「両側で同期する」ではなく「anchor を SoT 化し他 site から citation する」hub-creation 戦略の根拠 |
 
@@ -145,11 +118,11 @@ set +o pipefail
 
 ---
 
-## 6. 適用範囲
+## 5. 適用範囲
 
 <a id="scope"></a>
 
-本 reference は **`plugins/rite/commands/` 配下の Markdown 文書中の `# === ... ===` 形式 anchor** にのみ適用する。
+本 reference は **`plugins/rite/skills/` 配下の Markdown 文書中の `# === ... ===` 形式 anchor** にのみ適用する。
 
 適用外:
 

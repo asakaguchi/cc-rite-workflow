@@ -1,6 +1,6 @@
 # Bash Cross-Boundary State Transfer Patterns
 
-このドキュメントは `plugins/rite/commands/wiki/*.md` (特に `lint.md` / `ingest.md`) で採用されている
+このドキュメントは `plugins/rite/skills/wiki-*/SKILL.md` (特に `wiki-lint` / `wiki-ingest`) で採用されている
 **Bash tool 呼び出し境界を跨いで状態を LLM に伝達する契約パターン**を canonical 定義として集約する。
 
 Skill tool / Bash tool 呼び出しは独立 subprocess として動作するため、シェル変数は呼び出し境界を越えて
@@ -60,7 +60,7 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続ス
 | **enum 値は固定有限集合** | 自由文字列だと LLM 解釈にブレが生じ、後続分岐が非決定論的になる |
 | **初期値は "unknown" 等の "未到達" sentinel** | fail-fast exit 経路で enum が set されなかったことを明示する |
 | **値は lowercase の snake_case** | shell/awk/regex でのマッチングを単純化 |
-| **原則 stdout に emit、ただし `[CONTEXT]` prefix 付きなら stderr も許容** | stderr は WARNING / ERROR 専用だが、`[CONTEXT] key=value` 形式で machine-readable prefix を付けた状態 emit は grep 可能性が確保されるため stderr でも OK。Bash tool の stdout/stderr はいずれも会話コンテキストに取り込まれる。例: `review.md` ステップ 6.1.a の `[CONTEXT] JSON_SAVED=...` は `>&2` で emit されるが、ステップ 6.1.c が `[CONTEXT] JSON_SAVED=` で grep して受け取る。単純な `log_read_ok=absent` のような prefix なし状態 emit は stdout に留める |
+| **原則 stdout に emit、ただし `[CONTEXT]` prefix 付きなら stderr も許容** | stderr は WARNING / ERROR 専用だが、`[CONTEXT] key=value` 形式で machine-readable prefix を付けた状態 emit は grep 可能性が確保されるため stderr でも OK。Bash tool の stdout/stderr はいずれも会話コンテキストに取り込まれる。例: `pr-review.md` ステップ 6.1.a の `[CONTEXT] JSON_SAVED=...` は `>&2` で emit されるが、ステップ 6.1.c が `[CONTEXT] JSON_SAVED=` で grep して受け取る。単純な `log_read_ok=absent` のような prefix なし状態 emit は stdout に留める |
 | **`[CONTEXT]` prefix を使う選択肢もある** | 人間と LLM の両方から識別しやすくしたい場合 (`[CONTEXT] log_read_ok=absent`)。stderr に出す場合は特に本 prefix を付けて「状態 emit vs diagnostic」を区別する |
 
 ### 参照実装 (2026-04 時点)
@@ -78,7 +78,7 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続ス
  が全 0 なら `lint:clean`、1 つ以上 `>0` なら `lint:warning`。`n_unregistered_raw` は informational の
  ため判定から除外。ステップ 8.3 の `{log_entry}` 組み立てが本 emit 値を single source
  of truth として first-match parse で参照する drift 防止契約になっている
-- `plugins/rite/skills/review/SKILL.md` ステップ 6.1.a — `JSON_SAVED=true|false`、`FILE_TIMESTAMP=<ts>` の
+- `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1.a — `JSON_SAVED=true|false`、`FILE_TIMESTAMP=<ts>` の
  `[CONTEXT]` prefix 版。prefix を付けることで ステップ 6.1.c が grep 可能になる
 
 ---

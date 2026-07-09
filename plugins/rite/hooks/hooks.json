@@ -59,7 +59,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-bash-guard.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-bash-guard.sh",
+            "timeout": 10
           }
         ],
         "matcher": "Bash"

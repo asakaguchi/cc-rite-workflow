@@ -1,21 +1,21 @@
 # Fingerprint Cycling Detection — Quality Signal SoT
 
-> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`/rite:open` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
+> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/pr-review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`/rite:open` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
-`/rite:open` の review-fix loop には cycle-count-based safety limit が **存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。代わりに以下 **4 つの quality signal** で escalation を行う:
+`/rite:open` の review-fix loop には、cycle 数に応じてレビュー品質を段階的に緩める **cycle-count-based degradation は存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。品質判定の escalation は以下 **4 つの quality signal** で行う。（これとは別レイヤで、非収束ループの最終安全網として `safety.max_review_cycles` の cycle 上限サーキットブレーカー = #1701 が存在するが、これは品質を緩めず cycle 上限で停止/ユーザー委譲するだけで、下記 signal 群とは独立に両立する。詳細は `skills/iterate/SKILL.md` 設計判断を参照。）
 
 | Signal | 検出 phase | 内容 |
 |--------|-----------|------|
 | **Signal 1** — 同一 finding cycling | Phase 5.4.1.0 (本 reference) | review サイクル間で同 fingerprint の finding が残存 |
 | **Signal 2** — root-cause-missing fix | `fix.md` ステップ 3.2.1 | 根本原因を捉えない fix がコミットされる経路の検出 |
-| **Signal 3** — cross-validation disagreement | `review.md` ステップ 5.2 + debate fails | レビュアー間の disagreement が debate でも解消されない |
+| **Signal 3** — cross-validation disagreement | `pr-review.md` ステップ 5.2 + debate fails | レビュアー間の disagreement が debate でも解消されない |
 | **Signal 4** — finding quality gate failure | `_reviewer-base.md` Finding Quality Guardrail | reviewer 自身が self-degraded 状態を宣言 |
 
 Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase 5.4.3 Step 3.1 (本 reference §2) で検出する。4 signal すべてに対して **同じ 4-option AskUserQuestion** (本 reference §3) で escalation する。
 
-設計判断: 4 quality signal を escalation の唯一機構とし、追加で iteration counter による safety limit を導入しない。counter を再導入すると、過去に明示的に削除した cycle-count-based degradation が再発する。
+設計判断: **品質 escalation の機構**は 4 quality signal のみとし、cycle 数に応じてレビュー品質を段階的に緩める iteration counter（progressive relaxation / degradation）は導入しない。過去に明示的に削除した cycle-count-based degradation の再発を防ぐため。ただしこれは「品質緩和の禁止」であり、非収束ループの最終安全網としての cycle 上限サーキットブレーカー（`safety.max_review_cycles`、#1701）とは別レイヤで両立する — 後者は品質を一切緩めず、上限到達で停止（対話は AskUserQuestion、`/rite:batch-run` バッチは failed 遷移）するだけで、本 signal 群の quality escalation を代替も抑制もしない。
 
 ## §1 — Phase 5.4.1.0 Fingerprint Cycling Detection
 
@@ -116,7 +116,7 @@ context marker を emit:
 Step 4 routing が「本 PR 内で再試行」または「別 Issue として切り出す (split bash 実行後)」の場合のみ実行:
 
 ```
-Invoke `skill: "rite:review"`.
+Invoke `skill: "rite:pr-review"`.
 ```
 
 review が return したら `skills/iterate/SKILL.md` review-fix loop の fix side へ進む。
@@ -127,7 +127,7 @@ review が return した後、最新の `📜 rite レビュー結果` PR コメ
 
 | Marker | Source | Signal |
 |--------|--------|--------|
-| `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement` | `review.md` ステップ 5.2 (cross-validation disagreement + debate fails) | Signal 3 — cross-validation disagreement |
+| `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement` | `pr-review.md` ステップ 5.2 (cross-validation disagreement + debate fails) | Signal 3 — cross-validation disagreement |
 | `### Reviewer self-assessment` section + `Status: degraded (quality-gate failure)` (review body 内) | 任意の reviewer 出力 (`_reviewer-base.md` Finding Quality Guardrail 経由) | Signal 4 — reviewer self-degraded |
 
 ### Detection bash (Signal 4)
@@ -144,7 +144,7 @@ fi
 echo "[CONTEXT] SIGNAL_4_HIT=$signal4_hit"
 ```
 
-Signal 3 は `review.md` が stderr に emit 済みのため、conversation context を grep するだけで検出可能 (本 phase で再取得は不要)。
+Signal 3 は `pr-review.md` が stderr に emit 済みのため、conversation context を grep するだけで検出可能 (本 phase で再取得は不要)。
 
 ### Routing
 
@@ -170,7 +170,7 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 
 ## §4 — Split bash for "別 Issue として切り出す"
 
-**Important**: 以下の bash ブロックは **単一の Bash tool 呼び出し** で実行すること。本ブロックは一時ファイル cleanup の `trap 'rm -f "$tmpfile"' EXIT` と、write / empty / empty-result の各失敗で中断する `exit 1` ガード および empty-url 失敗で中断する `exit 1` ガード を含む。複数の Bash 呼び出しに分割すると trap が中間状態で発火して cleanup 契約が崩れ、`exit 1` も後続呼び出しへ伝播せず guard が機能しなくなる (先例 review.md ステップ 7.4.2 の single-invocation 注記と同契約)。
+**Important**: 以下の bash ブロックは **単一の Bash tool 呼び出し** で実行すること。本ブロックは一時ファイル cleanup の `trap 'rm -f "$tmpfile"' EXIT` と、write / empty / empty-result の各失敗で中断する `exit 1` ガード および empty-url 失敗で中断する `exit 1` ガード を含む。複数の Bash 呼び出しに分割すると trap が中間状態で発火して cleanup 契約が崩れ、`exit 1` も後続呼び出しへ伝播せず guard が機能しなくなる (先例 pr-review.md ステップ 7.4.2 の single-invocation 注記と同契約)。
 
 **Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得してプレースホルダーを置換すること。これらはシェル変数ではない):
 
@@ -212,7 +212,7 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (skills/review/SKILL.md と同じ pipe 形式、入れ子 $() を回避)
+# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (skills/pr-review/SKILL.md と同じ pipe 形式、入れ子 $() を回避)
 result=$(jq -n \
   --arg title "review-split: {short_summary}" \
   --arg body_file "$tmpfile" \
@@ -243,7 +243,7 @@ fi
 new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
 # create-issue-with-projects.sh は失敗時も非空の failed JSON (issue_url=="") を emit してから
 # exit する契約のため、上の empty-result ガードは通過する。空 URL のまま ✅ を echo する silent
-# failure を防ぐため issue_url を guard し warnings[] を surface する (先例 review.md ステップ
+# failure を防ぐため issue_url を guard し warnings[] を surface する (先例 pr-review.md ステップ
 # 7.4.2 の post-result handling を移植)
 if [ -z "$new_issue_url" ] || [ "$new_issue_url" = "null" ]; then
   echo "ERROR: Fingerprint 循環 finding の Issue 化に失敗しました (issue_url が空)" >&2

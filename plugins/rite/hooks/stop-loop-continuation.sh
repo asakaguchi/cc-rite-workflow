@@ -12,9 +12,9 @@
 #     turn が閉じても、cleanup ステップ 10-12 までの継続を 1 回だけ強制する
 #
 # 仕組み (one-shot consume / stop_hook_active に依存しない設計):
-#   - 継続 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1) が
+#   - 継続 sentinel を出す sub-skill (pr-review.md Step 8.0 / fix.md Step 5.1) が
 #     flow-state に継続 handoff (例 "/rite:fix 99") をセットする。
-#   - 終了 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1 / Step 1.4 cancel) が
+#   - 終了 sentinel を出す sub-skill (pr-review.md Step 8.0 / fix.md Step 5.1 / Step 1.4 cancel) が
 #     flow-state に終了 handoff (例 "FINALIZE:review:mergeable:99") をセットする。
 #   - cleanup.md ステップ 9 が wiki-ingest invoke 直前にチェーン handoff
 #     (例 "WIKICHAIN:cleanup:99") をセットする。チェーンがステップ 12 まで
@@ -132,7 +132,7 @@ if ! jq -n --arg r "$_reason" '{decision:"block", reason:$r}'; then
   _r_esc="${_r_esc//\"/\\\"}"
   _r_esc="${_r_esc//$'\n'/\\n}"
   _r_esc=$(printf '%s' "$_r_esc" | neutralize_ctrl --c0-only) \
-    || _r_esc="rite handoff continuation pending (reason neutralization failed). Re-run the previous /rite command or run /rite:resume."
+    || _r_esc="rite handoff continuation pending (reason neutralization failed). Re-run the previous /rite command or run /rite:recover."
   printf '{"decision":"block","reason":"%s"}\n' "$_r_esc"
 fi
 exit 0

@@ -126,7 +126,7 @@ Appended to the Issue work memory comment at workflow completion (caller orchest
 
 ## Review Metrics
 
-Recorded in review result comment (ステップ 6.3 of [`review.md`](../skills/review/SKILL.md) — semantic owner で値の決定・記録ロジックの canonical 位置。表示位置は post_comment_mode=true 時に ステップ 6.1.b で append される).
+Recorded in review result comment (ステップ 6.3 of [`pr-review.md`](../skills/pr-review/SKILL.md) — semantic owner で値の決定・記録ロジックの canonical 位置。表示位置は post_comment_mode=true 時に ステップ 6.1.b で append される).
 
 > **Note**: Debate metrics (`debate_triggered`, `debate_resolved`, `debate_escalated`, `debate_resolution_rate`) are **recording-only** — they are not included in the Metrics Definitions table above and have no threshold evaluation. They serve as observational data for reviewing the debate phase's effectiveness.
 
@@ -156,8 +156,8 @@ Defined in `rite-config.yml` under the `safety` section. See [Safety Configurati
 
 ```yaml
 safety:
- # The review-fix loop has no hard cycle-count limit; it exits on 0 findings or manual abort.
  max_implementation_rounds: 20 # implementation round hard limit
+ max_review_cycles: 5 # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
  time_budget_minutes: 120 # time budget per Issue (advisory, not enforced by timer)
  auto_stop_on_repeated_failure: true # stop on repeated failure
  repeated_failure_threshold: 3 # consecutive same-class failure count
@@ -206,8 +206,8 @@ metrics:
  plan_deviation_improvement: 0.90 # MA5 improvement factor
 
 safety:
- # The review-fix loop has no hard cycle-count limit; it exits on 0 findings or manual abort.
  max_implementation_rounds: 20 # implementation round hard limit
+ max_review_cycles: 5 # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
  time_budget_minutes: 120 # time budget per Issue (advisory, not enforced by timer)
  auto_stop_on_repeated_failure: true # stop on repeated failure
  repeated_failure_threshold: 3 # consecutive same-class failure count

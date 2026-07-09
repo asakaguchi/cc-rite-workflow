@@ -44,7 +44,10 @@ cleanup() {
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
 }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 assert_eq() {
   local label="$1" expected="$2" actual="$3"

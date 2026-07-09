@@ -63,8 +63,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Missing `useMemo` on a computation, but the component renders infrequently and the computation is trivial — move to recommendations
 - **50**: "This could be faster with a different algorithm" without profiling data or scale evidence — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - N+1 query detection

@@ -1,6 +1,6 @@
 # intro-video — 来歴と取り扱い
 
-README.md の「Demo」節で参照している**日本語字幕版**紹介動画（約104秒）の HyperFrames ソース。
+README.ja.md の「Demo」節で参照している**日本語字幕版**紹介動画（約125秒）の HyperFrames ソース。
 
 ## 来歴
 

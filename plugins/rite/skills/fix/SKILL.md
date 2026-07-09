@@ -3591,11 +3591,13 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 1 (最優先) | ステップ 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (ステップ 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定の再実行でも有効なレビュー結果を取得できなかった状態のため caller は手動介入を促す) |
 | 2 | ステップ 2.4 / 4.2 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` のいずれかを context に set した | `[fix:error]` (reply post / report post のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
-| 4 | Push completed (`プッシュ: 完了`) かつ work memory 更新成功 | `[fix:pushed]` |
-| 5 | All findings replied (no push) | `[fix:replied-only]` |
+| 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で `[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` が 1 回以上 context に出現) かつ work memory 更新成功 | `[fix:pushed]` |
+| 5 | Push なし かつ 本 cycle 内で accept 決定なし、All findings replied | `[fix:replied-only]` |
 | 6 | Unexpected state / error | `[fix:error]` |
 
 **評価順序の重要性**: 上から順に評価し、最初にマッチした条件の output pattern を採用する。`FIX_FALLBACK_FAILED=1` / `REPLY_POST_FAILED=1` / `REPORT_POST_FAILED=1` の検出は最優先で、これらが set された場合は `[fix:error]` に昇格する。次に `WM_UPDATE_FAILED=1` を評価し、set されていれば `[fix:pushed-wm-stale]` に昇格する (silent regression 防止のため `[fix:pushed]` よりも先に判定する)。これらの retained flag をすべて評価した後に push 成功 / 返信のみ などの通常終了状態を判定する。
+
+**row 4 の accept 条件 (Issue #1811)**: 本 output pattern テーブルは `/rite:iterate` ステップ4 が実際に分岐する **literal な sentinel 文字列** (`[fix:pushed]` / `[fix:replied-only]`) の唯一の決定箇所であり、上記の「Handoff マーカー」節 (5.1 冒頭) の判定とは**別物**。Handoff は `Stop` hook 経由の補助的な再注入マーカーに過ぎず、caller (`/rite:iterate`) が実際に読むのは本テーブルが決める sentinel 文字列である。そのため、Handoff 側で「本 cycle accept 発生 → 継続」と定義しても、本テーブルの row 4 に同じ条件を反映しなければ `/rite:iterate` は依然として `[fix:replied-only]`（終了）を受け取り、accept のみ・push 無しのケースで再 review が実際にはトリガーされない。row 4/5 の条件は Handoff マーカー節の判定文と bit-exact に対応させること。
 
 **`[CONTEXT] WM_UPDATE_FAILED=1` の検出方法** (Claude による retain と再注入):
 

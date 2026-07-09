@@ -53,6 +53,7 @@ The command prefix `rite` was chosen for:
 | `/rite:setup` | Initial setup wizard | `[--upgrade]` (upgrade existing `rite-config.yml` schema to the latest version) |
 | `/rite:getting-started` | Interactive onboarding guide | None |
 | `/rite:workflow` | Show workflow guide | None |
+| `/rite:unknowns` | Pre-implementation exploration session (blind-spot pass, brainstorming, throwaway prototypes, interview) | `[theme]` |
 | `/rite:investigate` | Structured code investigation | `<topic or question>` |
 | `/rite:learn` | Socratic quiz to verify deep understanding of a finished session | `[issue/pr number] [eli5\|eli14\|intern]` |
 | `/rite:issue-list` | List Issues | `[filter]` |

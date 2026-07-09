@@ -68,10 +68,9 @@ unknowns は 4 象限で捉える:
 - ユーザーにとって未知のドメインなら、選択肢を評価できるようになる最小限の基礎を教える。目的は知識の網羅ではなく、ユーザーが「何が良いか」の判断基準を持てるようにすること
 - 「この変更が触れないが、壊れうる隣接領域は何か」「ユーザーが知らなそうな既存の制約・慣習は何か」を自問して探す
 
-**Wiki 連携（Conditional）**: `wiki.enabled: true` かつ `wiki.auto_query: true`（`rite-config.yml`）のとき、盲点候補の材料としてプロジェクトの蓄積経験則を注入する。Wiki 無効 / 未初期化時は silent skip（エラー・警告を出さない）:
+**Wiki 連携（Conditional）**: `wiki.enabled: true` かつ `wiki.auto_query: true`（`rite-config.yml`）のとき、盲点候補の材料としてプロジェクトの蓄積経験則を注入する。Wiki 無効 / 未初期化時は silent skip（エラー・警告を出さない）。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する:
 
 ```bash
-# plugin_root は Plugin Path Resolution で解決
 # {keywords} はユーザーのテーマ・対象ドメイン用語をカンマ区切りで生成
 # （他コーラー skills/issue-create/SKILL.md 4.0 / skills/fix/SKILL.md 0.5.W /
 #   skills/pr-review/SKILL.md 4.0.W / skills/issue-implement/SKILL.md 5.0.W と同形式）

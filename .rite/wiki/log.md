@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T11:05:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=259, broken_refs=0 (PR #1805 ingest 後の auto-lint) |
 | 2026-07-09T11:00:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260709T013058Z-pr-1805.md を統合 — PR #1805 (Issue #1782) cycle 3 review、0 findings mergeable。3 cycle 全体の欠陥パターン総括を追記 |
 | 2026-07-09T11:00:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/fixes/20260709T011712Z-pr-1805.md を統合 — PR #1805 (Issue #1782) cycle 2 fix、prose/実装乖離修正 + 新規ファイル向け inline one-liner 規約への修正を追記 |
 | 2026-07-09T11:00:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/fixes/20260709T010213Z-pr-1805.md を統合 — PR #1805 (Issue #1782) cycle 1 fix、plugin-path-resolution.md 参照追加 + SPEC.md Command List 追記を統合 |

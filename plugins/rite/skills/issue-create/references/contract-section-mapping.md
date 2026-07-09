@@ -75,7 +75,7 @@ Rich template (Section 1-9) を生成する場合の 4 step 構成:
 | 確定したこと | 1 Goal (What) / 4.5 Constraints | 仮定解決済み扱い。ステップ 4.0/5.0 の仮定列挙（手順 1）から除外し再質問しない |
 | 却下した代替案 | 9 Decision Log | Section 9 が SHOULD/MUST になる Complexity（M 以上、[`templates/issue/default.md`](../../../templates/issue/default.md) Complexity Gate 参照）で生成時、`- {date} D-0N: {案}を不採用 / Reason: {却下理由} / Impact: {影響 Section}` 形式で記載する |
 | 未解決の問い | ステップ 4.0/5.0 手順 3 の 3 分類 (b)/(c) | 手順 1（仮定列挙）を経由せず直接 (b) または (c) へ合流させる |
-| 発見した盲点 | ステップ 4.0/5.0 手順 2（盲点列挙） | 手順 2 自体をスキップする（unknowns で実施済み扱い） |
+| 発見した盲点 | ステップ 4.0/5.0 手順 2（盲点列挙） | 手順 2 自体をスキップする（unknowns で実施済み扱い。前提とスキップの妥当範囲は [`unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか`](./unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか) 参照） |
 | 成果物 | 1 Goal 本文 | 新規サブセクションは設けず `{what_to_achieve}` 内の参考リンクとして地の文に含める（`templates/issue/template-structure.md` の Section 構造は変更しない） |
 
 **セクション欠落時のフォールバック**: 見出しのみ・一部セクション欠落の入力では、存在するセクションのみ本表でマップし、欠落したセクションに対応する情報は通常の Step 1.3 抽出（What/Why/Where）へフォールバックする（エラーにしない）。サマリ外の追加テキストが入力に混在する場合も、そのテキストは通常の What/Why 抽出へ合流させる。

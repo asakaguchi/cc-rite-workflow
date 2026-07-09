@@ -27,6 +27,45 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-10
+
+### Changed
+
+- **Four skills are renamed to resolve base-name collisions with Claude Code's built-in slash commands** — `run` → `batch-run`, `review` → `pr-review`, `init` → `setup`, and `resume` → `recover`. **Breaking change — invoke skills by their new names:** `/rite:run` → `/rite:batch-run`, `/rite:review` → `/rite:pr-review`, `/rite:init` → `/rite:setup`, `/rite:resume` → `/rite:recover`. All in-repo references, cross-links, and sentinel-contract identifiers are updated accordingly; these are pure renames with no behavior change. (#1788, #1790, #1793, #1794, #1795, #1796, #1800, #1803, #1804)
+- **The reviewer registry's three-way sync (`agents/*-reviewer.md` ⇔ the `pr-review/SKILL.md` Available Reviewers table ⇔ its Reviewer Type Identifiers table) is now verified by a single machine check** instead of only the tech-writer-row equality check, catching agent-only additions, one-sided table updates, and slug mismatches that previously passed silently. (#1743)
+- **Per-call hooks gain an early-exit fast path and consolidated `jq` calls for non-rite projects**, reducing the per-Bash/Edit-call subprocess cost outside rite projects while leaving rite-project inputs, outputs, and side effects unchanged. (#1737)
+- **`pr-review/SKILL.md` and `fix/SKILL.md` are put on a context diet** — design rationale, historical background, and external-spec narration move out of the skill body into `references/`, shrinking `fix/SKILL.md` by 8.2% (4,040 → 3,709 lines) and `pr-review/SKILL.md` by 13.1% (4,040 → 3,510 lines). The "SKILL.md < 500 lines" principle is revised to match this two-tier reality (entry skills stay under 500 lines; execution-procedure skills are capped at 4,000). (#1774)
+
+### Added
+
+- **`/rite:unknowns` skill** — a new explicitly-invoked pre-implementation exploration session (blind-spot pass, multi-approach brainstorming, throwaway HTML prototypes, requirements interview) that ends by emitting an exploration summary for downstream skills like `issue-create`. Wired to `wiki-query-inject.sh` so accumulated Wiki lessons feed the blind-spot pass. (#1805)
+- **`issue-create` recognizes a `/rite:unknowns` exploration summary and lightens Assumption Surfacing accordingly** — questions and blind spots already resolved by the summary skip re-asking, and unresolved questions flow directly into the existing three-way classification. (#1806)
+- **`issue-create` Step 4.0 gains a "blind spot pass" (unknown unknowns) sub-step** for Complexity M+ issues, feeding discoveries into the existing derive/ask/defer classification without new code paths. (#1755)
+- **`open` Step 3.3's implementation-plan template adopts a volatile-first ordering rule** — items likely to change under user judgment (data model changes, type/interface definitions, user-visible behavior/UX) are presented before mechanical refactors and boilerplate, focusing plan-approval review on substantive decisions. (#1752)
+- **`pr-review` Step 7 is redesigned from "automatic Issue creation" to "out-of-scope finding triage"** — the AskUserQuestion recommendation moves from agent discretion to a rule-table machine decision, gains a "record to Decision Log" option, and approved records are appended to the source Issue's Section 9 Decision Log (or work memory as fallback). (#1802)
+- **`pr-review` gains a `max_reviewers` cap and a pre-spawn cost-estimate summary** — reviewer selection now caps the spawned reviewer count after the existing min-reviewer/mandatory-Security guards, and always surfaces which reviewers were dropped and why instead of silently capping. Default `max_reviewers: 6` preserves prior selection for matches within the cap. (#1729)
+- **`pr-create` PR bodies now summarize the Decision Log and plan-deviation log** — Phase 3.2.2 reads the Issue's Section 9 Decision Log and work memory's plan-deviation log, surfacing implementation-time judgment calls that a diff alone can't show; the section is omitted when both are empty. (#1756)
+- **`iterate`'s review⇄fix loop gains a circuit breaker** — `safety.max_review_cycles` (default 5) bounds non-convergent review/fix cycling; on `batch-run`, a maxed-out PR is recorded as failed and the cursor advances instead of stalling the whole batch. (#1728)
+- **`recover` detects merge-conflict and interrupted-rebase state** — unmerged markers, `MERGE_HEAD`, and `rebase-merge`/`rebase-apply` (resolved worktree-safely via `git rev-parse --git-path`) are surfaced ahead of phase inference, so conflict resolution isn't skipped in favor of a generic "implementation in progress" recovery. (#1734)
+- **`batch-run` shows a pre-run summary before starting** — issue count, run mode, a rough time estimate, and interrupt/resume guidance are shown once right after the queue is finalized, plus an "N/M done" progress line per completed Issue. (#1733)
+- **`setup` now writes a `safety` section into `rite-config.yml`** — previously commented out below the `--- Advanced ---` marker, `safety` (`max_implementation_rounds`, `max_review_cycles`, etc.) is promoted to the active block alongside `wiki`/`multi_session`/`tdd`, so a fresh config surfaces these safety limits instead of hiding them. (#1732)
+- **The sentinel contract (~29 `[skill:action]` strings) is now Single-Source-of-Truth documented and CI-verified** — `sentinel-contract.md` centralizes the emitter/consumer table, `sentinel-contract-check.sh` verifies it bidirectionally, and the check runs as `lint` Phase 3.20 and in a dedicated GitHub Actions workflow on every push/PR. (#1771)
+
+### Fixed
+
+- **`fix.md` Step 5.1's sentinel-based continuation check now correctly handles an `accept` decision** — the prior logic keyed off a nonexistent "separate Issue count" left over from a policy removed in commit `0dee5b22`; it now checks the `ACCEPT_FINGERPRINT_PERSISTED` marker that Step 2.1.A already emits, so an accept decision doesn't fall through to an unconditional "normal completion" without confirming the suppression actually took effect on the next review. (#1813)
+- **`flow-state.sh`'s `cmd_set` no longer silently drops `wm_comment_id`** — the field written directly by `issue-comment-wm-sync.sh`'s `cache_comment_id()` was missing from the merge-preserve whitelist used when `cmd_set` rebuilds the JSON, so it vanished on the next unrelated phase-transition `set`. (#1812)
+- **`issue-comment-wm-sync.sh` and `cleanup-work-memory.sh` are schema_v2/v3 multi-state aware** — both resolved `FLOW_STATE` by writing directly to the legacy shared file (`.rite-flow-state`) instead of going through the canonical per-session resolver (`.rite/sessions/{sid}.flow-state`), causing `wm_comment_id` cache misses (extra `gh api` scans) and stale `active:true`/`phase:cleanup` sessions to linger past `/rite:cleanup`, confusing `/rite:recover` and the Stop hook. Both now resolve via `flow-state.sh path` and fall back to the legacy file (with a warning) only on resolver failure. (#1808, #1809)
+- **`pre-tool-bash-guard`'s Pattern 4 (blocking reviewer-subagent state-mutating git commands) is fail-closed and has a timeout** — Pattern 4 shared a fail-open `ERR` trap with convenience Patterns 1–3, so a parser crash on unexpected input converged on `exit 0` (allow), letting a single crash bypass the reviewer read-only guard; Pattern 4 now fails closed independently, and `PreToolUse:Bash` gains the timeout every other hook already had. (#1736)
+- **`test-distributed-fix-drift-check.sh` no longer fails on shallow clones** — a `git fetch --depth=1 origin <full-sha>` fallback resolves the otherwise-unreachable baseline commit (now referenced by full SHA), and remaining-unreachable cases produce an explicit skip message instead of a silent pass or a false CI failure. (#1741)
+- **Locking is hardened against three known gaps** — `issue-claim.sh`'s stale-steal now compare-and-swaps the holder under the lock (closing a TOCTOU window where two sessions could both classify and steal the same stale claim), PID-reuse is detected instead of trusted on sight, and eval-time validation is made symmetric with sibling scripts. (#1742)
+- **`reviewer-registry-drift-check.sh` improves diagnostic precision and closes a slug-regex blind spot** — per-source error messages stop swallowing `find` stderr (e.g. `EACCES`) in the `agents/` path, and the identifier regex now accepts digits in slugs (e.g. `web3-reviewer.md`), which previously fell out of all three tracked sets and passed silently. (#1762)
+- **A `@tsv` + `IFS` field-shift hazard is fixed across the remaining per-call hooks** — following the `bang-backtick-edit-hook.sh` fix in #1737, `session-start.sh`'s `_reset_active_state()` (and other affected sites) switch to a unit-separator (`\x1f`) join/read so an empty intermediate TSV field no longer left-shifts subsequent fields. (#1767)
+
+### Removed
+
+- **Two config keys that had zero effect on runtime behavior are removed**: `fix.fail_fast_response` (never read by any consumer; the template itself admitted flipping it did nothing) and `review.scope_assignment.enabled` (consumers read `auto_demote_low` directly and never checked `enabled`, so the documented opt-out never worked). `auto_demote_low` itself remains fully wired and is unaffected. (#1727)
+
 ## [0.7.2] - 2026-07-01
 
 ### Fixed
@@ -682,6 +721,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.8.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.12...v0.7.0

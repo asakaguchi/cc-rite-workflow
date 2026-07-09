@@ -55,7 +55,25 @@ PYTHON_SCRIPT="$SCRIPT_DIR/issue-comment-wm-update.py"
 # Resolve repository root for .rite-flow-state access
 CWD="${CWD:-$(pwd)}"
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
-FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+
+# Resolve the current session's flow-state path via the canonical resolver
+# (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).
+# The legacy shared file (.rite-flow-state) does not exist in schema_v2/v3-only
+# environments, so caching against it always misses and forces a full gh api
+# comments scan on every call (#1807, same root cause as #695's
+# cleanup-work-memory.sh). Fall back to the legacy shared file only when
+# session resolution itself fails (no .rite-session-id / session env var
+# available) — surface that fallback with a WARNING for diagnosability.
+_fs_err=$(mktemp 2>/dev/null) || _fs_err=""
+if RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_fs_err:-/dev/null}"); then
+  :
+else
+  echo "WARNING: issue-comment-wm-sync: flow-state.sh path resolution failed — falling back to legacy $(basename "$STATE_ROOT/.rite-flow-state") (session_id may be missing or invalid)" >&2
+  [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  RESOLVED_FLOW_STATE=""
+fi
+[ -n "$_fs_err" ] && rm -f "$_fs_err"
+FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 
 # --- Get owner/repo ---
 # stderr を完全抑止すると、auth expiry / network outage / cwd outside repo の区別がつかず

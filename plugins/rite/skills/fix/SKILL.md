@@ -3186,7 +3186,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 
 **読み出し方法**: `nit_count_file="/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"` の行数を `wc -l < "$nit_count_file"` で取得する (ステップ 2.4.N で各成功投稿で `echo "$comment_id" >> "$nit_count_file"` により append されている)。tempfile 不在の場合は `0` を表示。ステップ 5.1 cleanup で本 tempfile も削除する。
 
-**重要**: `acknowledged_nit_count == 0` の場合でも本行は省略せず常に表示する (M2 受け流し経路の動作観測のため、ゼロ件であることを明示)。本 metric は `/rite:pr-review` ステップ 5.3 評価では使われない (nit-noted は `overall_assessment` に影響せず、mergeable 判定の countdown 対象外 — [`assessment-rules.md`](./references/assessment-rules.md) §5.3.1 参照)。fix loop 内で `acknowledged_nit_count > 0` の場合、`プッシュ: 未実行` かつ `別 Issue 作成: 0件` かつ `全指摘 == 対応指摘` であれば re-review はトリガーされず、本 cycle で finalize する (AC-1: nit-only PR の 2 cycle 即収束)。
+**重要**: `acknowledged_nit_count == 0` の場合でも本行は省略せず常に表示する (M2 受け流し経路の動作観測のため、ゼロ件であることを明示)。本 metric は `/rite:pr-review` ステップ 5.3 評価では使われない (nit-noted は `overall_assessment` に影響せず、mergeable 判定の countdown 対象外 — [`assessment-rules.md`](./references/assessment-rules.md) §5.3.1 参照)。fix loop 内で `acknowledged_nit_count > 0` の場合、`プッシュ: 未実行` かつ 本 cycle 内で accept 決定なし (`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` が context に非出現) かつ `全指摘 == 対応指摘` であれば re-review はトリガーされず、本 cycle で finalize する (AC-1: nit-only PR の 2 cycle 即収束)。
 
 **`{confidence_override_count}` / `{confidence_override_files_suffix}` の展開ルール** (Confidence policy override の追跡可視化):
 
@@ -3208,8 +3208,10 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 
 **Note**: The review-fix loop of `/rite:iterate` checks the content of this completion report to determine the next action:
 - `プッシュ: 完了` -> Execute full re-review (`/rite:pr-review` と同等のフルレビュー — スコープ縮退禁止)
-- `別 Issue 作成: N件` (N >= 1) -> Execute full re-review (`/rite:pr-review` と同等のフルレビュー — スコープ縮退禁止)
-- `プッシュ: 未実行` and `別 Issue 作成: 0件` and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
+- 本 cycle 内で accept 決定が発生 (`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` が context に 1 回以上出現) -> Execute full re-review (`/rite:pr-review` と同等のフルレビュー — スコープ縮退禁止。accept は fingerprint 永続化のみを行い、実際の suppression 適用は次回 `/rite:pr-review` ステップ 5.1.2.A [Non-Target] が担うため、re-review せずに終端すると suppression の成否が未確認のまま loop が終わる — Issue #1811)
+- `プッシュ: 未実行` and 本 cycle 内で accept 決定なし and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
+
+> **Issue #1811 での訂正**: 旧版はここで `別 Issue 作成: N件` という条件を挙げていたが、これは commit `0dee5b22` (#1136/#1137) で `別 Issue 化禁止ポリシー` に基づき完全削除された旧 Phase 4.3 (Automatic Separate Issue Creation) の残骸であり、現在の completion report にそのようなフィールドは存在しない (fix.md 内に `gh issue create` / issue 作成カウンタは一切無い)。実際に再 review が必要なのは「本 PR 外への先延ばし」ではなく「accept という本 PR 内の受け流し決着が次回 review で本当に suppress されるかを確認する」ケースのため、上記の accept ベースの条件に置き換えた。
 
 
 ### 4.6.W Wiki Ingest Trigger (Conditional)
@@ -3491,12 +3493,14 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。Stop hook が prefix `FINALIZE:` を検出し、「`/rite:iterate` ステップ5 の完了通知を出力してから終えよ」と **1 回だけ** 再注入する。one-shot consume のため完了通知出力後はクリーン終了する (無限 block しない)。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で AskUserQuestion (再試行/中止) に分岐するため、完了通知を強制してはならない。
 
-判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態と fatal フラグは ステップ 4.6 / 4.5 / 2.4 / 1.0.1 で既知): **`プッシュ: 完了` かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し (reply のみ) かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。
+判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態・fatal フラグ・本 cycle 内の accept 発生有無は ステップ 4.6 / 4.5 / 2.4 / 2.1.A / 1.0.1 で既知): **(`プッシュ: 完了` または 本 cycle 内で `[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` が 1 回以上 context に出現 [= 本 cycle で accept (認知のみ) 決定が発生]) かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し かつ 本 cycle 内で accept 決定なし (reply / skip / nit-noted のみ) かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。
+
+**accept が継続条件になる理由 (Issue #1811)**: accept (認知のみ、ステップ 2.1.A) は fingerprint を `.rite/state/accepted-fingerprints-{pr_number}.txt` に永続化するだけで、実際に当該 finding が次回 review で除外されるかどうかは `pr-review.md` ステップ 5.1.2.A (Non-Target) の suppression 処理が本当に効くかにかかっている。push 無しを無条件に正常終了とすると、この suppression が実際に成立したかを一度も確認しないまま loop が終わり、`/rite:iterate` は mergeable 判定を経ずに完了したことになる。判定材料は ACCEPT_FINGERPRINT_PERSISTED マーカー (ステップ 2.1.A が本 cycle 内で emit 済み、同一 Bash tool 呼び出し境界を跨いでも会話コンテキストに残る) の**本 cycle 内での出現有無**であり、`{accept_count}` (Issue 完了まで累計、4.6 completion report 参照) を使ってはならない — 過去 cycle の累計が 1 件でもあれば恒久的に継続扱いになり無限 re-review を招くため。マーカーが判定できない場合 (context 圧縮等で欠落) は accept 無しとして扱い、従来ロジック (push 有無のみ) にフォールバックする。
 
 > **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** handoff (継続 `/rite:pr-review` / 終了 `FINALIZE:fix:replied-only`) のみ。pr-review.md Step 8.0 が**セットした** `/rite:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
 
 ```bash
-# 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 & fatal フラグ無し) の場合 (継続 handoff):
+# 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 OR 本 cycle accept 発生 & fatal フラグ無し) の場合 (継続 handoff):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
@@ -3504,7 +3508,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --handoff "/rite:pr-review {pr_number}" \
   --if-exists
 
-# 正常終了 ([fix:replied-only]: push 無し & fatal フラグ無し) の場合 (FINALIZE 終了通知 handoff):
+# 正常終了 ([fix:replied-only]: push 無し & 本 cycle accept 発生なし & fatal フラグ無し) の場合 (FINALIZE 終了通知 handoff):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \

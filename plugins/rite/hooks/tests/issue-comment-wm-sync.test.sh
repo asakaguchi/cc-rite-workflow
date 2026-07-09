@@ -18,6 +18,13 @@ TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
 
+# Clean session-id env for standalone runs (same convention as
+# cleanup-work-memory.test.sh / flow-state.test.sh). The FLOW_STATE resolver
+# block under test (TC-003/TC-004) is env-first (CLAUDE_CODE_SESSION_ID /
+# CLAUDE_SESSION_ID); without this unset, the dogfooding session's ambient
+# session id would leak in and override each test's seeded .rite-session-id.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
@@ -26,6 +33,10 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
 extract_function() {
   awk '/^cache_comment_id\(\) \{/,/^\}$/' "$HOOK"
+}
+
+extract_resolver_block() {
+  awk '/^# Resolve repository root for/,/^FLOW_STATE=/' "$HOOK"
 }
 
 echo "=== issue-comment-wm-sync.sh tests ==="
@@ -75,6 +86,55 @@ if printf '%s' "$stderr002" | grep -qE 'cache_comment_id (mv|jq) failed'; then
   fail "TC-002: happy path emitted a failure WARNING — stderr: $stderr002"
 else
   pass "TC-002: happy path silent on stderr"
+fi
+echo ""
+
+# ─── TC-003: FLOW_STATE resolver → resolves to per-session file (#1807) ──
+# Regression guard for the fix to #1807: FLOW_STATE used to be hardcoded to
+# the legacy shared path ($STATE_ROOT/.rite-flow-state), which does not exist
+# in schema_v2/v3-only environments — every cache lookup missed and forced a
+# full gh api comments scan. When a session_id is resolvable, FLOW_STATE must
+# now point at the per-session file (.rite/sessions/{sid}.flow-state).
+echo "TC-003: FLOW_STATE resolver resolves to per-session file when session_id is available"
+dir003="$TEST_DIR/tc003"
+mkdir -p "$dir003"
+printf '%s' "tc003-sid" > "$dir003/.rite-session-id"
+resolver_block=$(extract_resolver_block)
+out003=$(cd "$dir003" && bash -c "
+  SCRIPT_DIR='$SCRIPT_DIR/..'
+  source \"\$SCRIPT_DIR/control-char-neutralize.sh\"
+  CWD='$dir003'
+  $resolver_block
+  echo \"FLOW_STATE=\$FLOW_STATE\"
+" 2>&1)
+if printf '%s' "$out003" | grep -qF "FLOW_STATE=$dir003/.rite/sessions/tc003-sid.flow-state"; then
+  pass "TC-003: resolver resolved to per-session file"
+else
+  fail "TC-003: resolver did not resolve to expected per-session path. got: $out003"
+fi
+echo ""
+
+# ─── TC-004: FLOW_STATE resolver → falls back to legacy file with WARNING ──
+# Regression guard for the fallback branch: when session_id cannot be
+# resolved (no .rite-session-id / session env var), the resolver must emit a
+# WARNING (not silently swallow the failure) and still fall back to the
+# legacy shared path so callers keep a usable FLOW_STATE value.
+echo "TC-004: FLOW_STATE resolver falls back to legacy path with WARNING when session_id unresolvable"
+dir004="$TEST_DIR/tc004"
+mkdir -p "$dir004"
+out004=$(cd "$dir004" && bash -c "
+  SCRIPT_DIR='$SCRIPT_DIR/..'
+  source \"\$SCRIPT_DIR/control-char-neutralize.sh\"
+  CWD='$dir004'
+  $resolver_block
+  echo \"FLOW_STATE=\$FLOW_STATE\"
+" 2>&1)
+if printf '%s' "$out004" | grep -q 'WARNING: issue-comment-wm-sync: flow-state.sh path resolution failed' && \
+   printf '%s' "$out004" | grep -qE 'cannot resolve session_id' && \
+   printf '%s' "$out004" | grep -qF "FLOW_STATE=$dir004/.rite-flow-state"; then
+  pass "TC-004: resolver fallback emits WARNING and falls back to legacy path"
+else
+  fail "TC-004: expected WARNING + legacy fallback (with diagnostic detail). got: $out004"
 fi
 echo ""
 

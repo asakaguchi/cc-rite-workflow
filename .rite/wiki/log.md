@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T18:29:35+09:00 | Create | [修正が既存の no-op 経路を有効化すると、その経路に潜んでいたバグが初めて顕在化する](pages/anti-patterns/fix-activates-dormant-no-op-path-reveals-latent-bug.md) | raw/reviews/20260709T090623Z-pr-1809-cycle2.md + raw/fixes/20260709T090806Z-pr-1809-cycle2.md を新規ページ化 — PR #1809 (Issue #1807) cycle 2、MEDIUM 1件 (flow-state.sh cmd_set の merge-preserve gap、実機 repro で発見) を別Issue #1810 + accept で決着 |
+| 2026-07-09T18:29:35+09:00 | Skip | raw/reviews/20260709T084541Z-pr-1809.md | PR #1809 cycle 1 review、LOW 1件 (テスト診断詳細行未assert、error-handling/test 2 reviewer 独立検出) — 既存 Observed Likelihood Gate ページと同型実例のため新規性薄く skip |
+| 2026-07-09T18:29:35+09:00 | Skip | raw/fixes/20260709T085018Z-pr-1809.md | PR #1809 cycle 1 fix、テスト grep 条件1行追加のみで一般化する新規教訓なし |
 | 2026-07-09T15:56:16+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=260, broken_refs=0 (PR #1808 ingest 後の auto-lint) |
 | 2026-07-09T15:56:16+09:00 | Skip | raw/reviews/20260709T064617Z-pr-1808-cycle3.md | PR #1808 (Issue #695) cycle 3 review、0 findings mergeable。収束記録のみで新規経験則抽出なし（低confidence推奨事項はDecision Log記録が既存運用パターンとして確立済み） |
 | 2026-07-09T15:56:16+09:00 | update | [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) | raw/fixes/20260709T061632Z-pr-1808-cycle2.md を統合 — PR #1808 (Issue #695) cycle 2 fix、TC-resolver-fallback 追加 + revert test で非空虚性確認 |

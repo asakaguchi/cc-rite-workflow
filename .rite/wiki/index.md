@@ -191,9 +191,10 @@
 | [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | heuristics | 識別子リネーム PR では rite:{old} の完全コマンド文字列だけでなく {old}.md のファイル名 shorthand、および拡張子なしの裸トークンの3階層を洗い出さないと、review-fix ループが段階的に狭いスコープへ収束しながら複数サイクルを消費する。PR #1796 では Tier 2 残存を fix loop でなく別 Issue 化で 1 cycle 収束させる代替戦略を確認。 | 2026-07-08T09:10:00+00:00 | high |
 | [境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）](pages/anti-patterns/sanitization-gap-downstream-tool-escape-semantics.md) | anti-patterns | quoted heredoc でコマンド置換・変数展開を防いだ直後、同じ値を awk -v へ渡すと今度は awk 自身のバックスラッシュエスケープ解釈（\n→改行 / \t→タブ / \d→d）で複数行分割・文字破壊が起きる。1 つの脆弱性クラス（shell injection）の修正が、別の脆弱性クラス（データ破損・不変条件違反）を別ツールの境界に持ち込む典型例。PR #1802 で quoted heredoc 修正後の awk -v 経由伝播を実機検証。 | 2026-07-09T00:40:00+09:00 | high |
 | [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) | patterns | バグ修正の過程で新たに追加したエラーハンドリング分岐（fallback / WARNING 等）は、修正対象のバグと同じ厳格さで回帰テストを追加する。既存テストが全て成功前提を seed していると新分岐は一度も通過されないため、revert test で非空虚性を確認する。PR #1808 (Issue #695) cycle 2 で 2 reviewer が異なる重要度 (HIGH / 推奨事項) で同一ギャップを独立検出、revert test で新設 TC の識別力を実証。 | 2026-07-09T06:56:16+00:00 | high |
+| [修正が既存の no-op 経路を有効化すると、その経路に潜んでいたバグが初めて顕在化する](pages/anti-patterns/fix-activates-dormant-no-op-path-reveals-latent-bug.md) | anti-patterns | ある bug fix が別の書き込み経路を『実在ファイルを指す』ように変えると、以前は常に no-op で無害だったその経路の潜在的な欠陥（merge-preserve 漏れ等）が初めて発火する。PR #1809 (Issue #1807) cycle 2 で FLOW_STATE 解決の修正が cache_comment_id() の書き込みを有効化し、flow-state.sh cmd_set の merge-preserve gap を実機 repro で発見。 | 2026-07-09T09:29:35Z | high |
 
 ## 統計
 
-- 総ページ数: 177
-- ドメイン別: patterns=60, heuristics=55, anti-patterns=60
-- 最終更新: 2026-07-08T13:13:15+09:00
+- 総ページ数: 178
+- ドメイン別: patterns=60, heuristics=55, anti-patterns=61
+- 最終更新: 2026-07-09T09:29:35Z

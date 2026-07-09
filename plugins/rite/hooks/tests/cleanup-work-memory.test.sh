@@ -16,11 +16,30 @@ TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
 
+# Clean session-id env for standalone runs (same convention as flow-state.test.sh).
+# cleanup-work-memory.sh now resolves its flow-state file via flow-state.sh path,
+# which is env-first (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID). Without this
+# unset, the dogfooding session's ambient session id would leak in and override
+# each test's seeded .rite-session-id, resolving to a path outside TEST_DIR and
+# silently no-op'ing the Step 1 flow-state reset under test.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
 pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
+
+# Seed a per-session flow-state file (schema_v2/v3 form) instead of the legacy
+# shared .rite-flow-state, matching what flow-state.sh path actually resolves
+# to at runtime. Sets .rite-session-id so the resolver picks this session
+# deterministically.
+seed_session_flow_state() {
+  local dir="$1" sid="$2" json="$3"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  printf '%s' "$json" > "$dir/.rite/sessions/${sid}.flow-state"
+}
 
 echo "=== cleanup-work-memory.sh tests ==="
 echo ""
@@ -29,20 +48,23 @@ echo ""
 echo "TC-001: TMP_STATE mktemp failure does not abort Step 2/3 cleanup"
 dir001="$TEST_DIR/tc001"
 mkdir -p "$dir001/.rite-work-memory"
-# Seed flow-state, compact-state, and a per-issue work memory file
-echo '{"active":true,"issue_number":42,"phase":"completed","branch":"feat/issue-42-test"}' > "$dir001/.rite-flow-state"
+# Seed the per-session flow-state file (schema_v2/v3), compact-state, and a
+# per-issue work memory file
+seed_session_flow_state "$dir001" "tc001-sid" '{"active":true,"issue_number":42,"phase":"completed","branch":"feat/issue-42-test"}'
 echo '{"compact_state":"recovering","active_issue":42}' > "$dir001/.rite-compact-state"
 echo "# work memory for issue 42" > "$dir001/.rite-work-memory/issue-42.md"
 
 # Inject a mktemp shim that fails only when the target argument matches the
-# FLOW_STATE.tmp pattern. All other mktemp invocations (test helpers, child
+# FLOW_STATE.tmp pattern (matches both the legacy .rite-flow-state.tmp.* name
+# and the per-session .../sid.flow-state.tmp.* name — both end in
+# "flow-state.tmp."). All other mktemp invocations (test helpers, child
 # scripts) pass through to real mktemp.
 mkdir -p "$dir001/bin"
 cat > "$dir001/bin/mktemp" <<'EOF'
 #!/bin/bash
 for arg in "$@"; do
   case "$arg" in
-    *.rite-flow-state.tmp.*) exit 1 ;;
+    *flow-state.tmp.*) exit 1 ;;
   esac
 done
 exec /usr/bin/mktemp "$@"
@@ -81,7 +103,7 @@ echo ""
 echo "TC-002: happy path with working mktemp removes all three"
 dir002="$TEST_DIR/tc002"
 mkdir -p "$dir002/.rite-work-memory"
-echo '{"active":true,"issue_number":43,"phase":"completed"}' > "$dir002/.rite-flow-state"
+seed_session_flow_state "$dir002" "tc002-sid" '{"active":true,"issue_number":43,"phase":"completed"}'
 echo '{"compact_state":"recovering","active_issue":43}' > "$dir002/.rite-compact-state"
 echo "# wm 43" > "$dir002/.rite-work-memory/issue-43.md"
 
@@ -106,21 +128,23 @@ echo ""
 echo "TC-003: Step 1 mv mutation emits WARNING with real rc"
 dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003/.rite-work-memory"
-echo '{"active":true,"issue_number":44,"phase":"completed","branch":"feat/issue-44"}' > "$dir003/.rite-flow-state"
+seed_session_flow_state "$dir003" "tc003-sid" '{"active":true,"issue_number":44,"phase":"completed","branch":"feat/issue-44"}'
 mkdir -p "$dir003/bin"
 cat > "$dir003/bin/mv" <<'MV_SHIM'
 #!/bin/bash
-# Fail only when targeting the flow-state file; let other mv calls succeed
+# Fail only when targeting the flow-state file (matches both the legacy
+# .rite-flow-state name and the per-session .../sid.flow-state name — both
+# end in "flow-state"); let other mv calls succeed
 for arg in "$@"; do
   case "$arg" in
-    *.rite-flow-state) exit 17 ;;
+    *flow-state) exit 17 ;;
   esac
 done
 exec /bin/mv "$@"
 MV_SHIM
 chmod +x "$dir003/bin/mv"
 stderr003=$(cd "$dir003" && PATH="$dir003/bin:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-if printf '%s' "$stderr003" | grep -qE '\.rite-flow-state の更新に失敗しました \(mv rc=[1-9][0-9]*\)'; then
+if printf '%s' "$stderr003" | grep -qE 'flow-state の更新に失敗しました \(mv rc=[1-9][0-9]*\)'; then
   pass "TC-003: Step 1 mv WARNING carries real rc"
 else
   fail "TC-003: Step 1 mv WARNING missing or rc collapsed (a bash-! regression would emit rc=0). stderr: $stderr003"
@@ -209,10 +233,12 @@ echo ""
 echo "TC-008: corrupt FLOW_STATE surfaces jq rc in WARNING"
 dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008/.rite-work-memory"
-printf 'not-valid-json{{' > "$dir008/.rite-flow-state"
+mkdir -p "$dir008/.rite/sessions"
+printf '%s' "tc008-sid" > "$dir008/.rite-session-id"
+printf 'not-valid-json{{' > "$dir008/.rite/sessions/tc008-sid.flow-state"
 out008="$TEST_DIR/tc008.out"
 ( cd "$dir008" && bash "$HOOK" >"$out008" 2>&1 ) || true
-if grep -qE 'cleanup-work-memory: \.rite-flow-state の \.issue_number 取得失敗 \(rc=[1-9]' "$out008"; then
+if grep -qE 'cleanup-work-memory: .*flow-state の \.issue_number 取得失敗 \(rc=[1-9]' "$out008"; then
   pass "TC-008 corrupt FLOW_STATE surfaces WARNING with real jq rc"
 else
   fail "TC-008 expected WARNING with rc on corrupt FLOW_STATE; got: $(head -10 "$out008")"
@@ -227,9 +253,7 @@ echo ""
 echo "TC-full-cleanup-removes-per-session-compact: full cleanup removes per-session compact-state"
 dir1371="$TEST_DIR/tc1371"
 sid1371="test-sid-tc1371"
-mkdir -p "$dir1371/.rite/sessions"
-printf '%s' "$sid1371" > "$dir1371/.rite-session-id"
-echo '{"active":true,"issue_number":1371,"phase":"completed"}' > "$dir1371/.rite-flow-state"
+seed_session_flow_state "$dir1371" "$sid1371" '{"active":true,"issue_number":1371,"phase":"completed"}'
 echo '{"compact_state":"recovering","active_issue":1371}' > "$dir1371/.rite-compact-state"
 cs1371_session="$dir1371/.rite/sessions/${sid1371}.compact-state"
 echo '{"compact_state":"recovering","active_issue":1371}' > "$cs1371_session"

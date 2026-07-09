@@ -6,10 +6,13 @@
 # Usage:
 #   bash plugins/rite/hooks/cleanup-work-memory.sh [--issue <number>]
 #
-# Without --issue: reads issue number from .rite-flow-state, resets flow state
-#   to active:false, deletes ALL issue-*.md files and lockdirs (full cleanup).
+# Without --issue: resolves the current session's flow-state file via the
+#   canonical resolver (flow-state.sh path — schema_v2/v3 per-session file
+#   under .rite/sessions/, falling back to the legacy shared .rite-flow-state
+#   only when session resolution itself fails), resets it to active:false,
+#   deletes ALL issue-*.md files and lockdirs (full cleanup).
 # With --issue <number>: deletes only the specified issue's files (close mode).
-#   Does NOT reset .rite-flow-state (close.md handles its own state).
+#   Does NOT reset the flow-state file (close.md handles its own state).
 #
 # Exit codes:
 #   0: Success (files deleted or nothing to delete)
@@ -24,7 +27,6 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # Resolve repository root
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
 
-FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 WM_DIR="$STATE_ROOT/.rite-work-memory"
 
 # Parse arguments
@@ -52,7 +54,17 @@ failed_count=0
 
 # --- Full cleanup mode (no --issue) ---
 if [ "$CLOSE_MODE" = false ]; then
-  # Step 1: Reset .rite-flow-state to active:false BEFORE deleting files
+  # Resolve the current session's flow-state path via the canonical resolver
+  # (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).
+  # Resetting the legacy shared file directly (as this script previously did)
+  # left the real per-session file behind with stale active:true/phase:cleanup
+  # state after /rite:cleanup completed (#695). Fall back to the legacy shared
+  # file only when session resolution itself fails (no .rite-session-id /
+  # session env var available).
+  RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || RESOLVED_FLOW_STATE=""
+  FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
+
+  # Step 1: Reset flow-state to active:false BEFORE deleting files
   # This prevents post-tool-wm-sync.sh from recreating files
   if [ -f "$FLOW_STATE" ]; then
     # Read issue number from flow state for logging. Capture jq stderr so a
@@ -65,14 +77,14 @@ if [ "$CLOSE_MODE" = false ]; then
     if [ "$_isn_rc" -ne 0 ]; then
       _isn_tag=""
       [ -z "$_isn_err" ] && _isn_tag=" stderr_capture=disabled"
-      echo "[rite] WARNING: cleanup-work-memory: .rite-flow-state の .issue_number 取得失敗 (rc=$_isn_rc — FLOW_STATE may be corrupt${_isn_tag})" >&2
+      echo "[rite] WARNING: cleanup-work-memory: $(basename "$FLOW_STATE") の .issue_number 取得失敗 (rc=$_isn_rc — FLOW_STATE may be corrupt${_isn_tag})" >&2
       [ -n "$_isn_err" ] && [ -s "$_isn_err" ] && head -3 "$_isn_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       ISSUE_NUMBER=""
     fi
     [ -n "$_isn_err" ] && rm -f "$_isn_err"
     # Validate issue number from flow state (non-numeric values would break --argjson)
     if [ -n "$ISSUE_NUMBER" ] && ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
-      echo "WARNING: .rite-flow-state の issue_number が数値でない: '$ISSUE_NUMBER'. 0 にフォールバック" >&2
+      echo "WARNING: $(basename "$FLOW_STATE") の issue_number が数値でない: '$ISSUE_NUMBER'. 0 にフォールバック" >&2
       ISSUE_NUMBER=""
     fi
 
@@ -100,18 +112,18 @@ if [ "$CLOSE_MODE" = false ]; then
           :
         else
           _mv_rc=$?
-          echo "WARNING: .rite-flow-state の更新に失敗しました (mv rc=$_mv_rc)" >&2
+          echo "WARNING: $(basename "$FLOW_STATE") の更新に失敗しました (mv rc=$_mv_rc)" >&2
           [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         fi
         [ -n "$_mv_err" ] && rm -f "$_mv_err"
       else
         _jq_rc=$?
-        echo "WARNING: .rite-flow-state のリセットに失敗しました (jq rc=$_jq_rc — missing in PATH / locale / parse error を区別)" >&2
+        echo "WARNING: $(basename "$FLOW_STATE") のリセットに失敗しました (jq rc=$_jq_rc — missing in PATH / locale / parse error を区別)" >&2
         [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"
     else
-      echo "WARNING: .rite-flow-state TMP_STATE mktemp failed — flow-state reset skipped (subsequent cleanup steps will still run)" >&2
+      echo "WARNING: $(basename "$FLOW_STATE") TMP_STATE mktemp failed — flow-state reset skipped (subsequent cleanup steps will still run)" >&2
       echo "  hint: $(dirname "$FLOW_STATE") の permission / disk full / read-only を確認" >&2
     fi
   fi
@@ -120,11 +132,12 @@ if [ "$CLOSE_MODE" = false ]; then
   # Legacy shared path removal is retained for legacy migration residue.
   rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
   rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory" >&2
-  # Per-session compact-state: derive from the resolved flow-state
-  # path so full cleanup also reaps the current session's snapshot.
-  _cwm_flow_state=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || _cwm_flow_state=""
-  if [ -n "$_cwm_flow_state" ]; then
-    _cwm_compact="${_cwm_flow_state%.flow-state}.compact-state"
+  # Per-session compact-state: derive from the already-resolved flow-state
+  # path (RESOLVED_FLOW_STATE, set above) so full cleanup also reaps the
+  # current session's snapshot. Empty when session resolution failed above —
+  # no per-session compact-state to derive in that case.
+  if [ -n "$RESOLVED_FLOW_STATE" ]; then
+    _cwm_compact="${RESOLVED_FLOW_STATE%.flow-state}.compact-state"
     rm -f "$_cwm_compact" 2>/dev/null || true
     rm -rf "$_cwm_compact.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_per_session" >&2
   fi

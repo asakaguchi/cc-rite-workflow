@@ -68,14 +68,33 @@ unknowns は 4 象限で捉える:
 - ユーザーにとって未知のドメインなら、選択肢を評価できるようになる最小限の基礎を教える。目的は知識の網羅ではなく、ユーザーが「何が良いか」の判断基準を持てるようにすること
 - 「この変更が触れないが、壊れうる隣接領域は何か」「ユーザーが知らなそうな既存の制約・慣習は何か」を自問して探す
 
-**Wiki 連携（Conditional）**: `wiki.enabled: true` かつ `wiki.auto_query: true`（`rite-config.yml`）のとき、盲点候補の材料としてプロジェクトの蓄積経験則を注入する。Wiki 無効 / 未初期化時は silent skip（エラー・警告を出さない）。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する:
+**Wiki 連携（Conditional）**: 盲点候補の材料としてプロジェクトの蓄積経験則を注入する。
+
+Step 1: `wiki.enabled: true` かつ `wiki.auto_query: true`（`rite-config.yml`）のときのみ実行する。いずれか false なら以下を silent skip し、通常の盲点洗い出しのみ行う（エラー・警告は出さない）:
 
 ```bash
-# {keywords} はユーザーのテーマ・対象ドメイン用語をカンマ区切りで生成
-# （他コーラー skills/issue-create/SKILL.md 4.0 / skills/fix/SKILL.md 0.5.W /
-#   skills/pr-review/SKILL.md 4.0.W / skills/issue-implement/SKILL.md 5.0.W と同形式）
-if [ -f "{plugin_root}/hooks/wiki-query-inject.sh" ]; then
-  wiki_context=$(bash "{plugin_root}/hooks/wiki-query-inject.sh" --keywords "{keywords}" --format compact 2>/dev/null) || wiki_context=""
+wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
+wiki_enabled=""
+if [[ -n "$wiki_section" ]]; then
+  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+auto_query=""
+if [[ -n "$wiki_section" ]]; then
+  auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac
+case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
+echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
+```
+
+Step 2: `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files) で解決する。`{keywords}` はユーザーのテーマ・対象ドメイン用語をカンマ区切りで生成する（他コーラー skills/issue-create/SKILL.md 4.0 / skills/fix/SKILL.md 0.5.W / skills/pr-review/SKILL.md 4.0.W / skills/issue-implement/SKILL.md 5.0.W と同形式）:
+
+```bash
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+if [ -n "$plugin_root" ] && [ -f "$plugin_root/hooks/wiki-query-inject.sh" ]; then
+  wiki_context=$(bash "$plugin_root/hooks/wiki-query-inject.sh" --keywords "{keywords}" --format compact 2>/dev/null) || wiki_context=""
   [ -n "$wiki_context" ] && echo "$wiki_context"
 fi
 ```

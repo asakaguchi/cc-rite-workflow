@@ -2,7 +2,7 @@
 title: "Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-05T10:30:00Z"
+updated: "2026-07-09T19:44:33+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260416T031452Z-pr-540.md"
@@ -14,7 +14,9 @@ sources:
     ref: "raw/reviews/20260502T155859Z-pr-779.md"
   - type: "reviews"
     ref: "raw/reviews/20260505T095516Z-pr-834.md"
-tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract"]
+  - type: "reviews"
+    ref: "raw/reviews/20260709T104501Z-pr-1812.md"
+tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract", "finding-quality-guardrail"]
 confidence: high
 ---
 
@@ -99,6 +101,14 @@ reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の lite
 
 本 sub-pattern と Hypothetical 降格軸 (PR #589) は orthogonal — reviewer 内容の構造的問題 (literal anchor 欠落) と reviewer 判定の論理的問題 (現状コード非依存の仮定的リスク) は別軸で処理されるため、両 gate を独立に通過する必要がある。
 
+### 第3の orthogonal 軸: 推奨文の self-declared 不要性 (Finding Quality Guardrail bikeshedding filter、PR #1812)
+
+PR #1812 cycle 3 で観測した sub-pattern: reviewer が finding を LOW severity・`scope: current-pr` として指摘事項テーブルに記載していても、その **推奨対応欄の文面自体が「必須ではない」「本 PR のスコープ外」と明記している** 場合、orchestrator は `_reviewer-base.md` の Finding Quality Guardrail（Category 1: Bikeshedding — 「project convention 違反を指摘できない限り filter」）を適用して non-blocking な推奨事項として扱ってよい。
+
+これは anchor 欠落 (構造的問題) でも Hypothetical (論理的問題) でもない **第3の軸**: reviewer 自身の文面が示す「対応の要否」に関する自己矛盾（severity/scope 列は blocking を示すが、推奨対応の自然言語記述は non-blocking を示す）を検出する。判定基準は機械的 grep ではなく、推奨文中の「不要」「必須ではない」「スコープ外」等のキーワードの有無。
+
+適用時の注意: この軸は severity が LOW（またはそれに準じる低確信度）の場合にのみ適用し、CRITICAL/HIGH の finding を推奨文の言い回しだけで降格させてはならない（severity 自体は reviewer の技術判断であり、本軸はあくまで「reviewer 自身が non-blocking と結論している」ことの明示的シグナルを拾うものであるため）。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -110,3 +120,4 @@ reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の lite
 - [PR #589 review (Hypothetical 降格軸の追加実証 — HIGH x2 → 推奨事項降格)](../../raw/reviews/20260419T043538Z-pr-589.md)
 - [PR #779 review (literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証)](../../raw/reviews/20260502T155859Z-pr-779.md)
 - [PR #834 review (11 findings 全降格 — cross-validation 合意でも literal anchor 欠落は補えない実証)](../../raw/reviews/20260505T095516Z-pr-834.md)
+- [PR #1812 review cycle 3 (推奨文の self-declared 不要性による第3の orthogonal 降格軸)](../../raw/reviews/20260709T104501Z-pr-1812.md)

@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T19:44:33+09:00 | update | [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) | raw/reviews/20260709T104501Z-pr-1812.md を統合 — PR #1812 (Issue #1810) cycle 3 review、0 blocking findings mergeable。推奨文が self-declared に不要性を示す場合の Finding Quality Guardrail bikeshedding filter を第3の orthogonal 降格軸として追加 |
+| 2026-07-09T19:44:33+09:00 | Create | [新規診断出力の追加は同一ファイル内の既存 control-char 中和規約を踏襲する](pages/anti-patterns/new-diagnostic-path-skips-existing-neutralize-convention.md) | raw/reviews/20260709T102352Z-pr-1812.md + raw/fixes/20260709T103432Z-pr-1812.md を新規ページ化 — PR #1812 (Issue #1810) cycle 2、MEDIUM 1件 (security reviewer 検出: custom error() が corrupt 値を未中和で stderr 送出)、cycle 3 で修正確認済み |
+| 2026-07-09T19:44:33+09:00 | update | [jq -n create mode: 既存値を読み取ってから再構築する](pages/patterns/jq-create-mode-preserve-existing.md) | raw/reviews/20260709T100928Z-pr-1812.md + raw/fixes/20260709T101456Z-pr-1812.md を統合 — PR #1812 (Issue #1810) cycle 1、LOW-MEDIUM/LOW 2件 (wm_comment_id 追加、型変換 tonumber を伴う唯一の preserve フィールドという構造的違いが指摘を生んだ) |
 | 2026-07-09T18:30:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=262, broken_refs=0 (PR #1809 ingest 後の auto-lint) |
 | 2026-07-09T18:29:35+09:00 | Create | [修正が既存の no-op 経路を有効化すると、その経路に潜んでいたバグが初めて顕在化する](pages/anti-patterns/fix-activates-dormant-no-op-path-reveals-latent-bug.md) | raw/reviews/20260709T090623Z-pr-1809-cycle2.md + raw/fixes/20260709T090806Z-pr-1809-cycle2.md を新規ページ化 — PR #1809 (Issue #1807) cycle 2、MEDIUM 1件 (flow-state.sh cmd_set の merge-preserve gap、実機 repro で発見) を別Issue #1810 + accept で決着 |
 | 2026-07-09T18:29:35+09:00 | Skip | raw/reviews/20260709T084541Z-pr-1809.md | PR #1809 cycle 1 review、LOW 1件 (テスト診断詳細行未assert、error-handling/test 2 reviewer 独立検出) — 既存 Observed Likelihood Gate ページと同型実例のため新規性薄く skip |

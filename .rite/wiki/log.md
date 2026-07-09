@@ -6,6 +6,11 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T13:39:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260709T043713Z-pr-1806.md を統合 — PR #1806 (Issue #1783) cycle 4 review、0 findings mergeable。累積 60 回目、4 cycle 全体の欠陥パターン総括を追記 |
+| 2026-07-09T13:39:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/fixes/20260709T042215Z-pr-1806.md を統合 — PR #1806 (Issue #1783) cycle 3 fix、issue-create/SKILL.md:128 の同型欠陥を修正 |
+| 2026-07-09T13:39:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/fixes/20260709T040827Z-pr-1806.md を統合 — PR #1806 (Issue #1783) cycle 2 fix、unknowns/SKILL.md:177 のポインタ retarget（2 reviewer cross-validation boost 実例） |
+| 2026-07-09T13:39:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/fixes/20260709T035116Z-pr-1806.md を統合 — PR #1806 (Issue #1783) cycle 1 fix、発見した盲点ルーティングの前提ギャップへの doc-only fix |
+| 2026-07-09T13:39:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260709T034359Z-pr-1806.md を統合 — PR #1806 (Issue #1783) cycle 1 review、MEDIUM 1件 + LOW-MEDIUM 1件検出。新規 rationale ドキュメント導入時の「アンカーは解決するが根拠セクションに未到達」sub-pattern として新規統合 |
 | 2026-07-09T11:05:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=259, broken_refs=0 (PR #1805 ingest 後の auto-lint) |
 | 2026-07-09T11:00:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260709T013058Z-pr-1805.md を統合 — PR #1805 (Issue #1782) cycle 3 review、0 findings mergeable。3 cycle 全体の欠陥パターン総括を追記 |
 | 2026-07-09T11:00:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/fixes/20260709T011712Z-pr-1805.md を統合 — PR #1805 (Issue #1782) cycle 2 fix、prose/実装乖離修正 + 新規ファイル向け inline one-liner 規約への修正を追記 |

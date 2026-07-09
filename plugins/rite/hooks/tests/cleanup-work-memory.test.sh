@@ -256,6 +256,30 @@ else
 fi
 echo ""
 
+# ─── TC-resolver-fallback: session resolution failure surfaces WARNING and still resets legacy file ──────────
+# Regression guard for the resolver-failure branch added to fix #695: when no
+# .rite-session-id / session env var is available, flow-state.sh path fails,
+# and cleanup-work-memory.sh must (a) emit a WARNING (not silently swallow the
+# failure) and (b) still fall back to resetting the legacy .rite-flow-state
+# file. Without this guard, a regression that reverts the stderr capture +
+# WARNING (or drops the fallback reset) would not be caught by any other TC —
+# TC-001/002/003/008 all seed a valid .rite-session-id, so resolver always
+# succeeds in those paths.
+echo "TC-resolver-fallback: session resolution failure emits WARNING and resets legacy file"
+dir_resolver="$TEST_DIR/tc_resolver_fallback"
+mkdir -p "$dir_resolver/.rite-work-memory"
+echo '{"active":true,"issue_number":77,"phase":"cleanup"}' > "$dir_resolver/.rite-flow-state"
+out_resolver="$TEST_DIR/tc_resolver_fallback.out"
+( cd "$dir_resolver" && bash "$HOOK" >"$out_resolver" 2>&1 ) || true
+resolver_warning_seen=$(grep -c 'flow-state.sh path resolution failed' "$out_resolver" 2>/dev/null || true)
+resolver_active=$(jq -r '.active' "$dir_resolver/.rite-flow-state" 2>/dev/null)
+if [ "${resolver_warning_seen:-0}" -ge 1 ] && [ "$resolver_active" = "false" ]; then
+  pass "TC-resolver-fallback: WARNING emitted and legacy .rite-flow-state reset to active=false"
+else
+  fail "TC-resolver-fallback: warning_seen=${resolver_warning_seen:-0}, active=$resolver_active; got: $(head -10 "$out_resolver")"
+fi
+echo ""
+
 # ─── TC-full-cleanup-removes-per-session-compact: full cleanup removes the per-session compact-state ──────────
 # full-cleanup mode must reap the current session's per-session
 # compact-state (.rite/sessions/<sid>.compact-state), not just the legacy

@@ -94,6 +94,7 @@ This will:
 | `/rite:setup --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
 | `/rite:getting-started` | Interactive onboarding guide |
 | `/rite:workflow` | Show workflow guide |
+| `/rite:unknowns` | Pre-implementation exploration session (blind-spot pass, brainstorming, throwaway prototypes, interview) — optional, manual only |
 | `/rite:issue-list` | List Issues |
 | `/rite:issue-create` | Create new Issue |
 | `/rite:issue-update` | Update work memory |

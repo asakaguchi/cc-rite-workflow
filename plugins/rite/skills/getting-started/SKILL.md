@@ -261,11 +261,16 @@ Option A: Work on an existing Issue
      (Replace 42 with the Issue number)
 
 Option B: Create a new Issue
-  1. Create an Issue with a description:
+  1. (Optional) If your idea isn't fully formed yet, explore it first:
+     /rite:unknowns <topic>
+     (Blind-spot pass, brainstorming, throwaway prototypes, and interview —
+      ends with an exploration summary you can feed into step 2)
+
+  2. Create an Issue with a description:
      /rite:issue-create Add user authentication
 
-  2. Then start working on the created Issue:
-     /rite:open <issue number from step 1>
+  3. Then start working on the created Issue:
+     /rite:open <issue number from step 2>
 
 What happens when you start an Issue:
   ✓ Creates a feature branch (e.g., feat/issue-42-description)

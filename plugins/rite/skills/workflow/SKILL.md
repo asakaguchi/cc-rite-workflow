@@ -63,6 +63,10 @@ Display the following diagram:
 │                     ワークフロー全体図                      │
 └─────────────────────────────────────────────────────────────┘
 
+  /rite:unknowns <テーマ> (構想フェーズ・任意の前段)
+        │  盲点洗い出し・ブレスト・プロトタイプ・インタビュー
+        │  → 探索サマリ出力
+        ▼
   /rite:issue-list (Issue 確認)
         │
         ▼
@@ -109,6 +113,9 @@ Display the following list:
 【セットアップ】
   /rite:setup           初回セットアップウィザード
   /rite:workflow        このガイドを表示
+
+【構想（任意）】
+  /rite:unknowns        実装前探索セッション（盲点洗い出し・ブレスト・プロトタイプ・インタビュー）
 
 【Issue 管理】
   /rite:issue-list      Issue 一覧を表示

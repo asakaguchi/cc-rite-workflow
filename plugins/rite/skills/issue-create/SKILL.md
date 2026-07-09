@@ -125,7 +125,7 @@ title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 
 
 Contract 生成（4.2）の前に、モデルが暗黙に補完した仮定を表面化し 3 分類で処理する。**設計原則**: 質問はユーザーの頭の中にしかない情報（ユーザー固有の意思決定）のみに限定し、リポジトリ・Wiki から導出可能な情報はモデルが探索で自己解決する。
 
-**探索サマリ検出時の軽量化**: ステップ 1.3.1 で「# 探索サマリ:」を検出した場合、以下の手順 1-3 に次の軽量化を適用する（rationale: [`references/unknowns-boundary-rationale.md#線引き`](./references/unknowns-boundary-rationale.md#線引き)）:
+**探索サマリ検出時の軽量化**: ステップ 1.3.1 で「# 探索サマリ:」を検出した場合、以下の手順 1-3 に次の軽量化を適用する（rationale: [`references/unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか`](./references/unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか)）:
 
 - 手順 2（盲点列挙）はスキップする（サマリの「発見した盲点」有無に関わらず、unknowns で実施済み扱い）
 - サマリの「確定したこと」に含まれる事項は手順 1（仮定列挙）から除外し、再質問しない

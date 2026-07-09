@@ -2,12 +2,16 @@
 title: "resolver / helper 失敗時の silent fallback は debug log で観測性を確保する"
 domain: "patterns"
 created: "2026-04-30T08:03:08Z"
-updated: "2026-04-30T08:03:08Z"
+updated: "2026-07-09T06:56:16+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260430T074655Z-pr-750-cycle-1.md"
   - type: "reviews"
     ref: "raw/reviews/20260430T074221Z-pr-750.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260709T055242Z-pr-1808.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260709T055810Z-pr-1808.md"
 tags: [observability, silent-failure, debug-log, defense-in-depth]
 confidence: high
 ---
@@ -61,6 +65,21 @@ fi
 2. **RITE_DEBUG gate で常時 enable しない**: 本番運用での log file 肥大化を防ぐ。デバッグ時のみ `RITE_DEBUG=1` で発火させる
 3. **caller 全件への対称適用 (Wiki: Asymmetric Fix Transcription)**: 1 caller のみに追加すると、別 caller の silent failure が発見できない。同 pattern を持つ全 caller (PR #750 では pre-tool-bash-guard.sh / post-tool-wm-sync.sh の 2 site) に対称適用する
 
+### PR #1808: fallback が解決先を変える場合は RITE_DEBUG gate せず常時 WARNING にする
+
+`cleanup-work-memory.sh` の `FLOW_STATE` 解決も同型の resolver 呼び出し失敗パターンだったが、本 PR の fix は上記 canonical fix の `RITE_DEBUG` gate を外し、WARNING を常時 stderr に出力する形を採った:
+
+```bash
+if RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_fs_err:-/dev/null}"); then
+  :
+else
+  echo "WARNING: cleanup-work-memory: flow-state.sh path resolution failed — falling back to legacy $(basename "$STATE_ROOT/.rite-flow-state") (session_id may be missing or invalid)" >&2
+  RESOLVED_FLOW_STATE=""
+fi
+```
+
+判断基準: PR #750 のケースは fallback 後も**本番挙動が不変**（同じ実質的な state 解決結果に収束）なため、observability を `RITE_DEBUG` gate で opt-in にしても実害がなかった。一方 PR #1808 のケースは fallback が **実際に別ファイル**（schema_v2/v3 の per-session file → legacy 共有 file）を操作対象に切り替える — silent だと `/rite:cleanup` が「成功したように見えて実際には別ファイルをリセットした」という schema 不整合を誰にも気づかれず再生産する（Issue #695 の実害そのもの）。**fallback が操作対象そのものを変える場合は、opt-in の debug ログではなく常時可視の WARNING にする**（gate の要否は「fallback後も対象不変か、対象自体が変わるか」で判定する）。
+
 ### 上位 Pattern との関係
 
 - `mktemp-failure-surface-warning.md` は mktemp 単体の silent 握り潰しを WARNING + `[CONTEXT]` sentinel で可視化する pattern。本 pattern はそれを「resolver / helper 経由の silent fallback」へ一般化したもの
@@ -68,6 +87,7 @@ fi
 
 ## 関連ページ
 
+- [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](./bugfix-new-error-path-needs-regression-test.md)
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
 - [`2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される (self-defeating observability)](../anti-patterns/stderr-merge-silent-sentinel-suppression.md)
 - [stderr ノイズ削減: truncate ではなく selective surface で解く](../heuristics/stderr-selective-surface-over-truncate.md)

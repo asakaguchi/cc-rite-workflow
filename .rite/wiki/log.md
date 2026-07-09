@@ -6,6 +6,11 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T15:56:16+09:00 | Skip | raw/reviews/20260709T064617Z-pr-1808-cycle3.md | PR #1808 (Issue #695) cycle 3 review、0 findings mergeable。収束記録のみで新規経験則抽出なし（低confidence推奨事項はDecision Log記録が既存運用パターンとして確立済み） |
+| 2026-07-09T15:56:16+09:00 | update | [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) | raw/fixes/20260709T061632Z-pr-1808-cycle2.md を統合 — PR #1808 (Issue #695) cycle 2 fix、TC-resolver-fallback 追加 + revert test で非空虚性確認 |
+| 2026-07-09T15:56:16+09:00 | Create | [バグ修正PRが新設したエラーパス自身にも回帰テストを追加する](pages/patterns/bugfix-new-error-path-needs-regression-test.md) | raw/reviews/20260709T061246Z-pr-1808-cycle2.md を新規ページ化 — PR #1808 (Issue #695) cycle 2 review、HIGH 1件 (resolver失敗フォールバック分岐の回帰テスト欠如、2 reviewer が異なる重要度で独立検出) |
+| 2026-07-09T15:56:16+09:00 | update | [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](pages/patterns/silent-fallback-observability-via-debug-log.md) | raw/fixes/20260709T055810Z-pr-1808.md を統合 — PR #1808 (Issue #695) cycle 1 fix、既存 idiom (tempfile capture + WARNING) 踏襲で一貫性を保持 + TC-002 に outcome 直接検証を追加 |
+| 2026-07-09T15:56:16+09:00 | update | [resolver / helper 失敗時の silent fallback は debug log で観測性を確保する](pages/patterns/silent-fallback-observability-via-debug-log.md) | raw/reviews/20260709T055242Z-pr-1808.md を統合 — PR #1808 (Issue #695) cycle 1 review、CRITICAL 1件 (resolver失敗時の診断ログ欠落) 検出。「fallback が操作対象を変える場合は RITE_DEBUG gate せず常時 WARNING」の判定基準を追加 |
 | 2026-07-09T13:41:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=259, broken_refs=0 (PR #1806 ingest 後の auto-lint) |
 | 2026-07-09T13:39:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260709T043713Z-pr-1806.md を統合 — PR #1806 (Issue #1783) cycle 4 review、0 findings mergeable。累積 60 回目、4 cycle 全体の欠陥パターン総括を追記 |
 | 2026-07-09T13:39:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/fixes/20260709T042215Z-pr-1806.md を統合 — PR #1806 (Issue #1783) cycle 3 fix、issue-create/SKILL.md:128 の同型欠陥を修正 |

@@ -216,13 +216,16 @@ cmd_set() {
   # が常に「変化あり」と判定 → GitHub API spam (issue-comment-wm-sync 連発)。
   # 既存値が無い場合は空文字 → null として書き込み、wm-sync 側の `// "" | tostring` で
   # 空文字に縮退する (空 vs 非空 を別値として扱う wm-sync の diff guard と整合)。
+  # `cur_wm_comment_id` も同型: issue-comment-wm-sync.sh の cache_comment_id() が
+  # flow-state ファイルへ直接書き込む runtime-only field。lsp と同様に merge-preserve しないと
+  # 直後の他 skill の set 呼び出しで無警告に消える (#1810)。
   #
   # Single composite jq read: 6 つの独立 jq 呼び出しの silent fallback chain
   # では既存 state が corrupt JSON でも全フィールドが default に縮退して silent overwrite
   # される。1 回の composite jq + stderr capture に集約し、jq 失敗時に WARNING を stderr emit
   # して operator が corrupt overwrite を検出できるようにする。Unit separator () で field
   # を分割し、IFS で安全に split (whitespace collapse 防止)。
-  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0
+  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0 cur_wm_comment_id=""
   if [ -f "$path" ]; then
     local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
@@ -236,13 +239,14 @@ cmd_set() {
                        (.error_count // 0 | tostring),
                        (.last_synced_phase // ""),
                        (.worktree // ""),
-                       (.cycle_count // 0 | tostring)] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
+                       (.cycle_count // 0 | tostring),
+                       (.wm_comment_id // "" | tostring)] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
       echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
       _emit_jq_err_snippet "$_cur_jq_err"
     else
-      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle <<< "$_cur_data"
+      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id <<< "$_cur_data"
     fi
   fi
   [ -z "$issue" ] && issue=$cur_issue
@@ -293,6 +297,13 @@ cmd_set() {
   # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
   # (block 可否は handoff 非空かどうかで決まり、prefix は再注入する reason の選択にのみ影響する)。
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  # `_new_jq_err` capture (symmetric with the composite read's `_cur_jq_err`): the
+  # `tonumber` conversion below can fail on a corrupt on-disk `wm_comment_id`, and jq's
+  # own error text quotes the offending raw value. Without capturing stderr here it went
+  # straight to the terminal unneutralized, bypassing the `_emit_jq_err_snippet` control-char
+  # convention every other diagnostic site in this file uses (#1810 cycle 2 security finding).
+  local _new_jq_err="" _new_rc=0
+  _new_jq_err=$(mktemp 2>/dev/null) || _new_jq_err=""
   new=$(jq -n \
     --argjson schema "$SCHEMA_VERSION_V3" --arg session "$sid" \
     --arg phase "$phase" --argjson issue "$issue" --arg branch "$branch" \
@@ -300,7 +311,7 @@ cmd_set() {
     --arg next "$next" --argjson active "$active" \
     --argjson err "$err_count" --arg ts "$now" \
     --arg lsp "$cur_last_synced" --arg handoff "$handoff" --arg worktree "$worktree" \
-    --argjson cycle "$cycle_count" \
+    --argjson cycle "$cycle_count" --arg wmcid "$cur_wm_comment_id" \
     '{schema_version:$schema, session_id:$session, phase:$phase,
       issue_number:$issue, branch:$branch, pr_number:$pr,
       parent_issue_number:$parent, next_action:$next, active:$active,
@@ -308,7 +319,15 @@ cmd_set() {
      | (if $lsp != "" then .last_synced_phase = $lsp else . end)
      | (if $worktree != "" then .worktree = $worktree else . end)
      | (if $handoff != "" then .handoff = $handoff else . end)
-     | (if $cycle != 0 then .cycle_count = $cycle else . end)') || return 1
+     | (if $cycle != 0 then .cycle_count = $cycle else . end)
+     | (if $wmcid != "" then .wm_comment_id = ($wmcid | tonumber) else . end)' 2>"${_new_jq_err:-/dev/null}") || _new_rc=$?
+  if [ "$_new_rc" -ne 0 ]; then
+    echo "WARNING: flow-state.sh cmd_set: state write failed for $(basename "$path") (wm_comment_id not numeric, or other jq failure)" >&2
+    _emit_jq_err_snippet "$_new_jq_err"
+    [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
+    return 1
+  fi
+  [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
   # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
   # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
   # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的

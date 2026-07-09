@@ -1156,6 +1156,53 @@ sfile2="$d2/.rite/sessions/${sid2}.flow-state"
 (cd "$d2" && bash "$HOOK" set --phase branch --issue 701 --branch "feat/701" --pr 0 --next "n") >/dev/null
 assert "TC-27: backward compat → no cycle_count key without --cycle-count" "false" "$(jq -r 'has("cycle_count")' "$sfile2")"
 
+# --- TC-28: wm_comment_id is merge-preserved across cmd_set (#1810) ---
+# wm_comment_id has NO --flag — it's written directly by issue-comment-wm-sync.sh's
+# cache_comment_id() via `jq '. + {wm_comment_id: ...}'`, mirroring how post-tool-wm-sync.sh
+# writes last_synced_phase. Repro: cache_comment_id writes the field, then any other skill's
+# ordinary phase-transition `set` (no wm_comment_id awareness) must NOT wipe it.
+echo ""
+echo "=== TC-28: wm_comment_id merge-preserve across ordinary phase-transition set ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sfile="$d/.rite/sessions/${sid}.flow-state"
+(cd "$d" && bash "$HOOK" set --phase init --issue 1810 --branch "" --pr 0 --next "n") >/dev/null
+# simulate cache_comment_id() writing directly to the state file
+jq '. + {wm_comment_id: 999888}' "$sfile" > "$sfile.tmp" && mv "$sfile.tmp" "$sfile"
+assert "TC-28: wm_comment_id=999888 written directly" "999888" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile")"
+# an ordinary phase-transition set (no wm_comment_id flag exists) must preserve it
+(cd "$d" && bash "$HOOK" set --phase branch --issue 1810 --branch "fix/issue-1810" --pr 0 --next "n2") >/dev/null
+assert "TC-28: wm_comment_id preserved across unrelated phase-transition set" "999888" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile")"
+assert "TC-28: phase transition itself still applied" "branch" "$(jq -r '.phase' "$sfile")"
+# backward compat: a fresh session that never had wm_comment_id written has no such key
+result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
+sfile2="$d2/.rite/sessions/${sid2}.flow-state"
+(cd "$d2" && bash "$HOOK" set --phase branch --issue 1811 --branch "feat/1811" --pr 0 --next "n") >/dev/null
+assert "TC-28: backward compat → no wm_comment_id key when never written" "false" "$(jq -r 'has("wm_comment_id")' "$sfile2")"
+# write-time failure: a corrupted (non-numeric) wm_comment_id already on disk must make the
+# unrelated set fail loud (rc!=0) via tonumber, not silently succeed with a wiped/garbage value
+result=$(new_sandbox); d3="${result%|*}"; sid3="${result#*|}"
+sfile3="$d3/.rite/sessions/${sid3}.flow-state"
+(cd "$d3" && bash "$HOOK" set --phase init --issue 1812 --branch "" --pr 0 --next "n") >/dev/null
+jq '. + {wm_comment_id: "not-a-number"}' "$sfile3" > "$sfile3.tmp" && mv "$sfile3.tmp" "$sfile3"
+corrupt_set_rc=0
+(cd "$d3" && bash "$HOOK" set --phase branch --issue 1812 --branch "fix/issue-1812" --pr 0 --next "n2") >/dev/null 2>&1 || corrupt_set_rc=$?
+assert "TC-28: corrupt non-numeric wm_comment_id makes unrelated set fail (rc!=0)" "1" "$corrupt_set_rc"
+# security fix (cycle 2 #1810): the write-side jq stderr (which quotes the corrupt raw value)
+# must go through the same _emit_jq_err_snippet / neutralize_ctrl convention as the read side,
+# not straight to the terminal unneutralized. Same TC-23.2 pattern: inject an ESC byte and
+# assert it never reaches stderr raw.
+result=$(new_sandbox); d4="${result%|*}"; sid4="${result#*|}"
+sfile4="$d4/.rite/sessions/${sid4}.flow-state"
+(cd "$d4" && bash "$HOOK" set --phase init --issue 1813 --branch "" --pr 0 --next "n") >/dev/null
+esc=$(printf '\033')
+jq --arg v "${esc}[31mnot-a-number" '. + {wm_comment_id: $v}' "$sfile4" > "$sfile4.tmp" && mv "$sfile4.tmp" "$sfile4"
+corrupt_set_stderr=$( (cd "$d4" && bash "$HOOK" set --phase branch --issue 1813 --branch "fix/issue-1813" --pr 0 --next "n2") 2>&1 1>/dev/null || true )
+if printf '%s' "$corrupt_set_stderr" | LC_ALL=C grep -q "$esc"; then
+  fail "TC-28: corrupt wm_comment_id 由来の生 ESC が write エラー出力に残存 (control-char 中和が機能していない): '$(printf '%s' "$corrupt_set_stderr" | cat -v)'"
+else
+  pass "TC-28: corrupt wm_comment_id 由来の write エラー出力の生 ESC が中和されている"
+fi
+
 # --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
 echo ""
 echo "=== T-01: AC-1 concurrent sessions sharing one state root stay isolated by env ==="

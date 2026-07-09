@@ -297,6 +297,13 @@ cmd_set() {
   # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
   # (block 可否は handoff 非空かどうかで決まり、prefix は再注入する reason の選択にのみ影響する)。
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  # `_new_jq_err` capture (symmetric with the composite read's `_cur_jq_err`): the
+  # `tonumber` conversion below can fail on a corrupt on-disk `wm_comment_id`, and jq's
+  # own error text quotes the offending raw value. Without capturing stderr here it went
+  # straight to the terminal unneutralized, bypassing the `_emit_jq_err_snippet` control-char
+  # convention every other diagnostic site in this file uses (#1810 cycle 2 security finding).
+  local _new_jq_err="" _new_rc=0
+  _new_jq_err=$(mktemp 2>/dev/null) || _new_jq_err=""
   new=$(jq -n \
     --argjson schema "$SCHEMA_VERSION_V3" --arg session "$sid" \
     --arg phase "$phase" --argjson issue "$issue" --arg branch "$branch" \
@@ -313,7 +320,14 @@ cmd_set() {
      | (if $worktree != "" then .worktree = $worktree else . end)
      | (if $handoff != "" then .handoff = $handoff else . end)
      | (if $cycle != 0 then .cycle_count = $cycle else . end)
-     | (if $wmcid != "" then .wm_comment_id = (try ($wmcid | tonumber) catch error("wm_comment_id not numeric (value=" + $wmcid + "): " + .)) else . end)') || return 1
+     | (if $wmcid != "" then .wm_comment_id = ($wmcid | tonumber) else . end)' 2>"${_new_jq_err:-/dev/null}") || _new_rc=$?
+  if [ "$_new_rc" -ne 0 ]; then
+    echo "WARNING: flow-state.sh cmd_set: state write failed for $(basename "$path") (wm_comment_id not numeric, or other jq failure)" >&2
+    _emit_jq_err_snippet "$_new_jq_err"
+    [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
+    return 1
+  fi
+  [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
   # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
   # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
   # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的

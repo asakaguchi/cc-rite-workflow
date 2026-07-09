@@ -1187,6 +1187,21 @@ jq '. + {wm_comment_id: "not-a-number"}' "$sfile3" > "$sfile3.tmp" && mv "$sfile
 corrupt_set_rc=0
 (cd "$d3" && bash "$HOOK" set --phase branch --issue 1812 --branch "fix/issue-1812" --pr 0 --next "n2") >/dev/null 2>&1 || corrupt_set_rc=$?
 assert "TC-28: corrupt non-numeric wm_comment_id makes unrelated set fail (rc!=0)" "1" "$corrupt_set_rc"
+# security fix (cycle 2 #1810): the write-side jq stderr (which quotes the corrupt raw value)
+# must go through the same _emit_jq_err_snippet / neutralize_ctrl convention as the read side,
+# not straight to the terminal unneutralized. Same TC-23.2 pattern: inject an ESC byte and
+# assert it never reaches stderr raw.
+result=$(new_sandbox); d4="${result%|*}"; sid4="${result#*|}"
+sfile4="$d4/.rite/sessions/${sid4}.flow-state"
+(cd "$d4" && bash "$HOOK" set --phase init --issue 1813 --branch "" --pr 0 --next "n") >/dev/null
+esc=$(printf '\033')
+jq --arg v "${esc}[31mnot-a-number" '. + {wm_comment_id: $v}' "$sfile4" > "$sfile4.tmp" && mv "$sfile4.tmp" "$sfile4"
+corrupt_set_stderr=$( (cd "$d4" && bash "$HOOK" set --phase branch --issue 1813 --branch "fix/issue-1813" --pr 0 --next "n2") 2>&1 1>/dev/null || true )
+if printf '%s' "$corrupt_set_stderr" | LC_ALL=C grep -q "$esc"; then
+  fail "TC-28: corrupt wm_comment_id 由来の生 ESC が write エラー出力に残存 (control-char 中和が機能していない): '$(printf '%s' "$corrupt_set_stderr" | cat -v)'"
+else
+  pass "TC-28: corrupt wm_comment_id 由来の write エラー出力の生 ESC が中和されている"
+fi
 
 # --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
 echo ""

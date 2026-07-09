@@ -60,8 +60,19 @@ if [ "$CLOSE_MODE" = false ]; then
   # left the real per-session file behind with stale active:true/phase:cleanup
   # state after /rite:cleanup completed (#695). Fall back to the legacy shared
   # file only when session resolution itself fails (no .rite-session-id /
-  # session env var available).
-  RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || RESOLVED_FLOW_STATE=""
+  # session env var available) — surface that fallback with a WARNING so a
+  # corrupt/invalid session_id doesn't silently reproduce the same stale-state
+  # bug via a different trigger (schema_v2 environments have no legacy file,
+  # so a silent fallback here would make Step 1 a silent no-op).
+  _fs_err=$(mktemp 2>/dev/null) || _fs_err=""
+  if RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_fs_err:-/dev/null}"); then
+    :
+  else
+    echo "WARNING: cleanup-work-memory: flow-state.sh path resolution failed — falling back to legacy $(basename "$STATE_ROOT/.rite-flow-state") (session_id may be missing or invalid)" >&2
+    [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    RESOLVED_FLOW_STATE=""
+  fi
+  [ -n "$_fs_err" ] && rm -f "$_fs_err"
   FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 
   # Step 1: Reset flow-state to active:false BEFORE deleting files

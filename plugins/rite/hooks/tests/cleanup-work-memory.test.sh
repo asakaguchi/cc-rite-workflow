@@ -110,13 +110,24 @@ echo "# wm 43" > "$dir002/.rite-work-memory/issue-43.md"
 ( cd "$dir002" && bash "$HOOK" >/dev/null 2>&1 ) || true
 
 # After successful run: compact-state and per-issue wm file removed.
-# (Step 1 flow-state reset is asserted indirectly through TC-001's WARNING
-# absence — the lack of warning means the mktemp/jq/mv chain succeeded.)
 if [ ! -f "$dir002/.rite-compact-state" ] \
    && [ ! -f "$dir002/.rite-work-memory/issue-43.md" ]; then
   pass "TC-002 happy path: Step 2/3 cleanup completed (compact-state + per-issue wm removed)"
 else
   fail "TC-002 happy path partial: compact-state present=$([ -f "$dir002/.rite-compact-state" ] && echo y || echo n), wm present=$([ -f "$dir002/.rite-work-memory/issue-43.md" ] && echo y || echo n)"
+fi
+
+# Directly verify the Step 1 reset outcome (the PR's core spec): the per-session
+# flow-state file must actually be reset to active:false. Without this, a
+# regression that no-ops the reset (e.g. #695's bug) would still pass every
+# other assertion in this file.
+tc002_session_file="$dir002/.rite/sessions/tc002-sid.flow-state"
+tc002_active=$(jq -r '.active' "$tc002_session_file" 2>/dev/null)
+tc002_phase=$(jq -r '.phase' "$tc002_session_file" 2>/dev/null)
+if [ "$tc002_active" = "false" ] && [ "$tc002_phase" = "completed" ]; then
+  pass "TC-002 happy path: per-session flow-state reset to active=false, phase=completed"
+else
+  fail "TC-002 happy path: per-session flow-state not reset (active=$tc002_active, phase=$tc002_phase)"
 fi
 echo ""
 

@@ -130,10 +130,11 @@ out004=$(cd "$dir004" && bash -c "
   echo \"FLOW_STATE=\$FLOW_STATE\"
 " 2>&1)
 if printf '%s' "$out004" | grep -q 'WARNING: issue-comment-wm-sync: flow-state.sh path resolution failed' && \
+   printf '%s' "$out004" | grep -qE 'cannot resolve session_id' && \
    printf '%s' "$out004" | grep -qF "FLOW_STATE=$dir004/.rite-flow-state"; then
   pass "TC-004: resolver fallback emits WARNING and falls back to legacy path"
 else
-  fail "TC-004: expected WARNING + legacy fallback. got: $out004"
+  fail "TC-004: expected WARNING + legacy fallback (with diagnostic detail). got: $out004"
 fi
 echo ""
 

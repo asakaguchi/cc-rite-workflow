@@ -9,7 +9,7 @@
 
 ## Demo
 
-Issue から PR まで、開発を“儀式”に変える — 約115秒で分かる紹介動画（日本語字幕）。
+Issue から PR まで、開発を“儀式”に変える — 約125秒で分かる紹介動画（日本語字幕）。
 
 https://github.com/user-attachments/assets/18160008-e329-4fdd-b170-fac925160e7a
 

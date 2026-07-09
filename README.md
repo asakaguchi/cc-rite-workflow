@@ -9,7 +9,7 @@
 
 ## Demo
 
-From Issue to PR — see Rite Workflow turn development into a *rite*. A ~115-second intro (English).
+From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
 
 https://github.com/user-attachments/assets/39d7aac7-5a4f-46b6-998f-9c061391af31
 

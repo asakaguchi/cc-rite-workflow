@@ -174,4 +174,4 @@ fi
 
 このサマリはそのまま `/rite:issue-create` や実装計画の入力として使える粒度で書く。「議事録」ではなく「次の作業者（未来の自分や別セッションの Claude を含む）への引き継ぎ書」として書くこと。
 
-`/rite:issue-create` はこの見出しを自動検出し軽量化パスに入る。マッピング詳細・線引き rationale: `../issue-create/references/unknowns-boundary-rationale.md#線引き`
+`/rite:issue-create` はこの見出しを自動検出し軽量化パスに入る。マッピング詳細・線引き rationale（早期終了時の転記責務を含む）: `../issue-create/references/unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか`

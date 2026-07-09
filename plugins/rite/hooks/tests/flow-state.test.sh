@@ -1156,6 +1156,29 @@ sfile2="$d2/.rite/sessions/${sid2}.flow-state"
 (cd "$d2" && bash "$HOOK" set --phase branch --issue 701 --branch "feat/701" --pr 0 --next "n") >/dev/null
 assert "TC-27: backward compat → no cycle_count key without --cycle-count" "false" "$(jq -r 'has("cycle_count")' "$sfile2")"
 
+# --- TC-28: wm_comment_id is merge-preserved across cmd_set (#1810) ---
+# wm_comment_id has NO --flag — it's written directly by issue-comment-wm-sync.sh's
+# cache_comment_id() via `jq '. + {wm_comment_id: ...}'`, mirroring how post-tool-wm-sync.sh
+# writes last_synced_phase. Repro: cache_comment_id writes the field, then any other skill's
+# ordinary phase-transition `set` (no wm_comment_id awareness) must NOT wipe it.
+echo ""
+echo "=== TC-28: wm_comment_id merge-preserve across ordinary phase-transition set ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sfile="$d/.rite/sessions/${sid}.flow-state"
+(cd "$d" && bash "$HOOK" set --phase init --issue 1810 --branch "" --pr 0 --next "n") >/dev/null
+# simulate cache_comment_id() writing directly to the state file
+jq '. + {wm_comment_id: 999888}' "$sfile" > "$sfile.tmp" && mv "$sfile.tmp" "$sfile"
+assert "TC-28: wm_comment_id=999888 written directly" "999888" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile")"
+# an ordinary phase-transition set (no wm_comment_id flag exists) must preserve it
+(cd "$d" && bash "$HOOK" set --phase branch --issue 1810 --branch "fix/issue-1810" --pr 0 --next "n2") >/dev/null
+assert "TC-28: wm_comment_id preserved across unrelated phase-transition set" "999888" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile")"
+assert "TC-28: phase transition itself still applied" "branch" "$(jq -r '.phase' "$sfile")"
+# backward compat: a fresh session that never had wm_comment_id written has no such key
+result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
+sfile2="$d2/.rite/sessions/${sid2}.flow-state"
+(cd "$d2" && bash "$HOOK" set --phase branch --issue 1811 --branch "feat/1811" --pr 0 --next "n") >/dev/null
+assert "TC-28: backward compat → no wm_comment_id key when never written" "false" "$(jq -r 'has("wm_comment_id")' "$sfile2")"
+
 # --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
 echo ""
 echo "=== T-01: AC-1 concurrent sessions sharing one state root stay isolated by env ==="

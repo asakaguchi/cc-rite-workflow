@@ -458,7 +458,7 @@ fi
 | `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「`run-queue.json` に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する（AC-2, AC-4, AC-6） |
 | `eligible` | 「この Issue は `/rite:batch-run` 実行中の中断と判定したため、残り {remaining} 件のキュー処理を継続します」と通知した上で 5.5.3 へ進む（AC-1） |
 
-<!-- run orchestration: after emitting the eligible notification, do NOT stop — proceed directly to 5.5.3 (resolved_phase 分岐の invoke)。batch-run 側にこの継続を担う handoff/Stop-hook は無いため、recover 自身が flat 構造 + 本 HTML hint で継続を保証する（batch-run:440/451 と同じ理由）。 -->
+<!-- run orchestration: after emitting the eligible notification, do NOT stop — proceed directly to 5.5.3 (resolved_phase 分岐の invoke)。batch-run 側にこの継続を担う handoff/Stop-hook は無いため、recover 自身が flat 構造 + 本 HTML hint で継続を保証する（batch-run の「エラー時の方針」節・「設計判断: handoff 不使用」節と同じ理由）。 -->
 
 ### 5.5.3 継続実行（batch-run の該当ステップへの委譲、DRY）
 
@@ -468,7 +468,7 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 
 | `{resolved_phase}` | Phase 5.4 が invoke した内容 | Phase 5.5.3 のアクション |
 |---|---|---|
-| `init` / `branch` / `plan` / `implement` / `lint` / `pr` | `/rite:open {issue_arg}`（draft PR 作成まで） | 続けて `/rite:iterate {pr_number}` を invoke（= batch-run [ステップ 3](../batch-run/SKILL.md) 相当）。終端 sentinel を同ステップ 3 の表で判定し、以降 `{run_mode}=merge` かつ mergeable ならステップ 4-6、`default` ならステップ 6 のカーソル前進へ直行 |
+| `init` / `branch` / `plan` / `implement` / `lint` / `pr` | `/rite:open {issue_arg}`（draft PR 作成まで） | Phase 5.4 の open invoke 結果を batch-run [ステップ 2](../batch-run/SKILL.md) の表と同じ基準で判定する。**成功**（`[pr:created:N]` sentinel + ブランチ行）: `{pr_number}` を取得し、続けて `/rite:iterate {pr_number}` を invoke（= batch-run [ステップ 3](../batch-run/SKILL.md) 相当）。終端 sentinel を同ステップ 3 の表で判定し、以降 `{run_mode}=merge` かつ mergeable ならステップ 4-6、`default` ならステップ 6 のカーソル前進へ直行。**失敗**（`[pr-create-failed]` / PR 番号なし / sentinel 不在）: iterate を invoke せず、下記「failed 記録 / 停止方針の委譲」の失敗停止経路（batch-run ステップ 8 相当）に直行する |
 | `review` / `fix` | `/rite:iterate {pr_number}`（終端 sentinel まで） | **再 invoke しない**。Phase 5.4 で得た終端 sentinel を batch-run [ステップ 3](../batch-run/SKILL.md) の表で判定し、以降は上記と同じ分岐 |
 | `ready` / `ready_error` | `/rite:ready {pr_number}` | `{run_mode}=merge` なら続けて `/rite:merge {pr_number}` → `/rite:cleanup {branch_name}` を invoke（batch-run [ステップ 5-6](../batch-run/SKILL.md) と同じ判定）。`default` は通常到達しない（ready は batch-run の merge モードでのみ実行されるため）— 到達した場合は安全側としてそのままステップ 6 のカーソル前進へ |
 | `cleanup` / `ingest` | `/rite:cleanup {branch_name}` または `/rite:wiki-ingest` | 当該 Issue は既に完了。追加 invoke なしでそのまま batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash へ |
@@ -476,13 +476,15 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 
 <!-- run orchestration: after invoking per the table above and observing the terminal sentinel, do NOT stop — proceed to the failed-record / stop-policy paragraph below (same routing as batch-run ステップ 3-8). -->
 
-**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）は batch-run [ステップ 6](../batch-run/SKILL.md) の failed 記録 bash と同じ操作で `run-queue.json` の `failed[]` に記録してからカーソル前進へ進む（即停止しない）。それ以外の失敗 sentinel（`[fix:error]` / `[ready:error]` / `[merge:error]` / `[merge:not-ready]` / sentinel 不在 等）は batch-run [ステップ 8](../batch-run/SKILL.md) と同じ「即停止して報告」方針に従う（AC-5）。停止時は `run-queue.json` の `active` を `false` にする（batch-run ステップ 8 と同一操作。キュー本体は削除しない）。
+**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）は batch-run [ステップ 6](../batch-run/SKILL.md) の failed 記録 bash と同じ操作で `run-queue.json` の `failed[]` に記録してからカーソル前進へ進む（即停止しない）。それ以外の失敗 sentinel（`[pr-create-failed]` / `[fix:error]` / `[ready:error]` / `[merge:error]` / `[merge:not-ready]` / sentinel 不在 等）は batch-run [ステップ 8](../batch-run/SKILL.md) と同じ「即停止して報告」方針に従う（AC-5）。停止時は `run-queue.json` の `active` を `false` にする（batch-run ステップ 8 と同一操作。キュー本体は削除しない）。
+
+<!-- run orchestration: この「即停止して報告」に分岐した場合は STOP — 以降の「active 維持」「カーソル前進とループ」paragraph には進まない（cursor advance を経由しない）。カーソル前進を経由するのはサーキットブレーカー経路のみ（batch-run ステップ 6/8 と同じ非対称性）。 -->
 
 **active 維持**: 継続処理中は `run-queue.json` の `active=true` を維持する（`/rite:iterate` ステップ 6 の既存 batch 判定が `active` を参照するため — 変更禁止の非対象ファイル）。`active=false` にするのは上記の失敗停止時のみ。
 
-**カーソル前進とループ**: 当該 Issue の継続処理が完了したら batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
+**カーソル前進とループ**: サーキットブレーカーで failed 記録した場合、または当該 Issue が正常に完了した場合、batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する（即停止経路はこの bash を経由しない）。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
 
-<!-- run orchestration: after this cursor advance, do NOT stop — loop back to batch-run ステップ 1 (次の Issue の open→iterate→...) or go to batch-run ステップ 7 (全完了通知) / ステップ 8 (停止報告)。batch-run 自身の flat 構造をここでも継続する。 -->
+<!-- run orchestration: after this cursor advance, do NOT stop — loop back to batch-run ステップ 1 (次の Issue) or go to batch-run ステップ 7 (全完了通知)。即停止（ステップ8）はこの cursor advance を経由しない — 上の「failed 記録 / 停止方針の委譲」paragraph で即停止と判定した時点で直接ステップ8へ遷移し、本カーソル前進 bash は実行しない。 -->
 
 ---
 

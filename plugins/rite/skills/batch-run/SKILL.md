@@ -62,7 +62,7 @@ argument-hint: "[--merge] <issue_number>..."
 
 ## ステップ 0: キュー初期化 / 再開判定
 
-`.rite/state/run-queue.json`（`{issues, cursor, mode, failed, active, updated_at}` の形）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`active` は run が iterate を駆動中かを示す真偽値で、ステップ 0 で `true`、停止（ステップ 8）で `false` にする。iterate ステップ 6 の batch 判定が停止済み dormant キューを active batch と誤判定しないための signal（欠落時は `false` = 安全側）。`updated_at` は cursor 前進 / active 設定を書き込むたびに更新する ISO 8601 タイムスタンプで、`/rite:recover` の active batch 検出（鮮度判定）が使う（欠落時は鮮度不明 = stale 扱い、後方互換。詳細: [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.5）。
+`.rite/state/run-queue.json`（`{issues, cursor, mode, failed, active, updated_at}` の形）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`active` は run が iterate を駆動中かを示す真偽値で、ステップ 0 で `true`、停止（ステップ 8）で `false` にする。iterate ステップ 6 の batch 判定が停止済み dormant キューを active batch と誤判定しないための signal（欠落時は `false` = 安全側）。`updated_at` は cursor 前進（ステップ 6）/ active 設定（ステップ 0/8）を書き込むたびに更新する ISO 8601 タイムスタンプで、`/rite:recover` の active batch 検出（鮮度判定）が使う（欠落時は鮮度不明 = stale 扱い、後方互換。ステップ 1 の coarse skip-closed による cursor 前進は対象外 — バッチ開始時のステップ 0 更新により鮮度は保たれ、stale 側に倒れても安全側のため許容。詳細: [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.5）。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -439,7 +439,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 - run-queue.json は停止時に残す。引数省略 `/rite:batch-run` で cursor から再開する
 - run は flow-state の `handoff` を使わないため、sub-skill 間（例: open 完了直後・iterate invoke 前）で turn が途切れた場合の構造ガードは持たない。これは `/rite:open` のステップ間遷移と同じ前提で、各 skill invoke 直前の continuation hint（HTML コメント）と flat step 構造で継続を促す
 - **前提**: 対象 Issue は事前に `/rite:open` 可能な状態（open かつ品質十分）であること。closed / 親 Issue / 品質 C-D の場合は open 内部の AskUserQuestion で自律フローが止まる（open 無変更の代償。完全な無人化は保証しない）
-- `/rite:recover` が active batch 継続（上記「recover.md からの active batch 継続」）を行う場合も、失敗時は即停止（サーキットブレーカーのみ例外）という本方針をそのまま適用する
+- `/rite:recover` が active batch 継続（設計判断節「recover.md からの active batch 継続」）を行う場合も、失敗時は即停止（サーキットブレーカーのみ例外）という本方針をそのまま適用する
 
 ---
 

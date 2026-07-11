@@ -402,9 +402,87 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ---
 
-## Phase 6: 完了
+## Phase 5.5: Active Batch 検出 → 継続（Issue #1820）
 
-再開後の最初のサイクルが完了するまで、再開した skill に制御を委譲する。再開先の skill は flow-state を順次更新し、最終的に `completed` または `cleanup` 状態に到達する。
+Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、`run-queue.json` を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチの `run-queue.json` が単に残っている）を誤って継続しないよう、鮮度判定を必須とする。
+
+### 5.5.1 判定
+
+鮮度判定は既存の staleness 判定ヘルパー `parse_iso8601_to_epoch`（[`hooks/session-ownership.sh`](../../hooks/session-ownership.sh)）と同じ 2 時間 (7200 秒) 閾値を再利用する（`issue-claim.sh` / `wiki-ingest-lock.sh` と同じ閾値。新しい定数は増やさない）:
+
+```bash
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+queue_file="$state_root/.rite/state/run-queue.json"
+source {plugin_root}/hooks/session-ownership.sh
+
+if [ ! -f "$queue_file" ]; then
+  echo "[CONTEXT] BATCH_CONTINUE=none; reason=no_queue_file"
+else
+  q_active=$(jq -r '.active // false' "$queue_file")
+  q_cursor=$(jq -r '.cursor // 0' "$queue_file")
+  q_total=$(jq -r '.issues | length' "$queue_file")
+  q_cursor_issue=$(jq -r ".issues[$q_cursor] // 0" "$queue_file")
+  q_updated_at=$(jq -r '.updated_at // ""' "$queue_file")
+  q_mode=$(jq -r '.mode // "default"' "$queue_file")
+
+  if [ "$q_active" != "true" ]; then
+    echo "[CONTEXT] BATCH_CONTINUE=none; reason=inactive"
+  elif [ "$q_cursor_issue" != "{issue_arg}" ]; then
+    echo "[CONTEXT] BATCH_CONTINUE=none; reason=cursor_mismatch; cursor_issue=$q_cursor_issue"
+  elif [ -z "$q_updated_at" ]; then
+    # updated_at 欠落 (旧形式 run-queue.json) = 鮮度不明として安全側 stale 扱い (AC-6)
+    echo "[CONTEXT] BATCH_CONTINUE=none; reason=stale_no_timestamp"
+  else
+    state_epoch=$(parse_iso8601_to_epoch "$q_updated_at")
+    now_epoch=$(date +%s)
+    diff_seconds=$((now_epoch - state_epoch))
+    if [ "$state_epoch" -eq 0 ] || [ "$diff_seconds" -gt 7200 ]; then
+      echo "[CONTEXT] BATCH_CONTINUE=none; reason=stale; age_seconds=$diff_seconds"
+    else
+      remaining=$((q_total - q_cursor - 1))
+      echo "[CONTEXT] BATCH_CONTINUE=eligible; mode=$q_mode; remaining=$remaining; total=$q_total"
+    fi
+  fi
+fi
+```
+
+`{issue_arg}` は Phase 1.1 の確定値（引数 or ブランチ名抽出）をリテラル置換する。
+
+> 鮮度判定は `updated_at`（batch-run が cursor 前進 / active 設定を書き込んだ最終時刻）に依拠する。1 件目の Issue 処理自体が 2 時間を超えて中断した場合は stale と誤判定されうるが、これは仕様の許容範囲とする（`updated_at` の更新ポイントをこれ以上増やさない — シンプルさ優先）。
+
+### 5.5.2 分岐
+
+| `BATCH_CONTINUE` | アクション |
+|---|---|
+| `none; reason=no_queue_file` | 通常の recover として完了（Phase 6 へ）。追記なし（AC-3） |
+| `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「`run-queue.json` に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する（AC-2, AC-4, AC-6） |
+| `eligible` | 「この Issue は `/rite:batch-run` 実行中の中断と判定したため、残り {remaining} 件のキュー処理を継続します」と通知した上で 5.5.3 へ進む（AC-1） |
+
+### 5.5.3 継続実行（batch-run の該当ステップへの委譲、DRY）
+
+Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-run/SKILL.md`](../batch-run/SKILL.md) の該当ステップの分岐表に**そのまま適用**する（recover は batch-run のこの分岐ロジックを複製しない）。`{run_mode}` は 5.5.1 の `q_mode`、`{branch_name}` は `{git_branch}`（Phase 3.2）を使う。`{pr_number}` は resolved_phase が open 系（下表）のときは Phase 5.4 の `/rite:open` invoke が返す新規 PR 番号（`[pr:created:N]` sentinel）を使う。それ以外は Phase 3.3 の既存 `{pr_number}` を使う（open 系はまだ PR が無い時点の Phase 3.3 値 = 0/NONE のため使えない）。
+
+`{resolved_phase}`（Phase 3.5 / 4.2 で確定した値）で分岐:
+
+| `{resolved_phase}` | Phase 5.4 が invoke した内容 | Phase 5.5.3 のアクション |
+|---|---|---|
+| `init` / `branch` / `plan` / `implement` / `lint` / `pr` | `/rite:open {issue_arg}`（draft PR 作成まで） | 続けて `/rite:iterate {pr_number}` を invoke（= batch-run [ステップ 3](../batch-run/SKILL.md) 相当）。終端 sentinel を同ステップ 3 の表で判定し、以降 `{run_mode}=merge` かつ mergeable ならステップ 4-6、`default` ならステップ 6 のカーソル前進へ直行 |
+| `review` / `fix` | `/rite:iterate {pr_number}`（終端 sentinel まで） | **再 invoke しない**。Phase 5.4 で得た終端 sentinel を batch-run [ステップ 3](../batch-run/SKILL.md) の表で判定し、以降は上記と同じ分岐 |
+| `ready` / `ready_error` | `/rite:ready {pr_number}` | `{run_mode}=merge` なら続けて `/rite:merge {pr_number}` → `/rite:cleanup {branch_name}` を invoke（batch-run [ステップ 5-6](../batch-run/SKILL.md) と同じ判定）。`default` は通常到達しない（ready は batch-run の merge モードでのみ実行されるため）— 到達した場合は安全側としてそのままステップ 6 のカーソル前進へ |
+| `cleanup` / `ingest` | `/rite:cleanup {branch_name}` または `/rite:wiki-ingest` | 当該 Issue は既に完了。追加 invoke なしでそのまま batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash へ |
+| `completed` | (Phase 5.4 は既存表により AskUserQuestion のみ) | ユーザーが「終了」を選んだ場合はカーソル前進へ、「新規作業として再開」を選んだ場合は本継続を中止（通常の recover 完了とする） |
+
+**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）は batch-run [ステップ 6](../batch-run/SKILL.md) の failed 記録 bash と同じ操作で `run-queue.json` の `failed[]` に記録してからカーソル前進へ進む（即停止しない）。それ以外の失敗 sentinel（`[fix:error]` / `[ready:error]` / `[merge:error]` / `[merge:not-ready]` / sentinel 不在 等）は batch-run [ステップ 8](../batch-run/SKILL.md) と同じ「即停止して報告」方針に従う（AC-5）。停止時は `run-queue.json` の `active` を `false` にする（batch-run ステップ 8 と同一操作。キュー本体は削除しない）。
+
+**active 維持**: 継続処理中は `run-queue.json` の `active=true` を維持する（`/rite:iterate` ステップ 6 の既存 batch 判定が `active` を参照するため — 変更禁止の非対象ファイル）。`active=false` にするのは上記の失敗停止時のみ。
+
+**カーソル前進とループ**: 当該 Issue の継続処理が完了したら batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
+
+---
+
+## Phase 6: 完了（`BATCH_CONTINUE=none` の場合）
+
+再開後の最初のサイクルが完了するまで、再開した skill に制御を委譲する。再開先の skill は flow-state を順次更新し、最終的に `completed` または `cleanup` 状態に到達する。`BATCH_CONTINUE=eligible` だった場合は本 Phase ではなく Phase 5.5.3 の完了経路（batch-run ステップ 7 の全完了通知 or ステップ 8 の停止報告）で終了する。
 
 ---
 

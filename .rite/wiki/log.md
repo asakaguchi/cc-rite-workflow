@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-11T20:05:22+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260711T100936Z-pr-1821.md + raw/reviews/20260711T110522Z-pr-1821.md を統合 — PR #1821 (Issue #1820)、HIGH 1件 (continuation hint 欠落) + MEDIUM 2件 (docs/SPEC.md schema drift、ready ゲート欠落) + MEDIUM 1件 (STOP marker文言不整合)、4 cycle 収束。累積 62 回目 |
 | 2026-07-10T00:28:04+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1815 ingest 後の auto-lint) |
 | 2026-07-10T00:28:04+09:00 | Skip | raw/reviews/20260709T144007Z-pr-1815.md | PR #1815 (Issue #1814) review、指摘0件・両レビュアー承認。version badge先行の指摘はPRスコープ外事項としてDecision Log記録のみに留まり、一般化可能な経験則が抽出できないため見送り |
 | 2026-07-09T21:05:14+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260709T120514Z-pr-1813.md + raw/fixes/20260709T120514Z-pr-1813.md を統合 — PR #1813 (Issue #1811)、CRITICAL 2件 (評価順テーブル更新漏れ + ACCEPT_FINGERPRINT_PERSIST_FAILED経路未考慮) + HIGH 1件 (条件文3箇所複製)、2 cycle 収束。累積 61 回目 |

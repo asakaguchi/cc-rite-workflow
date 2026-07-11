@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-11
+
+### Fixed
+
+- **`recover` now detects and resumes an interrupted `/rite:batch-run` queue** — a new Phase 5.5 in `recover/SKILL.md` autonomously judges whether an interruption occurred mid-active-batch (via `run-queue.json`'s `active` flag, cursor match, and a 2-hour freshness check reusing `session-ownership.sh`'s `parse_iso8601_to_epoch`) and, if so, continues processing the remaining queue by following `batch-run/SKILL.md`'s existing step 3-8 branch table rather than duplicating it; stale `run-queue.json` leftovers no longer trigger a false continuation. `run-queue.json` gains an `updated_at` timestamp field, updated on every cursor advance / active-flag write. (#1820, #1821)
+
 ## [0.8.0] - 2026-07-10
 
 ### Changed
@@ -721,6 +727,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.8.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.0...v0.7.1

@@ -373,14 +373,25 @@ if [ "$cur_branch" = "{base_branch}" ]; then
     _bu_dirty=$(git status --porcelain 2>/dev/null) || _bu_dirty=""
     if [ -z "$_bu_dirty" ]; then
       echo "[CONTEXT] BASE_UPDATE=ff_failed_clean"
-    elif printf '%s\n' "$_bu_dirty" | grep -q '^??'; then
-      # untracked を含む dirty は git diff が比較対象にしないため diff 同一性を機械判定できない。
+    elif printf '%s\n' "$_bu_dirty" | grep -q '^[^ ?]'; then
+      # untracked (??) または staged 変更 (index status 列が非空白) を含む dirty は
+      # diff 同一性を機械判定できない — 下記比較は working tree しか見ないため、untracked は
+      # 比較対象外、staged 内容は未検証のまま「diff 同一」を主張することになる。
       # 安全側の divergent へ倒す (stash 案内は -u で untracked も対象に含む)
       echo "[CONTEXT] BASE_UPDATE=ff_failed_divergent"
     else
-      # tracked 変更のみ: 比較を dirty パスに限定する。tree 全体比較 (pathspec なし) はマージが
-      # 追加/削除した無関係ファイルまで D として数え、diff 同一の残存変更を divergent に誤流出させる
-      if git diff --name-only HEAD -z 2>/dev/null | xargs -0 -r git diff --quiet "origin/{base_branch}" -- 2>/dev/null; then
+      # unstaged の tracked 変更のみ: 比較を dirty パスに限定する。tree 全体比較 (pathspec なし)
+      # はマージが追加/削除した無関係ファイルまで D として数え、diff 同一の残存変更を divergent に
+      # 誤流出させる。pathspec は root 相対で出力されるため消費側も -C <root> で root 起点に固定
+      # する (cwd がサブディレクトリだと pathspec 不一致の空比較が discardable を偽装する)。
+      # 空リスト (name-only が失敗/空) も比較せず discardable にしない
+      # パスは改行区切りで保持し xargs 直前に NUL 区切りへ変換する (-z の NUL は command
+      # substitution が落とすため変数経由で使えない。改行入りファイル名は quotePath で C-quote
+      # され pathspec 不一致 → divergent の安全側に落ちる)
+      _bu_root=$(git rev-parse --show-toplevel 2>/dev/null) || _bu_root=""
+      _bu_paths=$(git diff --name-only HEAD 2>/dev/null) || _bu_paths=""
+      if [ -n "$_bu_root" ] && [ -n "$_bu_paths" ] && \
+         printf '%s\n' "$_bu_paths" | tr '\n' '\0' | xargs -0 git -C "$_bu_root" diff --quiet "origin/{base_branch}" -- 2>/dev/null; then
         # dirty パスの working tree 内容が origin/{base} と一致 = 未コミット変更はマージ済み内容と diff 同一
         echo "[CONTEXT] BASE_UPDATE=ff_failed_discardable"
       else
@@ -407,8 +418,8 @@ fi
 |---|---|
 | `ok` / `skipped_not_on_base` | 従来どおり後続へ（`skipped_not_on_base` は既存 WARNING の可視化のみ） |
 | `ff_failed_clean` | 未コミット変更なしの ff 失敗（履歴 diverge / index.lock 恒常化等）。既存 WARNING どおり `git status` 確認を案内し、非ブロッキングで後続へ |
-| `ff_failed_discardable` | tracked な未コミット変更が **origin/{base_branch} と diff 同一**（マージ済み内容の残存）。AskUserQuestion「dirty パス限定の diff 同一を確認済み。未コミット変更を破棄して base 更新を再実行 / そのまま続行（手動対応）」を表示。**承認後のみ** `git checkout -- :/`（cwd 非依存に repo 全体を HEAD 内容へ復元）で破棄し、上記 retry ループを 1 回再実行する。再実行後も `BASE_UPDATE=ok` にならない場合は `ff_failed_divergent` と同等に stash 案内で terminate する（2 回目の破棄承認は求めない）。なお破棄後に staged 内容が index に残っても、discardable = working tree の dirty パスが origin と一致している状態のため、残る内容は定義上マージ済み内容と同一であり ff を阻害しない |
-| `ff_failed_divergent` | 未コミット変更がマージ済み内容と**異なる**（untracked を含む dirty もここに倒す — git diff は untracked を比較できないため）。stash 案内を表示して terminate（データ喪失なし）: `git stash push -u -m "rite-cleanup: manual-stash before base update (issue-{issue_number})"` を提示し、ユーザー実行後の `/rite:recover` 再開を案内する。自動 stash はしない |
+| `ff_failed_discardable` | **unstaged の tracked 変更のみ**の dirty で、その全パスが **origin/{base_branch} と diff 同一**（マージ済み内容の残存）。AskUserQuestion「dirty パス限定の diff 同一を確認済み。未コミット変更を破棄して base 更新を再実行 / そのまま続行（手動対応）」を表示。**承認後のみ** `git checkout -- :/`（cwd 非依存に repo 全体を index 内容へ復元。discardable は staged なしを判定済みのため index == HEAD であり、HEAD 内容への復元と等価）で破棄し、上記 retry ループを 1 回再実行する。再実行後も `BASE_UPDATE=ok` にならない場合は `ff_failed_divergent` と同等に stash 案内で terminate する（2 回目の破棄承認は求めない） |
+| `ff_failed_divergent` | 未コミット変更がマージ済み内容と**異なる**か、diff 同一性を機械判定できない dirty（untracked は git diff が比較できず、staged 変更は working tree 比較で内容を検証できないため、いずれもここに倒す）。stash 案内を表示して terminate（データ喪失なし）: `git stash push -u -m "rite-cleanup: manual-stash before base update (issue-{issue_number})"` を提示し、ユーザー実行後の `/rite:recover` 再開を案内する。自動 stash はしない |
 
 > **multi_session 無効（従来モード）の場合**: 従来どおり `git checkout {base_branch} && git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を実行する（base branch 以外にいて未コミット変更があれば「stash して続行 / キャンセル」を確認。stash は `git stash push -m "rite-cleanup: auto-stash before cleanup"`）。fast-forward 不可 / コンフリクト時は `git status` で確認・解決後の再実行を案内し terminate。
 

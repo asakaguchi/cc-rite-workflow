@@ -285,7 +285,7 @@ fi
 
 重なりあり時の AskUserQuestion（3 択）:
 
-- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイルを worktree へ搬送する（modified / untracked が対象。削除された Target File は搬送対象外として一覧にその旨を表示）。転送元ルートは 2.2-W の `[CONTEXT] MAIN_CHECKOUT_ROOT=` の値を使う（**cwd=worktree で `git rev-parse --show-toplevel` を再計算してはならない** — worktree root が返り、clean な base 版を搬送元に誤解決する）。各ファイルにつき `mkdir -p "$(dirname "{wt_path}/{relpath}")" && cp "{main_checkout_root}/{relpath}" "{wt_path}/{relpath}"` を実行する（`{relpath}` は porcelain 行のパス。rename 行 `R old -> new` は `->` 右側の new を使う）。main checkout 側の変更はそのまま残す（破棄しない）
+- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイルを worktree へ搬送する（modified / untracked が対象。削除された Target File は搬送対象外として一覧にその旨を表示）。転送元ルートは 2.2-W の `[CONTEXT] MAIN_CHECKOUT_ROOT=` の値を使う（**cwd=worktree で `git rev-parse --show-toplevel` を再計算してはならない** — worktree root が返り、clean な base 版を搬送元に誤解決する）。各ファイルにつき `mkdir -p "$(dirname "{wt_path}/{relpath}")" && cp "{main_checkout_root}/{relpath}" "{wt_path}/{relpath}"` を実行する（`{relpath}` は porcelain 行から抽出したパス: 行頭 3 文字の status 部（`XY␠`）を除き、`"` で囲まれた行は unquote し、rename 行 `R old -> new` は `->` 右側の new を使い、`?? dir/` に畳まれた untracked ディレクトリは `cp -r` で搬送する）。main checkout 側の変更はそのまま残す（破棄しない）
 - **そのまま続行**: 搬送せず worktree を作成する（未コミット変更は worktree に含まれないことを了解済みとして続行）
 - **中止**: workflow を終了し、main checkout を無変更で残す
 

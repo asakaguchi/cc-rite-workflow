@@ -195,9 +195,10 @@
 | [新規診断出力の追加は同一ファイル内の既存 control-char 中和規約を踏襲する](pages/anti-patterns/new-diagnostic-path-skips-existing-neutralize-convention.md) | anti-patterns | 既存の READ 経路が制御文字中和ヘルパー (`_emit_jq_err_snippet` / `neutralize_ctrl`) 経由で stderr emit する規約を持つファイルに、新規の WRITE エラー経路を追加すると、jq の `error()` ビルトインで組み立てた独自メッセージが中和されずに corrupt な値（ESC/CSI 等）を生バイトのまま operator 端末へ漏らしうる。PR #1812 (Issue #1810) cycle 2 で security reviewer が検出、cycle 3 で custom error() 撤去 + stderr tempfile 捕捉 + 既存中和ヘルパー経由への統一で解消。 | 2026-07-09T19:44:33+09:00 | high |
 | [外部 CLI の仕様主張（冪等性等）は wrapper 構造で spec 要求から分離し、実行検証なしでは blocking にしない](pages/heuristics/external-cli-spec-claim-wrapper-decoupling.md) | heuristics | 外部 CLI の挙動主張（例: gh project link の re-link 時 exit code）は実行検証なしでは Demonstrable ゲートを越えないため blocking finding にせず調査推奨へ分離する。同時に spec の「冪等」MUST には Reading A（外部コマンド自身が冪等）と Reading B（step が冪等）の 2 つの読みがあり、load-bearing な Reading B は `if ! cmd; then WARNING; fi` の non-blocking wrapper が外部挙動に依存せず無条件に満たす。PR #1835 cycle 2 で 2 reviewer が独立に同判定に到達。 | 2026-07-12T22:55:00+09:00 | medium |
 | [git check-ignore の実効判定は -q と -v で rc 意味論が異なる (negation マッチ検査の要否)](pages/patterns/check-ignore-verbose-negation-rc-semantics.md) | patterns | git check-ignore は -q では negation 決着時に rc=1 (not ignored) を返すが、-v では negation マッチも「マッチあり」として rc=0 を返す。rc ベースの実効 ignore 判定で -v を使う経路は「rc==0 かつ matched pattern が negation でない」の複合条件が必須。PR #1836 (Issue #1828) cycle 1 の実効判定化がこの verbose 特性を見落とし negation-leak 構成を healthy と誤判定する回帰を導入、security reviewer が runtime_observation + revert test で検出。判定専用経路は -q、診断出力が必要な経路のみ -v + `:[0-9]+:!` 検査という使い分けを確立。 | 2026-07-13T00:29:27+09:00 | high |
+| [意図的 silent-continue は「無視する理由」と「真の失敗の顕在化ポイント」のコメント明記で許容される](pages/heuristics/intentional-silent-continue-acceptance-conditions.md) | heuristics | `cmd 2>/dev/null \|\| true` の意図的 silent-continue は、(a) なぜ無視してよいか (既存リソース / 権限不足等) と (b) 真の失敗がどこで顕在化するか (後続コマンド + エラー surface 機構) をコメントに明記し仕様のエラー方針と対応させれば error-handling レビューの許容条件を満たす。PR #1837 で cycle 1 / 0 findings 収束を実測。顕在化ポイントの主張は実装確認が前提 (surface 機構が偽なら本当の silent failure)。 | 2026-07-13T01:00:24+09:00 | medium |
 
 ## 統計
 
-- 総ページ数: 181
-- ドメイン別: patterns=61, heuristics=56, anti-patterns=62
-- 最終更新: 2026-07-13T00:29:27+09:00
+- 総ページ数: 182
+- ドメイン別: patterns=61, heuristics=57, anti-patterns=62
+- 最終更新: 2026-07-13T01:00:24+09:00

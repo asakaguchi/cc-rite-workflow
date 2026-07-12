@@ -21,7 +21,9 @@
 # Options:
 #   --pr            PR number (required, 数値のみ)
 #   --content-file  JSON body tmpfile path (required)
-#   --results-dir   保存先ディレクトリ (default: .rite/review-results)
+#   --results-dir   保存先ディレクトリ (default: $(state-path-resolve.sh)/.rite/review-results —
+#                   セッション worktree からも main checkout と同一パスに解決。解決失敗時は
+#                   cwd 相対 .rite/review-results へフォールバック)
 #
 # 契約 (pr-review.md ステップ 6.1.a / D-04 と verbatim 一致):
 #   - 非ブロッキング: 全失敗経路で `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit し
@@ -47,7 +49,18 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # --- Argument parsing ---
 PR_NUMBER=""
 CONTENT_FILE=""
-REVIEW_RESULTS_DIR=".rite/review-results"
+# 保存先の既定はリポジトリ共通の state ルート (state-path-resolve.sh)。セッション worktree 内から
+# 実行しても main checkout と同一パスに解決され、書込 (本 helper) / 読取 (review-source-resolve.sh
+# Priority 2) / 削除 (cleanup ステップ 6) が一貫する。wiki-ingest-trigger.sh の STATE_ROOT anchor と
+# 同一方式。解決失敗時は従来の cwd 相対へフォールバック (non-blocking 契約、単一 checkout では
+# state-path-resolve が同一パスを返すため挙動不変)。--results-dir 明示指定はこの既定を上書きする。
+_save_script_dir="$(dirname "${BASH_SOURCE[0]}")"
+if _state_root=$("$_save_script_dir/state-path-resolve.sh" "$PWD" 2>/dev/null) && [ -n "$_state_root" ]; then
+  REVIEW_RESULTS_DIR="$_state_root/.rite/review-results"
+else
+  echo "WARNING: review-result-save: state-path-resolve.sh の解決に失敗。cwd 相対の .rite/review-results へフォールバックします" >&2
+  REVIEW_RESULTS_DIR=".rite/review-results"
+fi
 
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに

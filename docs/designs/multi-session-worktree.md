@@ -97,7 +97,8 @@ common=$(git rev-parse --path-format=absolute --git-common-dir)
 | 状態 | 配置 | 根拠 |
 |---|---|---|
 | `.rite/sessions/` / `.rite-work-memory/`（+lockdir） / `.rite/state/`（flock 群 + issue-claims） / `.rite/wiki-worktree` / `.rite-session-id` / `.rite-plugin-root` | **共有 root**（main checkout） | セッション横断の整合・排他に必要。WM の mkdir lock は WM パス由来のため WM が共有なら自動的に共有 |
-| `.rite/review-results/` / `.rite/fix-cycle-state/` / `.rite/tmp/` | **セッション cwd 相対のまま**（= worktree-local） | 同一セッション内で書いて読む一過性アーティファクト。worktree 削除と同時に消え、セッション間の混線を構造的に防ぐ |
+| `.rite/review-results/` / `.rite/fix-cycle-state/` / `.rite/state/accepted-fingerprints-*` | **共有 root**（state-path-resolve 基準） | 保存 (worktree 内 pr-review) と読取・削除 (main checkout の fix 再開 / cleanup) がセッションを跨ぐため、cwd 相対だと削除 no-op・読取不発になる。書込/読取/削除の 3 者を state-path-resolve.sh で同一パスに解決する |
+| `.rite/tmp/` | **セッション cwd 相対のまま**（= worktree-local） | 同一セッション内で書いて読む一過性アーティファクト。worktree 削除と同時に消え、セッション間の混線を構造的に防ぐ |
 
 `.rite-plugin-root` は cwd 相対 `cat` する command スニペット（8 ファイル）のため、pr:open の worktree 作成時に worktree root へ**コピー配置**する
 （8 ファイル改修より 1 writer 追加を採択。既存スニペットには fallback があるため、コピーは決定論化のための defense-in-depth）。
@@ -263,7 +264,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | D-3 | Issue claim のゲート | **`multi_session.enabled` に依らず常時有効** | 同一 checkout での複数セッションは per-session flow-state により現行でもサポートされており、二重着手リスクは worktree 機能と独立に存在する。claim は衝突がない限り無音で後方互換を壊さない |
 | D-4 | EnterWorktree の name/path | **`path` 入場のみ使用** | `name` 指定は `.claude/worktrees/` + origin/<デフォルトブランチ> 固定で、rite の branch 命名規則（`{type}/issue-{number}-{slug}`）と base（`origin/develop`）を表現できない |
 | D-5 | state root resolver | **新 lib を作らず `state-path-resolve.sh` 自体を worktree-aware 化** | 既に全 hook の漏斗（分類 A/B が全て経由）であり、新 lib の並存は drift ベクタになる（シンプルさを死守） |
-| D-6 | 一過性アーティファクトの配置 | `review-results` / `fix-cycle-state` / `tmp` は**セッション cwd 相対のまま** | worktree 削除と同時に消えセッション間混線を構造的に防ぐ。共有 root へ寄せると pr 番号 + timestamp の衝突管理が新たに必要になる |
+| D-6 | 一過性アーティファクトの配置 | **Issue #1831 で改訂**: `review-results` / `fix-cycle-state` / `accepted-fingerprints-*` は**共有 root（state-path-resolve 基準）**、`tmp` のみセッション cwd 相対 | 当初決定（cwd 相対）は worktree 削除と同時に消える利点を採ったが、worktree 内保存 ↔ main checkout 読取/削除のパス分裂（cleanup no-op・cross-session 読取不発）が実害として顕在化したため見直した。当初懸念した衝突管理は review-result-schema.md の `~<hex>` suffix で対処済み。配置の現行 SoT は上記「状態ファイル配置」表 |
 | D-7 | claim の heartbeat | **新機構を作らず flow-state `updated_at` を再利用** | `flow-state.sh set` が全 phase 遷移で更新する既存挙動がそのまま heartbeat。session-ownership.sh の 2h 閾値と判定関数も再利用 |
 | D-8 | スコープ | コア lifecycle + Wiki 完全対応 + **sprint 系は claim スキップのみ** | 複数セッションでの sprint 分担実行（協調スケジューリング）はスコープ過大。将来 Issue に切り出す |
 | D-9 | rite-config.yml top-level `schema_version` bump（2→3） | **省略**（S2 で 2 のまま据え置き） | `multi_session` は additive で migration 不要（S2 時点では `enabled: false` default、後続でデフォルト ON 化された後も `multi_session:` ブロック欠落時の parse fallback は `false` のままで既存 config の挙動は不変）。bump すると session-start.sh の upgrade prompt が全既存ユーザーに発火するが、S2 時点では pr:open/cleanup 統合（S6/S7）が develop 未マージで機能が半完成。半統合機能を全ユーザーに告知する弊害が告知価値を上回るため bump しない。`flow-state` の `worktree` field も conditional-write で非 worktree セッションの state を byte 不変に保つため schema 系のいかなる bump も不要。後続のデフォルト ON 化はテンプレート config 経由の配布であり schema 変更を伴わないため、本判断は維持される |

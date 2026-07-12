@@ -240,6 +240,15 @@ ISSUE_BODY_EOF
 # {labels_csv} (例: "bug,fix") を JSON array に変換 (空 CSV は空配列)
 labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
 
+# 各ラベルを冪等に事前作成する (`gh issue create --label X` は X 未存在時に
+# `could not add label` で fail するため。skills/cleanup/SKILL.md ステップ 3 と同パターン)。
+# 既存ラベル / 権限不足の失敗は無視して続行し、真の失敗は gh issue create 側で
+# helper の $result (warnings) として surface される。空 labels_csv はループ 0 回で従来動作。
+while IFS= read -r label; do
+  [ -z "$label" ] && continue
+  gh label create "$label" --description "auto-created by rite issue-create" --color "ededed" 2>/dev/null || true
+done < <(printf '%s\n' "$labels_json" | jq -r '.[]')
+
 # args_json を入れ子 $() から分離して構築する (深い入れ子 quoting の malform 源を削減。
 # 単一 JSON 引数契約は不変)
 args_json=$(jq -n \
@@ -273,7 +282,15 @@ args_json=$(jq -n \
   }') || { echo "ERROR: args_json の jq 構築に失敗しました" >&2; exit 1; }
 
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json") || {
-  echo "ERROR: create-issue-with-projects.sh failed (exit $?)" >&2
+  rc=$?
+  echo "ERROR: create-issue-with-projects.sh failed (exit $rc)" >&2
+  # helper は失敗時も stdout JSON (warnings に原因を記録) を出力するため、捕捉済み $result を
+  # 破棄せず surface する (これが無いと gh の失敗理由がユーザーに一切見えない)
+  if [ -n "$result" ]; then
+    echo "  helper result:" >&2
+    printf '%s\n' "$result" | sed 's/^/    /' >&2
+    printf '%s\n' "$result" | jq -r '.warnings[]?' 2>/dev/null | sed 's/^/  ⚠️ /' >&2
+  fi
   exit 1
 }
 

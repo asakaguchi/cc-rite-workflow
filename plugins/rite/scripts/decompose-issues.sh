@@ -168,6 +168,15 @@ parent_body_file=$(spec_get '.parent.body_file')
 # select(length>0) drops empties — e.g. a trailing comma when labels_csv="").
 labels_json=$(printf '%s' "epic,${labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
 
+# 各ラベルを冪等に事前作成する (`gh issue create --label X` は X 未存在時に fail するため。
+# skills/issue-create/SKILL.md ステップ 4.3 と同パターン)。親 labels (epic + labels_csv) は
+# sub-issue labels (labels_csv のみ) の上位集合のため、ここでの 1 回で Step 5.4 の分もカバーする。
+# 既存ラベル / 権限不足の失敗は無視して続行し、真の失敗は gh issue create 側で surface される。
+while IFS= read -r label; do
+  [ -z "$label" ] && continue
+  gh label create "$label" --description "auto-created by rite issue-create" --color "ededed" 2>/dev/null || true
+done < <(printf '%s\n' "$labels_json" | jq -r '.[]')
+
 parent_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$parent_title" "$parent_body_file" "$labels_json" "XL")") || {
   echo "ERROR: 親 Issue 作成失敗" >&2
   exit 1

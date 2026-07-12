@@ -3,6 +3,10 @@
 # Standalone script that auto-resolves plugin root via BASH_SOURCE.
 # All WM_* environment variables must be set by the caller.
 #
+# WM_BODY_TEXT はサマリー領域のみを対象とする — 既存ファイルの `## Detail` 以下の
+# 蓄積セクション (「決定事項・メモ」等) はフェーズ遷移更新後も保持される
+# (詳細は work-memory-update.sh の docstring 参照)。
+#
 # Requires bash execution (not sh or source). BASH_SOURCE is used for
 # path resolution, which is unavailable in POSIX sh or when sourced.
 #

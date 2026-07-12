@@ -297,6 +297,26 @@ fi
 if [ "$MODE" = "init" ]; then
   TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S+09:00')
 
+  # 冪等 pre-check: replica が既に存在する場合は二重投稿せず skip する (作成後の validation と
+  # 同じ query)。pre-check の gh api 失敗は「存在不明」であり、ここで止めると replica が永遠に
+  # 作られない恐れがあるため投稿続行に倒す (non-blocking)。
+  _pre_err=$(mktemp 2>/dev/null) || _pre_err=""
+  _pre_rc=0
+  existing_id=$(gh api "repos/${OWNER_REPO}/issues/${ISSUE}/comments" \
+    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' \
+    2>"${_pre_err:-/dev/null}") || _pre_rc=$?
+  if [ "$_pre_rc" -ne 0 ]; then
+    echo "[rite] WARNING: issue-comment-wm-sync: init pre-check gh api 失敗 (rc=$_pre_rc) — 存在不明のため投稿を続行します" >&2
+    [ -n "$_pre_err" ] && [ -s "$_pre_err" ] && head -3 "$_pre_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    existing_id=""
+  fi
+  [ -n "$_pre_err" ] && rm -f "$_pre_err"
+  if [ -n "$existing_id" ]; then
+    cache_comment_id "$existing_id"
+    echo "status=skipped; reason=already_exists"
+    exit 0
+  fi
+
   # set -e 配下で mktemp が /tmp full / inode 枯渇 / readonly fs で失敗すると、trap 設定前
   # に abort する。明示 rc check で degrade させ、init mode を skip して上位で続行する。
   tmpfile=""

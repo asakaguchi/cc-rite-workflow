@@ -316,7 +316,26 @@ fi
 
 ### 2.5 Work Memory 初期化
 
-Issue の comment として work memory を初期投稿する。`コマンド:` 行は `rite:open` を記載。詳細は `../../skills/rite-workflow/references/work-memory-format.md` 参照。
+Issue の comment として work memory (backup replica) を初期投稿する。ローカルファイルが SoT で Issue コメントは replica (`../../skills/rite-workflow/references/work-memory-format.md` 参照)。投稿は `issue-comment-wm-sync.sh` の init mode に委譲する — この replica が無いと、以降の全フェーズの `issue-comment-wm-sync.sh update` 呼び出しが `status=skipped; reason=no_comment` で skip され、compact / cross-session recovery のバックアップ経路が機能しない:
+
+```bash
+# init は non-blocking 契約: gh api 失敗 (auth / rate limit / network) でも helper は WARNING +
+# status 行を出して exit 0 を返すため、失敗時も open は後続ステップへ続行する。
+# replica が既に存在する場合は helper が冪等に skip する (status=skipped; reason=already_exists)。
+init_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh init \
+  --issue {issue_number} --branch "{branch_name}" 2>&1) || true
+printf '%s\n' "$init_out" | tail -3
+echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=//p' | tail -1)"
+```
+
+`status=` 行による分岐 (いずれも続行 — replica 作成失敗で open を止めない):
+
+| status | 意味 | アクション |
+|--------|------|-----------|
+| `success` | replica 作成 + 検証済み | 続行 |
+| `skipped; reason=already_exists` | replica 既存 (冪等 skip) | 続行 |
+| `unverified` | 投稿は実行されたが検証 (3 回 retry) で発見できず | WARNING として続行 (以降の update が `no_comment` skip になる可能性を認識) |
+| (status 行なし = gh 失敗等) | 投稿失敗 | WARNING として続行 (non-blocking) |
 
 ### 2.6 flow-state 更新
 

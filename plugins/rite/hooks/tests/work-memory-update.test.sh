@@ -214,6 +214,54 @@ fi
 # (one-shot v1/v2 → v3 conversion at session-start), not to a parallel
 # read path inside work-memory-update.sh.
 
+# ─── TC-5: 蓄積セクション保持 (AC-3) ───────────────────────────────
+# `## Detail` 以下に追記された蓄積セクション (「決定事項・メモ」等) がフェーズ遷移更新
+# (WM_BODY_TEXT による body 再構築) 後も保持されることを検証する。stock の先頭
+# Phase:/Branch: 行は最新値で再生成され、それ以外の蓄積内容が verbatim で残る契約。
+echo "TC-5: 蓄積セクション保持 (フェーズ遷移更新で Detail 以下が消えない)"
+SBX5=$(make_sandbox --branch fix/issue-687-test)
+cleanup_dirs+=("$SBX5")
+write_config "$SBX5"
+
+# 1 回目の更新で WM ファイルを生成
+run_update "$SBX5" \
+  WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="impl" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="First body." WM_ISSUE_NUMBER="687" >/dev/null 2>&1 || true
+WM_FILE5="$SBX5/.rite-work-memory/issue-687.md"
+# 蓄積セクションを Detail 以下に追記 (pr-review 7.4.3 フォールバック相当の追記を模擬)
+cat >> "$WM_FILE5" <<'ACCUM_EOF'
+
+### 決定事項・メモ
+- 2026-07-13: 重要な設計判断テスト行
+
+### 計画逸脱ログ
+- S2: 逸脱テスト行
+ACCUM_EOF
+
+# 2 回目の更新 (フェーズ遷移)
+if run_update "$SBX5" \
+  WM_SOURCE="ready" WM_PHASE="ready" WM_PHASE_DETAIL="Ready処理完了" \
+  WM_NEXT_ACTION="merge" WM_BODY_TEXT="Second body." WM_ISSUE_NUMBER="687" >/dev/null 2>&1; then
+  rc5=0
+else
+  rc5=$?
+fi
+assert_eq "TC-5.1: return 0" "0" "$rc5"
+if [ -f "$WM_FILE5" ]; then
+  body5=$(cat "$WM_FILE5")
+  assert_contains "TC-5.2: 決定事項・メモ の追記が保持される" "重要な設計判断テスト行" "$body5"
+  assert_contains "TC-5.3: 計画逸脱ログ の追記が保持される" "S2: 逸脱テスト行" "$body5"
+  assert_contains "TC-5.4: サマリー領域は新 WM_BODY_TEXT に置換される" "Second body." "$body5"
+  assert_contains "TC-5.5: stock Phase 行は最新 phase で再生成される" $'## Detail\nPhase: ready' "$body5"
+  # stock Phase:/Branch: 行が重複していないこと (保持ロジックが stock 行を二重化しない)
+  phase_line_count=$(printf '%s\n' "$body5" | grep -c '^Phase: ' || true)
+  assert_eq "TC-5.6: Phase 行が 1 本のみ (stock 行の二重化なし)" "1" "$phase_line_count"
+else
+  echo "  ❌ TC-5.x: WM file not created at $WM_FILE5"
+  FAIL=$((FAIL+5))
+  FAILED_NAMES+=("TC-5.2" "TC-5.3" "TC-5.4" "TC-5.5" "TC-5.6")
+fi
+
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
 echo "PASS: $PASS"

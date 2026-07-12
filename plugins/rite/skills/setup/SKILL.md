@@ -975,9 +975,18 @@ Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not alrea
 
 ```bash
 # Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned" ".rite/sessions/" ".rite/worktrees/"; do
+for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned"; do
   if ! grep -qF "$entry" .gitignore 2>/dev/null; then
     echo "$entry" >> .gitignore
+  fi
+done
+
+# .rite/ 配下のディレクトリエントリは実効判定でゲートする: 既に `.rite/` 広域ルール等で
+# 実効的に ignore されている場合は書かない（親ルールに包含される到達不能な行を作らない）。
+# 未カバーのときのみ追記する（gitignore-health-check.sh の probe と同じ check-ignore 方式）。
+for dir_entry in ".rite/sessions/" ".rite/worktrees/"; do
+  if ! git check-ignore -q "${dir_entry}.rite-lint-probe" 2>/dev/null; then
+    echo "$dir_entry" >> .gitignore
   fi
 done
 ```

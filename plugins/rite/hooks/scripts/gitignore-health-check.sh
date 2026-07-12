@@ -230,7 +230,11 @@ sessions_probe=".rite/sessions/.rite-lint-probe"
 sessions_ci_out=""
 sessions_ci_rc=0
 if sessions_ci_out=$(git check-ignore -v "$sessions_probe" 2>/dev/null); then sessions_ci_rc=0; else sessions_ci_rc=$?; fi
-if [ "$sessions_ci_rc" -eq 0 ] && printf '%s' "$sessions_ci_out" | grep -qE ':\.rite/sessions/'; then
+# 実効判定: rc==0 (probe が ignore されている) なら理由ルールが親 `.rite/` 広域ルールでも healthy。
+# git のディレクトリ pruning により check-ignore -v は最初に一致した親ルールを報告するため、
+# 特定ルール表記 (`:.rite/sessions/`) への文字列一致を要求すると広域 + 個別の重複構成で
+# 個別ルールが実在しても偽陽性 DRIFT になる。
+if [ "$sessions_ci_rc" -eq 0 ]; then
   log_info "gitignore-health-check: sessions layer healthy — .rite/sessions/ ignored (${sessions_ci_out})"
 elif [ "$sessions_ci_rc" -ge 2 ]; then
   echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$sessions_ci_rc) for .rite/sessions/ verify — skipping sessions check" >&2
@@ -267,7 +271,9 @@ if [ "$ms_enabled" = "true" ]; then
   ms_ci_out=""
   ms_ci_rc=0
   if ms_ci_out=$(git check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
-  if [ "$ms_ci_rc" -eq 0 ] && printf '%s' "$ms_ci_out" | grep -qE ':\.rite/worktrees/'; then
+  # 実効判定: sessions ブロックと同じ理由で rc==0 のみを healthy 条件とする
+  # (親 `.rite/` 広域ルール一致でも実効的に ignore されていれば偽陽性にしない)。
+  if [ "$ms_ci_rc" -eq 0 ]; then
     log_info "gitignore-health-check: multi_session layer healthy — .rite/worktrees/ ignored (${ms_ci_out})"
   elif [ "$ms_ci_rc" -ge 2 ]; then
     echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$ms_ci_rc) for .rite/worktrees/ verify — skipping multi_session check" >&2

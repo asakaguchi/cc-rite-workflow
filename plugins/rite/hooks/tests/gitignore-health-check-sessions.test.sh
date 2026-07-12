@@ -77,6 +77,17 @@ echo "=== TC-5: wiki disabled + sessions ignored → healthy (exit 0) ==="
 run_case "${WIKI_OFF}${MS_OFF}" $'.rite/sessions/\n'
 assert "TC-5 exit 0" "0" "$RUN_RC"
 
+echo "=== TC-7: broad .rite/ rule only (no individual rule) → healthy (exit 0) ==="
+# 実効判定の核: 個別ルール `.rite/sessions/` が無くても親 `.rite/` 広域ルールで probe が
+# ignore されていれば healthy。旧実装の特定ルール文字列一致 (`:.rite/sessions/`) だと
+# check-ignore -v が親ルールを報告するため偽陽性 DRIFT になっていた回帰ケース。
+run_case "${WIKI_OFF}${MS_OFF}" $'.rite/\n'
+assert "TC-7 exit 0 (broad rule effective)" "0" "$RUN_RC"
+
+echo "=== TC-8: ms enabled + broad .rite/ rule only → sessions/worktrees とも healthy (exit 0) ==="
+run_case "${WIKI_OFF}${MS_ON}" $'.rite/\n'
+assert "TC-8 exit 0 (broad rule covers both probes)" "0" "$RUN_RC"
+
 echo "=== TC-6: ms enabled + BOTH sessions and worktrees NOT ignored → sessions fires first ==="
 # Genuine ordering proof: when BOTH the sessions rule AND the worktrees rule are missing
 # (and multi_session is enabled so the worktrees check is active), the script must emit

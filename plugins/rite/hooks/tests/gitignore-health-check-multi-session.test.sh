@@ -69,5 +69,11 @@ echo "=== TC-5: wiki disabled + ms enabled + worktrees ignored → healthy (exit
 run_case "${WIKI_OFF}${MS_ON}" $'.rite/worktrees/\n.rite/sessions/\n'
 assert "TC-5 exit 0" "0" "$RUN_RC"
 
+echo "=== TC-6: ms enabled + broad .rite/ rule only → healthy (exit 0) ==="
+# 実効判定: 個別 `.rite/worktrees/` ルールが無くても親 `.rite/` 広域ルールで probe が
+# ignore されていれば healthy（旧実装の `:.rite/worktrees/` 文字列一致では偽陽性 DRIFT）。
+run_case "${WIKI_OFF}${MS_ON}" $'.rite/\n'
+assert "TC-6 exit 0 (broad rule effective)" "0" "$RUN_RC"
+
 print_summary "$(basename "$0")" \
   "Drift hint: gitignore-health-check.sh multi_session check (design §2) — runs before the wiki early-exits, opt-in via multi_session.enabled."

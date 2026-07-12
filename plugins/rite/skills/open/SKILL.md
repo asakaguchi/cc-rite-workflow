@@ -230,7 +230,11 @@ base="{base_branch}"
 if _dirty_files=$(git -C "$repo_root" status --porcelain 2>/dev/null); then
   if [ -n "$_dirty_files" ]; then
     echo "[CONTEXT] MAIN_DIRTY=yes"
+    echo "[CONTEXT] MAIN_CHECKOUT_ROOT=$repo_root"
+    # dirty 一覧は marker と区別できるようデリミタで囲んで表示する (ファイル名由来の偽 marker 混入防止)
+    echo "--- dirty files begin ---"
     printf '%s\n' "$_dirty_files"
+    echo "--- dirty files end ---"
   else
     echo "[CONTEXT] MAIN_DIRTY=no"
   fi
@@ -272,16 +276,16 @@ fi
 | `create_new` | branch も worktree もなし → `git worktree add -b "{branch}" "{path}" "origin/{base_branch}"` |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
 
-**dirty main checkout ガード（Issue #1832）**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する**場合（`branch_only` / `create_new`。`reuse` は既存 worktree 継続のため対象外）のみ、`git worktree add` を実行する**前に**評価する:
+**dirty main checkout ガード（Issue #1832）**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する全経路**（`branch_only` / `create_new` / `stale_residue` で「削除して再作成」を選択した場合。`reuse` は既存 worktree 継続のため対象外）で、`git worktree add` を実行する**前に**評価する。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない（marker は行頭 `[CONTEXT]` の行のみ）:
 
 | `MAIN_DIRTY` | アクション |
 |---|---|
 | `no` / `unknown` | ガードなしで従来どおり続行（`unknown` = git status 失敗、WARNING は bash block が emit 済み） |
-| `yes` | LLM が dirty ファイル一覧（bash block が出力した porcelain 行）と Issue 本文の **Target Files（Section 4.1 の表）/ 変更予定領域** を突合する。**重なりなし** → 従来どおり続行（確認なし）。**重なりあり** → 下記 AskUserQuestion を表示し、確認なしに `git worktree add` へ進まない |
+| `yes` | LLM が dirty ファイル一覧（デリミタ内の porcelain 行）と Issue 本文の **Target Files（Section 4.1 の表）/ 変更予定領域** を突合する。**重なりなし** → 従来どおり続行（確認なし）。**重なりあり** → 下記 AskUserQuestion を表示し、確認なしに `git worktree add` へ進まない |
 
 重なりあり時の AskUserQuestion（3 択）:
 
-- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイルを `cp` で worktree の同相対パスへ搬送する（modified / untracked が対象。削除された Target File は搬送対象外として一覧にその旨を表示）。main checkout 側の変更はそのまま残す（破棄しない）
+- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイルを worktree へ搬送する（modified / untracked が対象。削除された Target File は搬送対象外として一覧にその旨を表示）。転送元ルートは 2.2-W の `[CONTEXT] MAIN_CHECKOUT_ROOT=` の値を使う（**cwd=worktree で `git rev-parse --show-toplevel` を再計算してはならない** — worktree root が返り、clean な base 版を搬送元に誤解決する）。各ファイルにつき `mkdir -p "$(dirname "{wt_path}/{relpath}")" && cp "{main_checkout_root}/{relpath}" "{wt_path}/{relpath}"` を実行する（`{relpath}` は porcelain 行のパス。rename 行 `R old -> new` は `->` 右側の new を使う）。main checkout 側の変更はそのまま残す（破棄しない）
 - **そのまま続行**: 搬送せず worktree を作成する（未コミット変更は worktree に含まれないことを了解済みとして続行）
 - **中止**: workflow を終了し、main checkout を無変更で残す
 

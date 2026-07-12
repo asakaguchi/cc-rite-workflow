@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-13T07:40:00+00:00 | pr-1839 | reviews | 新規 2 (path-basis-change-observation-surface-sweep, total-resolver-delegation-defeats-fail-fast-gate) | PR #1839 state-path-resolve 統一の 4 cycle レビューから、パス基準変更の観測面スイープ heuristic と total resolver 委譲の fail-fast 破壊 anti-pattern を抽出 |
 | 2026-07-13T02:58:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1838 ingest 後の auto-lint) |
 | 2026-07-13T02:50:00+09:00 | create | [doc の例示語彙は定義元 (SoT) と突合してから書く](pages/heuristics/illustrative-example-vocabulary-sot-check.md) | raw/reviews/20260712T174329Z-pr-1838.md を新規ページ化 — PR #1838 (Issue #1830) F-05: 例示語彙の別レイヤ誤帰属を writer grep 0 件で確定 |
 | 2026-07-13T02:50:00+09:00 | update | [Fix 修正コメント自身が canonical convention を破る self-drift](pages/anti-patterns/fix-comment-self-drift.md) | raw/reviews/20260712T174329Z-pr-1838.md を統合 — F-01 修正文言が F-03 帰属 category error を誘発した連鎖を追加 |

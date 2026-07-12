@@ -390,7 +390,7 @@ if [ "$cur_branch" = "{base_branch}" ]; then
       # → git diff --quiet が exit 0 (差分なし扱い) を返して相違変更が discardable に誤流出する
       # (NUL を command substitution の変数に入れると bash が落とすため、非空判定のみ別変数で行う)
       _bu_root=$(git rev-parse --show-toplevel 2>/dev/null) || _bu_root=""
-      _bu_paths=$(git diff --name-only HEAD 2>/dev/null) || _bu_paths=""
+      _bu_paths=$(git diff --name-only --no-relative HEAD 2>/dev/null) || _bu_paths=""
       if [ -n "$_bu_root" ] && [ -n "$_bu_paths" ] && \
          git diff --name-only --no-relative -z HEAD 2>/dev/null | xargs -0 -r git -C "$_bu_root" diff --quiet "origin/{base_branch}" -- 2>/dev/null; then
         # dirty パスの working tree 内容が origin/{base} と一致 = 未コミット変更はマージ済み内容と diff 同一

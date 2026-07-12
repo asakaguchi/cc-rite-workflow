@@ -12,13 +12,13 @@
 #
 # 回帰 pin の背景 (Issue #1832 review cycles):
 # - TC-2: tree 全体比較はマージが追加したファイルを D と数え discardable を divergent に
-#   誤流出させた (cycle 2 F-01)。pathspec 限定後の正分類を pin
-# - TC-4: grep '^[^ ?]' は untracked (??) を素通りさせた (cycle 3 F-11)。混在 dirty の
+#   誤流出させた。pathspec 限定後の正分類を pin
+# - TC-4: grep '^[^ ?]' は untracked (??) を素通りさせた。混在 dirty の
 #   divergent 分類を pin
-# - TC-5: staged を含む dirty は working tree 比較で内容検証できない (cycle 2 F-08)
+# - TC-5: staged を含む dirty は working tree 比較で内容検証できない。divergent 分類を pin
 # - TC-6: 非 -z の --name-only は quotePath がファイル名を C-quote し、pathspec 不一致の
 #   git diff --quiet が exit 0 を返して相違変更が discardable に誤流出、破棄承認で
-#   データ喪失した (cycle 3 F-10)。非 ASCII 名の相違が divergent に落ちることを pin
+#   データ喪失した。非 ASCII 名の相違が divergent に落ちることを pin
 
 set -uo pipefail
 
@@ -52,9 +52,10 @@ classify() {
 # --- sandbox: origin + main clone ---
 ORIGIN="$TEST_DIR/origin.git"
 REPO="$TEST_DIR/repo"
-git init -q --bare -b main "$ORIGIN"
-git clone -q "$ORIGIN" "$REPO" 2>/dev/null
-cd "$REPO"
+git init -q --bare -b main "$ORIGIN" || { echo "FATAL: sandbox origin init 失敗"; exit 1; }
+git clone -q "$ORIGIN" "$REPO" 2>/dev/null || { echo "FATAL: sandbox clone 失敗"; exit 1; }
+# cd 失敗のまま続行すると後続の破壊的 git 操作 (add/commit/checkout/reset) が親 repo に向く
+cd "$REPO" || { echo "FATAL: sandbox cd 失敗"; exit 1; }
 git config user.email test@example.com
 git config user.name test
 git switch -qc main 2>/dev/null || true
@@ -97,7 +98,7 @@ r=$(classify)
 [ "$r" = "ff_failed_divergent" ] && pass "TC-3 ($r)" || fail "TC-3: expected ff_failed_divergent, got '$r'"
 git checkout -- :/
 
-# ─── TC-4: unstaged 同一 + untracked 混在 → divergent (F-11 回帰) ───
+# ─── TC-4: unstaged 同一 + untracked 混在 → divergent (untracked 混在の回帰 pin) ───
 echo "TC-4: identical unstaged + untracked mix -> divergent"
 echo "v2" > file.txt
 echo "brand-new" > untracked-new.txt
@@ -105,21 +106,22 @@ r=$(classify)
 [ "$r" = "ff_failed_divergent" ] && pass "TC-4 ($r)" || fail "TC-4: expected ff_failed_divergent, got '$r'"
 rm -f untracked-new.txt && git checkout -- :/
 
-# ─── TC-5: staged 変更を含む dirty → divergent (F-08 回帰) ───
+# ─── TC-5: staged 変更を含む dirty → divergent (staged の回帰 pin) ───
 echo "TC-5: staged change -> divergent"
 echo "STAGED-C" > file.txt && git add file.txt && echo "v2" > file.txt
 r=$(classify)
 [ "$r" = "ff_failed_divergent" ] && pass "TC-5 ($r)" || fail "TC-5: expected ff_failed_divergent, got '$r'"
 git reset -q --hard HEAD
 
-# ─── TC-6: 非 ASCII ファイル名の相違 → divergent (F-10 回帰、quotePath C-quote 経路) ───
+# ─── TC-6: 非 ASCII ファイル名の相違 → divergent (quotePath C-quote 経路の回帰 pin) ───
 echo "TC-6: non-ASCII filename divergent -> divergent (quotePath regression)"
 other="$TEST_DIR/other-jp"
 git clone -q "$ORIGIN" "$other" 2>/dev/null
 ( cd "$other" && git config user.email t@e.c && git config user.name t \
   && echo "jp1" > "設計.md" && git add -A && git commit -qm jp && git push -q origin main )
 git fetch -q origin main
-git merge -q --ff-only origin/main
+# setup の ff が失敗すると 設計.md が untracked になり、quotePath 経路を通らず偽 PASS する
+git merge -q --ff-only origin/main || { fail "TC-6 setup: ff-only merge 失敗"; }
 advance_origin "v3" ""
 echo "MY-DIFFERENT-DRAFT" > "設計.md"
 r=$(classify)
@@ -135,7 +137,7 @@ echo "TC-7: clean but behind -> ff_failed_clean"
 r=$(classify)
 [ "$r" = "ff_failed_clean" ] && pass "TC-7 ($r)" || fail "TC-7: expected ff_failed_clean, got '$r'"
 
-# ─── TC-8: subdir cwd から相違変更 → divergent (F-06 回帰、root 固定) ───
+# ─── TC-8: subdir cwd から相違変更 → divergent (root 固定 pathspec の回帰 pin) ───
 echo "TC-8: divergent from subdir cwd -> divergent (root-pinned pathspec)"
 echo "SUBDIR-LOCAL" > file.txt
 r=$(cd sub && bash "$CLASSIFY_SNIPPET" 2>/dev/null | sed -n 's/^\[CONTEXT\] BASE_UPDATE=//p' | head -1)

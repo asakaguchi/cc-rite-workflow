@@ -373,25 +373,26 @@ if [ "$cur_branch" = "{base_branch}" ]; then
     _bu_dirty=$(git status --porcelain 2>/dev/null) || _bu_dirty=""
     if [ -z "$_bu_dirty" ]; then
       echo "[CONTEXT] BASE_UPDATE=ff_failed_clean"
-    elif printf '%s\n' "$_bu_dirty" | grep -q '^[^ ?]'; then
-      # untracked (??) または staged 変更 (index status 列が非空白) を含む dirty は
-      # diff 同一性を機械判定できない — 下記比較は working tree しか見ないため、untracked は
-      # 比較対象外、staged 内容は未検証のまま「diff 同一」を主張することになる。
-      # 安全側の divergent へ倒す (stash 案内は -u で untracked も対象に含む)
+    elif printf '%s\n' "$_bu_dirty" | grep -q '^[^ ]'; then
+      # X 列 (index status、行頭 1 文字) が非空白 = staged 変更または untracked (??) を含む dirty。
+      # いずれも diff 同一性を機械判定できない — 下記比較は working tree しか見ないため、untracked
+      # は比較対象外、staged 内容は未検証のまま「diff 同一」を主張することになる。
+      # 安全側の divergent へ倒す (stash 案内は -u で untracked も対象に含む)。
+      # unstaged のみの変更 (X 列が空白: " M" / " D") だけが下の比較へ進む
       echo "[CONTEXT] BASE_UPDATE=ff_failed_divergent"
     else
       # unstaged の tracked 変更のみ: 比較を dirty パスに限定する。tree 全体比較 (pathspec なし)
       # はマージが追加/削除した無関係ファイルまで D として数え、diff 同一の残存変更を divergent に
       # 誤流出させる。pathspec は root 相対で出力されるため消費側も -C <root> で root 起点に固定
-      # する (cwd がサブディレクトリだと pathspec 不一致の空比較が discardable を偽装する)。
-      # 空リスト (name-only が失敗/空) も比較せず discardable にしない
-      # パスは改行区切りで保持し xargs 直前に NUL 区切りへ変換する (-z の NUL は command
-      # substitution が落とすため変数経由で使えない。改行入りファイル名は quotePath で C-quote
-      # され pathspec 不一致 → divergent の安全側に落ちる)
+      # し (--no-relative は diff.relative config の影響排除)、空リストは比較せず discardable に
+      # しない。比較 pipe は -z (NUL 区切り・quote なし) を xargs -0 へ直結する — 非 -z 出力は
+      # quotePath がファイル名を C-quote し、quote 済みリテラルの pathspec は実ファイルに不一致
+      # → git diff --quiet が exit 0 (差分なし扱い) を返して相違変更が discardable に誤流出する
+      # (NUL を command substitution の変数に入れると bash が落とすため、非空判定のみ別変数で行う)
       _bu_root=$(git rev-parse --show-toplevel 2>/dev/null) || _bu_root=""
       _bu_paths=$(git diff --name-only HEAD 2>/dev/null) || _bu_paths=""
       if [ -n "$_bu_root" ] && [ -n "$_bu_paths" ] && \
-         printf '%s\n' "$_bu_paths" | tr '\n' '\0' | xargs -0 git -C "$_bu_root" diff --quiet "origin/{base_branch}" -- 2>/dev/null; then
+         git diff --name-only --no-relative -z HEAD 2>/dev/null | xargs -0 -r git -C "$_bu_root" diff --quiet "origin/{base_branch}" -- 2>/dev/null; then
         # dirty パスの working tree 内容が origin/{base} と一致 = 未コミット変更はマージ済み内容と diff 同一
         echo "[CONTEXT] BASE_UPDATE=ff_failed_discardable"
       else

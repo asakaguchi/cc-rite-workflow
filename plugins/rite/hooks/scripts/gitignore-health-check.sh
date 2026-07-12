@@ -230,15 +230,30 @@ sessions_probe=".rite/sessions/.rite-lint-probe"
 sessions_ci_out=""
 sessions_ci_rc=0
 if sessions_ci_out=$(git check-ignore -v "$sessions_probe" 2>/dev/null); then sessions_ci_rc=0; else sessions_ci_rc=$?; fi
-if [ "$sessions_ci_rc" -eq 0 ] && printf '%s' "$sessions_ci_out" | grep -qE ':\.rite/sessions/'; then
+# 実効判定: マッチルールが親 `.rite/` 広域ルールでも healthy とする。git のディレクトリ pruning に
+# より check-ignore -v は最初に一致した親ルールを報告するため、特定ルール表記 (`:.rite/sessions/`)
+# への文字列一致を要求すると広域 + 個別の重複構成で個別ルールが実在しても偽陽性 DRIFT になる。
+# ただし check-ignore -v は negation ルール (`!pattern`) にマッチした場合も rc=0 を返す
+# (verbose モードは negation マッチも「マッチあり」として数える) ため、rc==0 だけでは
+# 「実際には ignore されず leak する」構成を healthy と誤判定する。-v の出力形式
+# `<source>:<linenum>:<pattern>\t<pathname>` の pattern 先頭が `!` でないことも healthy 条件とする。
+sessions_ci_negated=0
+if [ "$sessions_ci_rc" -eq 0 ] && printf '%s' "$sessions_ci_out" | grep -qE ':[0-9]+:!'; then
+  sessions_ci_negated=1
+fi
+if [ "$sessions_ci_rc" -eq 0 ] && [ "$sessions_ci_negated" -eq 0 ]; then
   log_info "gitignore-health-check: sessions layer healthy — .rite/sessions/ ignored (${sessions_ci_out})"
 elif [ "$sessions_ci_rc" -ge 2 ]; then
   echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$sessions_ci_rc) for .rite/sessions/ verify — skipping sessions check" >&2
 else
-  echo "==> gitignore-health-check: DRIFT DETECTED (sessions): '.rite/sessions/' rule missing from .gitignore" >&2
+  if [ "$sessions_ci_negated" -eq 1 ]; then
+    echo "==> gitignore-health-check: DRIFT DETECTED (sessions): '.rite/sessions/' matched only a negation rule (${sessions_ci_out}) — effectively NOT ignored" >&2
+  else
+    echo "==> gitignore-health-check: DRIFT DETECTED (sessions): '.rite/sessions/' rule missing from .gitignore" >&2
+  fi
   echo "==> per-session state files (.rite/sessions/{session_id}.flow-state) would leak into dev-branch diffs." >&2
   echo "==> Hint: add '.rite/sessions/' to .gitignore (init.md gitignore generation adds it)." >&2
-  echo "WARNING: gitignore-health-check: .rite/sessions/ rule missing" >&2
+  echo "WARNING: gitignore-health-check: .rite/sessions/ not effectively ignored" >&2
   echo "==> Total gitignore-health-check findings: 1"
   exit 1
 fi
@@ -267,15 +282,26 @@ if [ "$ms_enabled" = "true" ]; then
   ms_ci_out=""
   ms_ci_rc=0
   if ms_ci_out=$(git check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
-  if [ "$ms_ci_rc" -eq 0 ] && printf '%s' "$ms_ci_out" | grep -qE ':\.rite/worktrees/'; then
+  # 実効判定: sessions ブロックと同じ理由で「rc==0 かつ negation マッチでない」を healthy 条件と
+  # する (親 `.rite/` 広域ルール一致でも実効的に ignore されていれば偽陽性にしない。negation
+  # マッチは rc=0 でも実際には ignore されないため DRIFT — 詳細は sessions ブロックのコメント参照)。
+  ms_ci_negated=0
+  if [ "$ms_ci_rc" -eq 0 ] && printf '%s' "$ms_ci_out" | grep -qE ':[0-9]+:!'; then
+    ms_ci_negated=1
+  fi
+  if [ "$ms_ci_rc" -eq 0 ] && [ "$ms_ci_negated" -eq 0 ]; then
     log_info "gitignore-health-check: multi_session layer healthy — .rite/worktrees/ ignored (${ms_ci_out})"
   elif [ "$ms_ci_rc" -ge 2 ]; then
     echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$ms_ci_rc) for .rite/worktrees/ verify — skipping multi_session check" >&2
   else
-    echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' rule missing from .gitignore" >&2
+    if [ "$ms_ci_negated" -eq 1 ]; then
+      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' matched only a negation rule (${ms_ci_out}) — effectively NOT ignored" >&2
+    else
+      echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' rule missing from .gitignore" >&2
+    fi
     echo "==> multi_session.enabled=true but session worktrees (.rite/worktrees/issue-{N}) would leak into dev-branch diffs." >&2
     echo "==> Hint: add '.rite/worktrees/' to .gitignore (see multi-session design §2)." >&2
-    echo "WARNING: gitignore-health-check: .rite/worktrees/ rule missing while multi_session.enabled=true" >&2
+    echo "WARNING: gitignore-health-check: .rite/worktrees/ not effectively ignored while multi_session.enabled=true" >&2
     echo "==> Total gitignore-health-check findings: 1"
     exit 1
   fi

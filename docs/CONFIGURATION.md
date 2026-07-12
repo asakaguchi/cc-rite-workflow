@@ -592,7 +592,7 @@ multi_session:
   worktree_base: ".rite/worktrees"
 ```
 
-**`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:setup` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
+**`.gitignore` requirement:** `.rite/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs — a broad `.rite/` rule suffices. `/rite:setup` adds an entry automatically only when the path is not already covered, and `/rite:lint` (via `gitignore-health-check.sh`) probes with `git check-ignore` and emits a non-blocking warning if the path is not ignored while `multi_session.enabled: true`.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
 

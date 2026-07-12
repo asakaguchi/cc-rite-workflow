@@ -69,5 +69,23 @@ echo "=== TC-5: wiki disabled + ms enabled + worktrees ignored → healthy (exit
 run_case "${WIKI_OFF}${MS_ON}" $'.rite/worktrees/\n.rite/sessions/\n'
 assert "TC-5 exit 0" "0" "$RUN_RC"
 
+echo "=== TC-6: ms enabled + broad .rite/ rule only → healthy (exit 0) ==="
+# 実効判定: 個別 `.rite/worktrees/` ルールが無くても親 `.rite/` 広域ルールで probe が
+# ignore されていれば healthy（特定ルール文字列一致の要求はこの構成を偽陽性 DRIFT にする）。
+run_case "${WIKI_OFF}${MS_ON}" $'.rite/\n'
+assert "TC-6 exit 0 (broad rule effective)" "0" "$RUN_RC"
+
+echo "=== TC-7: ms enabled + worktrees negation leak (.rite/worktrees/* + !.rite/worktrees/**) → drift (exit 1) ==="
+# negation-leak 回帰: git check-ignore -v は negation ルールにマッチした場合も rc=0 を返すため、
+# rc のみの実効判定だと probe が実際には ignore されず leak する構成を healthy と誤判定する
+# (詳細は gitignore-health-check-sessions.test.sh TC-9 のコメント参照)。sessions は個別ルールで
+# healthy を維持し、worktrees 側の negation 検出を単独で検証する。
+run_case "${WIKI_OK}${MS_ON}" $'.rite/sessions/\n.rite/worktrees/*\n!.rite/worktrees/**\n'
+assert "TC-7 exit 1 (negation match is not healthy)" "1" "$RUN_RC"
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (multi_session)"*) pass "TC-7 multi_session negation drift emitted" ;;
+  *) fail "TC-7 multi_session negation drift message missing: $RUN_OUT" ;;
+esac
+
 print_summary "$(basename "$0")" \
   "Drift hint: gitignore-health-check.sh multi_session check (design §2) — runs before the wiki early-exits, opt-in via multi_session.enabled."

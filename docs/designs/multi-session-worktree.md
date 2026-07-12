@@ -97,7 +97,8 @@ common=$(git rev-parse --path-format=absolute --git-common-dir)
 | 状態 | 配置 | 根拠 |
 |---|---|---|
 | `.rite/sessions/` / `.rite-work-memory/`（+lockdir） / `.rite/state/`（flock 群 + issue-claims） / `.rite/wiki-worktree` / `.rite-session-id` / `.rite-plugin-root` | **共有 root**（main checkout） | セッション横断の整合・排他に必要。WM の mkdir lock は WM パス由来のため WM が共有なら自動的に共有 |
-| `.rite/review-results/` / `.rite/fix-cycle-state/` / `.rite/tmp/` | **セッション cwd 相対のまま**（= worktree-local） | 同一セッション内で書いて読む一過性アーティファクト。worktree 削除と同時に消え、セッション間の混線を構造的に防ぐ |
+| `.rite/review-results/` / `.rite/fix-cycle-state/` / `.rite/state/accepted-fingerprints-*` | **共有 root**（state-path-resolve 基準） | 保存 (worktree 内 pr-review) と読取・削除 (main checkout の fix 再開 / cleanup) がセッションを跨ぐため、cwd 相対だと削除 no-op・読取不発になる。書込/読取/削除の 3 者を state-path-resolve.sh で同一パスに解決する |
+| `.rite/tmp/` | **セッション cwd 相対のまま**（= worktree-local） | 同一セッション内で書いて読む一過性アーティファクト。worktree 削除と同時に消え、セッション間の混線を構造的に防ぐ |
 
 `.rite-plugin-root` は cwd 相対 `cat` する command スニペット（8 ファイル）のため、pr:open の worktree 作成時に worktree root へ**コピー配置**する
 （8 ファイル改修より 1 writer 追加を採択。既存スニペットには fallback があるため、コピーは決定論化のための defense-in-depth）。

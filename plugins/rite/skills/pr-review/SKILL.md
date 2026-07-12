@@ -1800,7 +1800,11 @@ case "$pr_number" in
  accepted_fingerprints=""
  ;;
  *)
- state_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
+ # state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション
+ # worktree / main checkout のどちらから実行しても同一パスに解決される (解決失敗時は cwd fallback)
+ _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+ [ -n "$_state_root" ] || _state_root="$(pwd)"
+ state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
  if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
  # accept_count は fix.md ステップ 2.1.A Step 7 と bit-exact 対称: wc -l + tr -d + numeric validation
@@ -1854,7 +1858,10 @@ case "$pr_number" in
 esac
 
 # accepted_fingerprints は本 block 内で再読込する (Step 1 と別 invocation の可能性があるため)
-state_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
+# state ルート解決は Step 1 と同一 (worktree / main checkout 間のパス一貫性)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || _state_root="$(pwd)"
+state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
 else
@@ -2370,7 +2377,10 @@ Claude substitutes `{total_findings}`, `{fix_introduced_count}`, `{critical_coun
 
 ```bash
 pr_number="{pr_number}"
-state_file=".rite/fix-cycle-state/${pr_number}.json"
+# fix-cycle-state もリポジトリ共通 state ルート基準 (fix.md ステップ 3.3.1 の書込側と同一解決)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || _state_root="$(pwd)"
+state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 total_findings="{total_findings}"
 fix_introduced_count="{fix_introduced_count}"
 critical_count="{critical_count}"

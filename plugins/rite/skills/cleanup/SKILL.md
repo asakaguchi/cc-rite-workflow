@@ -458,6 +458,12 @@ case "$pr_number" in
     exit 0 ;;
 esac
 
+# 削除対象はリポジトリ共通の state ルート基準 (state-path-resolve.sh)。書込側
+# (review-result-save.sh / fix.md 2.1.A / fix.md 3.3.1) と同一解決のため、セッション worktree に
+# 書かれて main checkout の削除が no-op になる不整合を防ぐ (解決失敗時は cwd fallback)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || _state_root="$(pwd)"
+
 rite_rm() {
   local label="$1"; shift
   local f
@@ -473,12 +479,12 @@ rite_rm() {
 }
 
 rite_rm review_results \
-  .rite/review-results/${pr_number}-*.json \
-  .rite/review-results/${pr_number}-*.json.corrupt-*
-rite_rm fix_retry_state ".rite/state/fix-fallback-retry-${pr_number}.count"
-rite_rm fix_cycle_state ".rite/fix-cycle-state/${pr_number}.json"
-rite_rm legacy_fix_cycle_state ".rite/fix-cycle-state.json"
-rite_rm accepted_fingerprints ".rite/state/accepted-fingerprints-${pr_number}.txt"
+  "$_state_root"/.rite/review-results/${pr_number}-*.json \
+  "$_state_root"/.rite/review-results/${pr_number}-*.json.corrupt-*
+rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number}.count"
+rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
+rite_rm legacy_fix_cycle_state "$_state_root/.rite/fix-cycle-state.json"
+rite_rm accepted_fingerprints "$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 ```
 
 `.rite/wiki-worktree/` は永続 worktree のため削除しない (再作成コストが高く各 PR cycle を跨いで保持する)。手動削除が必要なら `git worktree remove .rite/wiki-worktree && git worktree prune`。

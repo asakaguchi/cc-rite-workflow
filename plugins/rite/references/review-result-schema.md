@@ -4,12 +4,13 @@
 
 ## 保存場所
 
-レビュー結果は以下のパスにタイムスタンプ付きで保存される:
+レビュー結果は以下のパスにタイムスタンプ付きで保存される (ルートは `state-path-resolve.sh` の解決結果 — セッション worktree 内から保存しても main checkout と同一パスに解決される。`--results-dir` 明示指定時はそちらを優先):
 
 ```
-.rite/review-results/{pr_number}-{timestamp}.json
+{state_root}/.rite/review-results/{pr_number}-{timestamp}.json
 ```
 
+- `{state_root}`: `state-path-resolve.sh` が解決するリポジトリ共通の state ルート (単一 checkout ではリポジトリ root と同一)
 - `{pr_number}`: PR 番号（整数）
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
 - 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内に 2 回 `/rite:pr-review` を実行すると file path が衝突する。pr-review.md ステップ 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない (best-effort tradeoff)。separator には `~` (0x7E) を使用する。ファイル名 `{ts}~{hex}.json` と `{ts}.json` の分岐点で `.` (0x2E) < `~` (0x7E) となるため、collision-resolved 版が lexicographic 大となり `sort -r` で先頭に並ぶ

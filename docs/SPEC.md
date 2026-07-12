@@ -474,7 +474,8 @@ followed by AskUserQuestion confirmation)
 2. Present options:
  - Link to existing Projects
  - Create new Projects
-3. Auto-configure fields
+3. Link the Project to the repository (`gh project link`, idempotent, non-blocking on failure)
+4. Auto-configure fields
 
 #### Phase 4: Template Generation
 1. Check `.github/ISSUE_TEMPLATE/`

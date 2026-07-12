@@ -169,9 +169,18 @@ EOF
   exit 2
 else
   # ケース 1: local save 成功 (通常経路)。
+  # 表示パスは実保存先 (review-result-save.sh の state-path-resolve 基準の既定) と同一解決にする。
+  # cwd 相対のまま表示すると、worktree セッションでは実在しないパスをユーザーに提示する。
+  _notif_script_dir="$(dirname "${BASH_SOURCE[0]}")"
+  if _notif_state_root=$("$_notif_script_dir/state-path-resolve.sh" 2>/dev/null) && [ -n "$_notif_state_root" ]; then
+    _notif_results_dir="$_notif_state_root/.rite/review-results"
+  else
+    echo "WARNING: state-path-resolve.sh の解決に失敗。cwd 相対パスで表示します" >&2
+    _notif_results_dir=".rite/review-results"
+  fi
   cat >&2 <<EOF
 ℹ️ PR コメント記録はスキップされました (pr_review.post_comment=false)
-  ローカルファイル: .rite/review-results/${PR_NUMBER}-${FILE_TIMESTAMP}.json
+  ローカルファイル: ${_notif_results_dir}/${PR_NUMBER}-${FILE_TIMESTAMP}.json
   コメント記録を有効化するには --post-comment フラグまたは rite-config.yml で pr_review.post_comment: true を設定してください
 EOF
 fi

@@ -462,7 +462,7 @@ esac
 # (review-result-save.sh / fix.md 2.1.A / fix.md 3.3.1) と同一解決のため、セッション worktree に
 # 書かれて main checkout の削除が no-op になる不整合を防ぐ (解決失敗時は cwd fallback)
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || _state_root="$(pwd)"
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
 
 rite_rm() {
   local label="$1"; shift

@@ -113,7 +113,7 @@ gh project create --owner {owner} --title "{repo-name}" --format json
 
 ### 3.3.5 Link Project to Repository (Both Paths)
 
-新規作成（3.3）・既存 Project 選択（3.2）のどちらのパスでも、Project 番号が確定したら必ず実行する。`gh project link` はリポジトリと Project を関連付け、`repository(owner:, name:) { projectV2(number:) }` ルートの GraphQL クエリ（Issue 作成 helper の Step 2.3 フィールド取得が使用）を解決可能にする。link しないままだと初回 `/rite:issue-create` が `project_registration: "partial"` で失敗する。
+新規作成（3.3）・既存 Project 選択（3.2）のどちらのパスでも、Project 番号が確定したら必ず実行する。`gh project link` はリポジトリと Project を関連付け、Issue 作成 helper のフィールド取得 GraphQL クエリ（`repository(owner:, name:) { projectV2(number:) }` ルート、[../../references/graphql-helpers.md](../../references/graphql-helpers.md) 参照）を解決可能にする。link しないままだと初回 `/rite:issue-create` が `project_registration: "partial"` で失敗する。
 
 ```bash
 # 冪等: 既にリンク済みでも成功する。失敗しても setup は続行する（non-blocking）

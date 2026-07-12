@@ -45,6 +45,14 @@
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
 #   `[CONTEXT] WM_UPDATE_FAILED=1` にマップする (`[fix:pushed-wm-stale]` routing 用)。
+#
+# Status output (stdout, init mode) — caller shim 用の機械可読 1 行:
+#   status=success                          replica 投稿 + 検証成功
+#   status=skipped; reason=already_exists   replica 既存 (冪等 pre-check による skip)
+#   status=unverified                       投稿は実行されたが検証 (3 回 retry) で発見できず
+#   (status 行なし)                          投稿本体 gh issue comment / owner-repo 取得 / mktemp の
+#                                           失敗 (WARNING + exit 0、non-blocking)
+#   skills/open/SKILL.md ステップ 2.5 はこの行を read し、status 分岐表で続行判断する。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

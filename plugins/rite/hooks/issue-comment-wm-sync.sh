@@ -45,6 +45,14 @@
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
 #   `[CONTEXT] WM_UPDATE_FAILED=1` にマップする (`[fix:pushed-wm-stale]` routing 用)。
+#
+# Status output (stdout, init mode) — caller shim 用の機械可読 1 行:
+#   status=success                          replica 投稿 + 検証成功
+#   status=skipped; reason=already_exists   replica 既存 (冪等 pre-check による skip)
+#   status=unverified                       投稿は実行されたが検証 (3 回 retry) で発見できず
+#   (status 行なし)                          投稿本体 gh issue comment / owner-repo 取得 / mktemp の
+#                                           失敗 (WARNING + exit 0、non-blocking)
+#   skills/open/SKILL.md ステップ 2.5 はこの行を read し、status 分岐表で続行判断する。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -296,6 +304,26 @@ fi
 # ============================================================
 if [ "$MODE" = "init" ]; then
   TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S+09:00')
+
+  # 冪等 pre-check: replica が既に存在する場合は二重投稿せず skip する (作成後の validation と
+  # 同じ query)。pre-check の gh api 失敗は「存在不明」であり、ここで止めると replica が永遠に
+  # 作られない恐れがあるため投稿続行に倒す (non-blocking)。
+  _pre_err=$(mktemp 2>/dev/null) || _pre_err=""
+  _pre_rc=0
+  existing_id=$(gh api "repos/${OWNER_REPO}/issues/${ISSUE}/comments" \
+    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' \
+    2>"${_pre_err:-/dev/null}") || _pre_rc=$?
+  if [ "$_pre_rc" -ne 0 ]; then
+    echo "[rite] WARNING: issue-comment-wm-sync: init pre-check gh api 失敗 (rc=$_pre_rc) — 存在不明のため投稿を続行します" >&2
+    [ -n "$_pre_err" ] && [ -s "$_pre_err" ] && head -3 "$_pre_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    existing_id=""
+  fi
+  [ -n "$_pre_err" ] && rm -f "$_pre_err"
+  if [ -n "$existing_id" ]; then
+    cache_comment_id "$existing_id"
+    echo "status=skipped; reason=already_exists"
+    exit 0
+  fi
 
   # set -e 配下で mktemp が /tmp full / inode 枯渇 / readonly fs で失敗すると、trap 設定前
   # に abort する。明示 rc check で degrade させ、init mode を skip して上位で続行する。

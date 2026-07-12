@@ -15,7 +15,9 @@
 #   WM_PHASE        - Phase value (e.g., "lint", "implement", "pr", "review", "fix"; see PHASE_ENUM_V3 in flow-state.sh for the flat phase enum)
 #   WM_PHASE_DETAIL - Phase detail description
 #   WM_NEXT_ACTION  - Next action description
-#   WM_BODY_TEXT    - Body text after YAML frontmatter closing ---
+#   WM_BODY_TEXT    - Body text after YAML frontmatter closing --- (サマリー領域のみ。
+#                     既存ファイルの `## Detail` 以下の蓄積内容は更新時に保持される —
+#                     stock の先頭 Phase:/Branch: 行のみ最新値で再生成)
 #   WM_PLUGIN_ROOT  - Absolute path to the plugin root directory
 #
 # Optional environment variables:
@@ -270,6 +272,19 @@ update_local_work_memory() {
   _pr_num_san=$(_validate_numeric_yaml_value "$pr_num" pr_num)
   _loop_cnt_san=$(_validate_numeric_yaml_value "$loop_cnt" loop_cnt)
 
+  # 蓄積セクション保持: `## Detail` 以下は自由記述の置き場 (work-memory-format.md の local
+  # File Structure 定義) のため、body 全置換するとフェーズ遷移のたびに追記内容が消える。
+  # stock の先頭 `Phase:` / `Branch:` 行のみ最新値で再生成し、それ以外の自由記述内容を
+  # verbatim で引き継ぐ (WM_BODY_TEXT はサマリー領域のみを対象とする契約)。
+  local detail_extra=""
+  if [ -f "$local_wm" ]; then
+    detail_extra=$(awk '
+      /^## Detail$/ {found=1; next}
+      found && !body && (/^Phase: / || /^Branch: / || /^[[:space:]]*$/) {next}
+      found {body=1; print}
+    ' "$local_wm" 2>/dev/null) || detail_extra=""
+  fi
+
   {
     printf '# 📜 rite 作業メモリ\n\n'
     printf '## Summary\n'
@@ -290,6 +305,9 @@ update_local_work_memory() {
     printf -- '---\n'
     printf '\n%s\n' "$WM_BODY_TEXT"
     printf '\n## Detail\nPhase: %s\nBranch: %s\n' "$_wm_phase_san" "$_branch_san"
+    if [ -n "$detail_extra" ]; then
+      printf '\n%s\n' "$detail_extra"
+    fi
   } > "$tmp_wm"
 
   chmod 600 "$tmp_wm" 2>/dev/null || true

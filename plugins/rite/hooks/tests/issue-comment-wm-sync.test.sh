@@ -138,6 +138,61 @@ else
 fi
 echo ""
 
+# ─── TC-005: init 冪等 pre-check → 既存 replica で二重投稿しない ────────
+# init mode は投稿前に既存 replica を query し、存在すれば status=skipped;
+# reason=already_exists で exit 0 する契約 (gh issue comment は実行されない)。
+echo "TC-005: init idempotency — existing replica → status=skipped, no post"
+dir005="$TEST_DIR/tc005"
+mkdir -p "$dir005/bin"
+echo '{"active":true,"issue_number":42}' > "$dir005/.rite-flow-state"
+GH_SHIM_MARKER="$dir005/posted.marker"
+cat > "$dir005/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments") echo "111"; exit 0 ;;
+  "issue comment") touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-1"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir005/bin/gh"
+out005=$(cd "$dir005" && PATH="$dir005/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER" \
+  bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
+if printf '%s' "$out005" | grep -qF "status=skipped; reason=already_exists" && [ ! -f "$GH_SHIM_MARKER" ]; then
+  pass "TC-005: existing replica → skipped; reason=already_exists, gh issue comment 未実行"
+else
+  fail "TC-005: expected skipped/already_exists without post. out: $out005 marker=$([ -f "$GH_SHIM_MARKER" ] && echo present || echo absent)"
+fi
+echo ""
+
+# ─── TC-006: init — replica 不在なら投稿する (pre-check が正常経路を塞がない) ──
+echo "TC-006: init posts when no replica exists"
+dir006="$TEST_DIR/tc006"
+mkdir -p "$dir006/bin"
+echo '{"active":true,"issue_number":42}' > "$dir006/.rite-flow-state"
+GH_SHIM_MARKER6="$dir006/posted.marker"
+# pre-check は空を返し、投稿後の validation は id を返す (marker 存在で切替)
+cat > "$dir006/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments")
+    if [ -f "$GH_SHIM_MARKER" ]; then echo "222"; fi
+    exit 0 ;;
+  "issue comment") touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-2"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir006/bin/gh"
+out006=$(cd "$dir006" && PATH="$dir006/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER6" \
+  bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
+if printf '%s' "$out006" | grep -qF "status=success" && [ -f "$GH_SHIM_MARKER6" ]; then
+  pass "TC-006: no replica → posted + status=success"
+else
+  fail "TC-006: expected post + status=success. out: $out006 marker=$([ -f "$GH_SHIM_MARKER6" ] && echo present || echo absent)"
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1

@@ -1234,7 +1234,7 @@ WM_SOURCE="implement" WM_PHASE="lint" \
 | `WM_PHASE` | Yes | Current phase (`lint`, `implement`, `pr`, etc.; see `PHASE_ENUM_V3` in `flow-state.sh`) |
 | `WM_PHASE_DETAIL` | Yes | Detailed phase description |
 | `WM_NEXT_ACTION` | Yes | Next action |
-| `WM_BODY_TEXT` | Yes | Update content text (summary area only — accumulated sections under `## Detail`, e.g. 決定事項・メモ, are preserved across updates) |
+| `WM_BODY_TEXT` | Yes | Update content text (summary area only — free-form content under `## Detail` is preserved across updates) |
 | `WM_ISSUE_NUMBER` | Yes | Issue number |
 
 ### Work Memory Lock (`work-memory-lock.sh`)

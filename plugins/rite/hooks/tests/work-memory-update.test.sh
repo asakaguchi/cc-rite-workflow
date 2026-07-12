@@ -215,7 +215,7 @@ fi
 # read path inside work-memory-update.sh.
 
 # ─── TC-5: 蓄積セクション保持 (AC-3) ───────────────────────────────
-# `## Detail` 以下に追記された蓄積セクション (「決定事項・メモ」等) がフェーズ遷移更新
+# `## Detail` 以下に追記された自由記述内容 (蓄積セクション) がフェーズ遷移更新
 # (WM_BODY_TEXT による body 再構築) 後も保持されることを検証する。stock の先頭
 # Phase:/Branch: 行は最新値で再生成され、それ以外の蓄積内容が verbatim で残る契約。
 echo "TC-5: 蓄積セクション保持 (フェーズ遷移更新で Detail 以下が消えない)"
@@ -228,7 +228,7 @@ run_update "$SBX5" \
   WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="impl" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="First body." WM_ISSUE_NUMBER="687" >/dev/null 2>&1 || true
 WM_FILE5="$SBX5/.rite-work-memory/issue-687.md"
-# 蓄積セクションを Detail 以下に追記 (pr-review 7.4.3 フォールバック相当の追記を模擬)
+# 蓄積セクションを Detail 以下に追記 (local `## Detail` への自由記述追記を模擬)
 cat >> "$WM_FILE5" <<'ACCUM_EOF'
 
 ### 決定事項・メモ

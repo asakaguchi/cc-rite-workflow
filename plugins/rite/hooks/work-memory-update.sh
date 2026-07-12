@@ -272,9 +272,9 @@ update_local_work_memory() {
   _pr_num_san=$(_validate_numeric_yaml_value "$pr_num" pr_num)
   _loop_cnt_san=$(_validate_numeric_yaml_value "$loop_cnt" loop_cnt)
 
-  # 蓄積セクション保持: `## Detail` 以下は自由記述 + 蓄積セクション (「決定事項・メモ」等、
-  # work-memory-format.md 定義) の置き場のため、body 全置換するとフェーズ遷移のたびに追記内容が
-  # 消える。stock の先頭 `Phase:` / `Branch:` 行のみ最新値で再生成し、それ以外の蓄積内容を
+  # 蓄積セクション保持: `## Detail` 以下は自由記述の置き場 (work-memory-format.md の local
+  # File Structure 定義) のため、body 全置換するとフェーズ遷移のたびに追記内容が消える。
+  # stock の先頭 `Phase:` / `Branch:` 行のみ最新値で再生成し、それ以外の自由記述内容を
   # verbatim で引き継ぐ (WM_BODY_TEXT はサマリー領域のみを対象とする契約)。
   local detail_extra=""
   if [ -f "$local_wm" ]; then

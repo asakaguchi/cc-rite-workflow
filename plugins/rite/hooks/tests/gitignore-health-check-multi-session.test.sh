@@ -71,7 +71,7 @@ assert "TC-5 exit 0" "0" "$RUN_RC"
 
 echo "=== TC-6: ms enabled + broad .rite/ rule only → healthy (exit 0) ==="
 # 実効判定: 個別 `.rite/worktrees/` ルールが無くても親 `.rite/` 広域ルールで probe が
-# ignore されていれば healthy（旧実装の `:.rite/worktrees/` 文字列一致では偽陽性 DRIFT）。
+# ignore されていれば healthy（特定ルール文字列一致の要求はこの構成を偽陽性 DRIFT にする）。
 run_case "${WIKI_OFF}${MS_ON}" $'.rite/\n'
 assert "TC-6 exit 0 (broad rule effective)" "0" "$RUN_RC"
 

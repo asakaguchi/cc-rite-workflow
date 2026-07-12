@@ -2,10 +2,14 @@
 title: "Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く"
 domain: "patterns"
 created: "2026-04-30T01:58:00+00:00"
-updated: "2026-04-30T01:58:00+00:00"
+updated: "2026-07-12T22:55:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260430T005759Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260712T133608Z-pr-1835.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260712T133936Z-pr-1835.md"
 tags: []
 confidence: high
 ---
@@ -40,6 +44,16 @@ PR #688 cycle 49 H-1 の Self-defeating defense bug の root cause: cycle 49 で
 
 - pre-commit lint で `次の Step` / `上記 Step` / `Step [0-9]+/[0-9]+` のような relative 形式を検出して absolute 形式への書き換えを提案
 - review feedback の Step 参照は heading title を併記する規約
+
+### Cross-file 次元への拡張（PR #1835）
+
+同一ドキュメント内の relative 参照だけでなく、**別ドキュメントの内部 step 番号への cross-file 参照**も同じ drift class に属する。PR #1835 では新設 prose が Issue 作成 helper の内部処理を「Step 2.3 フィールド取得」と番号参照したが、参照先ドキュメントのステップは flat な Step 1/2/3 で「Step 2.3」は実在せず、読者を誤誘導する stale 参照として MEDIUM 検出された（参照先の実在を grep で確認しないまま番号アンカーを書き込んだのが根本原因）。
+
+canonical fix と検証手順:
+
+1. **番号アンカーを削除**し、参照先の実体（クエリルート等）+ SoT ドキュメントへの**相対リンク**に置換する（番号は参照先の再編で陳腐化するが、パス + 見出し名は grep で追跡できる）
+2. 置換時は **(a) 参照先ファイルの実在を ls/grep で確認**し、**(b) 同一ファイル内の既存相対パス慣例**（例: `../../references/` 形式）**に追従**する — 初回置換でパス形式の不整合を作り込みやすい
+3. 修正前に同一 stale 参照が PR diff 内の他箇所に存在しないか `git grep` で影響範囲スキャンし、pre-existing の類似参照への過剰修正（scope 逸脱）を避ける
 
 ## 関連ページ
 

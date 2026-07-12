@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-12T22:55:00+09:00 | create | [外部 CLI の仕様主張（冪等性等）は wrapper 構造で spec 要求から分離し、実行検証なしでは blocking にしない](pages/heuristics/external-cli-spec-claim-wrapper-decoupling.md) | raw/reviews/20260712T134842Z-pr-1835.md を新規ページ化 — PR #1835 cycle 2、Reading A/B 分離 + Demonstrable ゲート判定を 2 reviewer が独立到達 |
+| 2026-07-12T22:55:00+09:00 | update | [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) | raw/reviews/20260712T133608Z-pr-1835.md + raw/fixes/20260712T133936Z-pr-1835.md を統合 — cross-file 次元への拡張（実在しない「Step 2.3」参照 MEDIUM、番号アンカー削除 + SoT 相対リンク置換の 3 点セット） |
 | 2026-07-11T20:12:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1821 ingest 後の auto-lint) |
 | 2026-07-11T20:05:22+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260711T100936Z-pr-1821.md + raw/reviews/20260711T110522Z-pr-1821.md を統合 — PR #1821 (Issue #1820)、HIGH 1件 (continuation hint 欠落) + MEDIUM 2件 (docs/SPEC.md schema drift、ready ゲート欠落) + MEDIUM 1件 (STOP marker文言不整合)、4 cycle 収束。累積 62 回目 |
 | 2026-07-10T00:28:04+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1815 ingest 後の auto-lint) |

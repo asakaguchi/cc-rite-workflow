@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-13T01:03:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1837 ingest 後の auto-lint) |
 | 2026-07-13T01:00:24+09:00 | create | [意図的 silent-continue は「無視する理由」と「真の失敗の顕在化ポイント」のコメント明記で許容される](pages/heuristics/intentional-silent-continue-acceptance-conditions.md) | raw/reviews/20260712T155421Z-pr-1837.md を新規ページ化 — PR #1837 (Issue #1829)、既存パターン踏襲 + エラー方針コメント文書化で cycle 1 / 0 findings 収束 |
 | 2026-07-13T00:45:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1836 ingest 後の auto-lint) |
 | 2026-07-13T00:29:27+09:00 | create | [git check-ignore の実効判定は -q と -v で rc 意味論が異なる (negation マッチ検査の要否)](pages/patterns/check-ignore-verbose-negation-rc-semantics.md) | raw/fixes/20260712T145139Z-pr-1836.md + raw/reviews/20260712T151954Z-pr-1836.md を新規ページ化 — PR #1836 (Issue #1828)、-q は negation で rc=1 / -v は rc=0 の非対称を全レビュアーが sandbox 実測で独立検証 |

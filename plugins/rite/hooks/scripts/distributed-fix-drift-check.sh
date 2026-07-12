@@ -568,7 +568,11 @@ check_pattern_6() {
   PATTERN6_STDERR=$(mktemp) || { log "Pattern 6 skipped: mktemp failed"; return 0; }
   local rc=0
   # 1 回のみ invoke: --quiet なしで stderr に drift 行を出力させ、後段で parse する。
-  bash "$checker_script" --all --repo-root "$REPO_ROOT" 2>"$PATTERN6_STDERR" || rc=$?
+  # --repo-root は渡さない: review-results は state-path-resolve 基準の共有 root に保存される
+  # ため、checker 自身の state-root 既定に解決させる。--show-toplevel 由来の $REPO_ROOT を
+  # 明示指定すると worktree セッションで worktree root が渡り、schema drift 検出が空 dir を
+  # scan して silent no-op 化する ($REPO_ROOT は checker script の所在特定にのみ使う)。
+  bash "$checker_script" --all 2>"$PATTERN6_STDERR" || rc=$?
   if [ "$rc" -eq 1 ]; then
     # rc=1: drift detected. stderr の `[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1` 行を parse。
     while IFS= read -r drift_line; do

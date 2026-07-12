@@ -47,6 +47,10 @@ git -C "$REPO" worktree add -q "$REPO/.rite/worktrees/issue-99" -b test-branch m
 # commit_sha は sandbox repo の HEAD に一致させる (Priority 2 は commit_sha 不一致を
 # stale と判定し Priority 3 へ routing するため、不一致だと TC-2 が読取経路を検証できない)
 REPO_HEAD=$(git -C "$REPO" rev-parse HEAD)
+# TC-2 の期待パスは git が返す正規化済み toplevel から導出する。macOS では mktemp が
+# /var (→ /private/var symlink) を返すため、literal $REPO との文字列比較は不一致になる
+# (review-source-resolve.test.sh の SANDBOX_ROOT と同じ理由)
+MAIN_ROOT=$(git -C "$REPO" rev-parse --show-toplevel)
 json_body() {
   cat <<JSON
 {
@@ -85,7 +89,7 @@ out2=$(cd "$REPO/.rite/worktrees/issue-99" && \
     --pr-number 99 --review-file-path "__RITE_UNSET__" \
     --conversation-decision none --p1-scan-turns 0 --p1-scan-found false 2>&1) || true
 if printf '%s' "$out2" | grep -q 'REVIEW_SOURCE=local_file' && \
-   printf '%s' "$out2" | grep -q "review_source_path=$REPO/.rite/review-results/99-"; then
+   printf '%s' "$out2" | grep -q "review_source_path=$MAIN_ROOT/.rite/review-results/99-"; then
   pass "TC-2: Priority 2 resolved to main-root local file"
 else
   fail "TC-2: expected local_file at main root. out: $(printf '%s' "$out2" | grep REVIEW_SOURCE | head -2)"

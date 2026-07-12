@@ -2,8 +2,10 @@
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
 created: "2026-04-18T12:00:00+00:00"
-updated: "2026-05-28T15:05:43Z"
+updated: "2026-07-13T00:29:27+09:00"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260712T150908Z-pr-1836.md"
   - type: "fixes"
     ref: "raw/fixes/20260528T144526Z-pr-1169.md"
   - type: "reviews"
@@ -144,6 +146,16 @@ PR #1169 cycle 5 で、cycle 4 で追加した TC-H6 (consume-handoff の fail-c
 - **テストコードのコメントも本 anti-pattern の対象**: prose / commit message / 本体コメントだけでなく、**test fixture / assertion のコメント**でも `no_journal_comment` / `no_line_or_cycle_reference` は MUST。fix で新規追加するコメントには cycle / PR / Issue 番号や review cycle 文脈を書かず、WHY (observability の目的等) のみを stable に記述する
 - **新規 diff 行の違反は scope 内で必ず修正する**: 蔓延している pre-existing パターンの retrofit (別 Issue 化可) と、**新規 diff 行が違反を導入する**ケースは区別される。後者は本 PR の責務として scope 内で必ず修正する。「既存も違反しているから」を新規違反の言い訳にしない
 
+### 回帰テストの意図説明に「旧実装は…だった」履歴フレームが混入する (PR #1836 で追加)
+
+PR #1836 cycle 1 fix で追加した回帰テスト (negation-leak → DRIFT) のケースコメント 2 件が「旧実装の特定ルール文字列一致だと…偽陽性 DRIFT になっていた回帰ケース」という履歴フレームで WHY を記述し、cycle 2 で tech-writer が `no_journal_comment` (原則 2 Failure Pattern: "In the old code we used X; now we use Y") 違反の MEDIUM × 2 として検出した。特徴的なのは **同一 PR 内に正しい形と誤った形が混在**していた点 — 同じ fix で追加した別ケース (TC-9) は同じ WHY を「check-ignore -v は negation マッチでも rc=0 を返すため rc のみでは不十分」と現在形で記述しており、こちらは指摘されなかった。
+
+教訓:
+
+- **回帰テストの意図説明は現在形の制約文で書く**: 「現在の実装の何が、どの構成を偽陽性/偽陰性にするか」を現在形で述べる。「旧実装は…だった」の変更経緯は commit message に置く
+- **コメント追加時は同 PR 内の正しい先例に揃える**: 同一 fix 内に正誤が混在するのは、ケースごとにコメントを独立に書き下ろしている signal。先に書いた正しいパターン (現在形記述) を後続ケースへ複製する方が drift しない
+- **grep pattern**: `旧実装(の|は|では)` は PR #1161 で確立した多言語 journal phrase grep の対象。fix commit 前に `git diff | grep '旧実装'` で新規追加行を検査する
+
 ## 関連ページ
 
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](../patterns/canonical-reference-sample-code-strict-sync.md)
@@ -163,3 +175,4 @@ PR #1169 cycle 5 で、cycle 4 で追加した TC-H6 (consume-handoff の fail-c
 - [PR #1161 cycle 9 review (`旧 X は Y していた` journal phrase の同 PR 別箇所残存 HIGH × 2)](../../raw/reviews/20260527T082452Z-pr-1161.md)
 - [PR #1161 cycle 11 review (3 → 2 → 0 単調収束で mergeable)](../../raw/reviews/20260527T083107Z-pr-1161.md)
 - [PR #1169 fix results (cycle 5) — TC-H6 のコメントに混入した `cycle-2 fix` review cycle 番号参照を削除し observability 目的のみの恒久記述へ。テストコードのコメントも no_journal / no_cycle_reference MUST、新規 diff 行の違反は scope 内修正](../../raw/fixes/20260528T144526Z-pr-1169.md)
+- [PR #1836 fix results (cycle 2) — 回帰テストのケースコメント 2 件の「旧実装は…だった」履歴フレームを現在形の技術的 WHY へ書き換え。同一 PR 内に正しい現在形記述と誤った履歴フレームが混在した事例](../../raw/fixes/20260712T150908Z-pr-1836.md)

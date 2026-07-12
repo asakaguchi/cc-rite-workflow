@@ -319,8 +319,9 @@ fi
 Issue の comment として work memory (backup replica) を初期投稿する。ローカルファイルが SoT で Issue コメントは replica (`../../skills/rite-workflow/references/work-memory-format.md` 参照)。投稿は `issue-comment-wm-sync.sh` の init mode に委譲する — この replica が無いと、以降の全フェーズの `issue-comment-wm-sync.sh update` 呼び出しが `status=skipped; reason=no_comment` で skip され、compact / cross-session recovery のバックアップ経路が機能しない:
 
 ```bash
-# init は non-blocking 契約: gh api 失敗 (auth / rate limit / network) でも helper は WARNING +
-# status 行を出して exit 0 を返すため、失敗時も open は後続ステップへ続行する。
+# init は non-blocking 契約: gh 失敗 (auth / rate limit / network) でも helper は WARNING を出して
+# exit 0 を返すため、失敗時も open は後続ステップへ続行する (pre-check / validation の gh api 失敗では
+# status 行あり、投稿本体 gh issue comment の失敗では status 行なし — 下表 4 行目参照)。
 # replica が既に存在する場合は helper が冪等に skip する (status=skipped; reason=already_exists)。
 init_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh init \
   --issue {issue_number} --branch "{branch_name}" 2>&1) || true

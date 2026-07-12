@@ -224,6 +224,21 @@ wt_path="$repo_root/$wt_rel"
 branch="{branch_name}"
 base="{base_branch}"
 
+# dirty main checkout 検出 (Issue #1832): worktree は origin/{base} 起点で作られるため、
+# main checkout の未コミット変更は構造的に引き継がれない。作業対象と重なる変更が警告なく
+# worktree から欠落するのを防ぐ (git status 失敗時はガード skip = 従来挙動で続行)
+if _dirty_files=$(git -C "$repo_root" status --porcelain 2>/dev/null); then
+  if [ -n "$_dirty_files" ]; then
+    echo "[CONTEXT] MAIN_DIRTY=yes"
+    printf '%s\n' "$_dirty_files"
+  else
+    echo "[CONTEXT] MAIN_DIRTY=no"
+  fi
+else
+  echo "WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します (従来挙動で続行)" >&2
+  echo "[CONTEXT] MAIN_DIRTY=unknown"
+fi
+
 # ref lock 競合対策の 3 回リトライ (references/git-worktree-patterns.md 参照)
 n=0; until git fetch origin "$base" 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && break; sleep 1; done
 
@@ -256,6 +271,21 @@ fi
 | `branch_only` | branch 存在・worktree なし → `git worktree add "{path}" "{branch}"`（`-b` なし） |
 | `create_new` | branch も worktree もなし → `git worktree add -b "{branch}" "{path}" "origin/{base_branch}"` |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
+
+**dirty main checkout ガード（Issue #1832）**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する**場合（`branch_only` / `create_new`。`reuse` は既存 worktree 継続のため対象外）のみ、`git worktree add` を実行する**前に**評価する:
+
+| `MAIN_DIRTY` | アクション |
+|---|---|
+| `no` / `unknown` | ガードなしで従来どおり続行（`unknown` = git status 失敗、WARNING は bash block が emit 済み） |
+| `yes` | LLM が dirty ファイル一覧（bash block が出力した porcelain 行）と Issue 本文の **Target Files（Section 4.1 の表）/ 変更予定領域** を突合する。**重なりなし** → 従来どおり続行（確認なし）。**重なりあり** → 下記 AskUserQuestion を表示し、確認なしに `git worktree add` へ進まない |
+
+重なりあり時の AskUserQuestion（3 択）:
+
+- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイルを `cp` で worktree の同相対パスへ搬送する（modified / untracked が対象。削除された Target File は搬送対象外として一覧にその旨を表示）。main checkout 側の変更はそのまま残す（破棄しない）
+- **そのまま続行**: 搬送せず worktree を作成する（未コミット変更は worktree に含まれないことを了解済みとして続行）
+- **中止**: workflow を終了し、main checkout を無変更で残す
+
+> setup 直後のブートストラップ（setup が main checkout に生成した未コミットの rite-config.yml / .gitignore をこの Issue でコミットする）は正当なユースケースであり、「搬送して続行」で通す。ユーザー確認なしに未コミット変更を破棄・stash してはならない。
 
 ### 2.3-W EnterWorktree 入場（multi_session 有効時）
 

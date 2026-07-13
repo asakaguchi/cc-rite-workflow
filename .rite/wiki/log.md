@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-13T22:00:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1851 ingest 後の auto-lint) |
 | 2026-07-13T21:57:00+09:00 | update | [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | raw/reviews/20260713T123348Z-pr-1851.md を統合 — 残存 4 箇所の一掃（全 6 call site 統一）と、被委譲 script 契約の実確認による除去正当性検証・-z check 誤発火の実害特定・誤帰属コメント同時修正のレビューパターンを追加 |
 | 2026-07-13T20:12:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1850 ingest 後の auto-lint) |
 | 2026-07-13T20:07:00+09:00 | update | [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) | raw/reviews/20260713T104006Z-pr-1850.md を統合 — deterministic gate-exit variant（mktemp と trap の間の依存コマンド gate exit で orphan）と 2 reviewer 独立検出・sibling 間 gate 位置非対称の実測を追加 |

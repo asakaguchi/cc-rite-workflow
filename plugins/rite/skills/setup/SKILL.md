@@ -504,6 +504,21 @@ elif ! command -v jq >/dev/null 2>&1; then
 elif [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
   INSTALL_PATH=$(jq -r '.plugins["rite@rite-marketplace"][0].installPath // empty' \
     "$HOME/.claude/plugins/installed_plugins.json")
+  # 解決方式間のバージョン照合: 本 block の direct key lookup と、他スキル・hook が使う正準
+  # one-liner (plugin-path-resolution.md の rite@* 先頭エントリ) は、installed_plugins.json に
+  # 複数の rite@* エントリがあると異なるバージョンのパスを返し、1 セッション内で hooks と
+  # skills が別バージョンを参照する混在が silent に進行する。照合失敗・不一致は non-blocking
+  # (解決結果は従来どおり direct key を採用し、解決フロー自体は退行させない)
+  CANON_PATH=$(jq -r 'limit(1; .plugins | to_entries[] | select(.key | startswith("rite@"))) | .value[0].installPath // empty' \
+    "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null) || CANON_PATH=""
+  if [ -n "$CANON_PATH" ] && [ -n "$INSTALL_PATH" ] && [ "$CANON_PATH" != "$INSTALL_PATH" ]; then
+    echo "WARNING: plugin パスの解決方式間で不一致を検出しました (バージョン混在の可能性)" >&2
+    echo "  direct key lookup (.plugins[\"rite@rite-marketplace\"][0]): $INSTALL_PATH" >&2
+    echo "  正準 one-liner (rite@* 先頭エントリ): $CANON_PATH" >&2
+    echo "  影響: hooks は前者、他スキル・hook の plugin_root 解決は後者を参照するため、バージョン間で" >&2
+    echo "        sentinel / スキーマ契約が変わると追跡困難な drift になります" >&2
+    echo "  対処: Claude Code を再起動して plugin キャッシュを更新し、/rite:setup を再実行してください" >&2
+  fi
   if [ -n "$INSTALL_PATH" ] && [ -f "$INSTALL_PATH/hooks/pre-compact.sh" ]; then
     echo "MARKETPLACE:$INSTALL_PATH/hooks"
   else

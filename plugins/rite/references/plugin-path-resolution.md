@@ -23,6 +23,12 @@ The plugin root is resolved using a 3-tier priority system:
 | 2 (local dev) | `plugins/rite` directory check | Local development checkout | Always in local dev |
 | 3 (fallback) | `installed_plugins.json` lookup | Claude Code marketplace metadata | After marketplace install |
 
+## `installPath` Semantics
+
+`installed_plugins.json`'s `installPath` field **is** the plugin root itself — it does **not** point to a parent directory containing a `plugins/rite/` subdirectory. Verified against a live marketplace install (`rite@rite-marketplace`, v0.8.1): `installPath` resolved to `~/.claude/plugins/cache/rite-marketplace/rite/0.8.1`, and `hooks/`, `skills/`, `scripts/`, `references/` exist directly under that path — there is no nested `plugins/rite/` directory.
+
+Every consumer of `installPath` must derive the hooks/skills/scripts dir as `$INSTALL_PATH/hooks` (etc.), never `$INSTALL_PATH/plugins/rite/hooks`. This matches Priority 3 above and `skills/setup/SKILL.md` Phase 4.5.0. `hooks/hook-preamble.sh` previously assumed the wrong (`plugins/rite/`-nested) layout, which made its version-redirect check silently never match (issue #1842).
+
 ## Inline One-Liner (for command files)
 
 **Use this one-liner directly in command files** instead of referencing this document. This prevents Claude LLM from improvising its own resolution logic:

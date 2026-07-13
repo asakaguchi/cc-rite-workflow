@@ -1462,6 +1462,7 @@ If the following issues occur with the sub-agent approach:
 **Parallel execution:** Invoke multiple Task tools within a single message for all selected reviewers. Each Task uses:
 - `description`: "セキュリティ専門家 PR レビュー" (short description)
 - `subagent_type`: `rite:{reviewer_type}-reviewer` — scoped name derived from the reviewer selected in ステップ 2 (see table below)
+- `run_in_background`: `false` — foreground 起動を強制する。省略すると harness default で background 起動となり結果回収が不完全になる (下記 CRITICAL 注記参照)
 - `prompt`:
  - `review_mode == "full"`: ステップ 4.5 format (diff, spec, shared reviewer principles)
  - `review_mode == "verification"`: ステップ 4.5.1 verification template + ステップ 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from ステップ 1.2.4) in addition to the standard inputs.
@@ -1488,7 +1489,7 @@ If the following issues occur with the sub-agent approach:
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 
-**⚠️ CRITICAL**: Do NOT use `run_in_background: true` for review agents. Background agents return launch confirmation immediately and the calling LLM then attempts to end the turn while results are still pending — leading to incomplete review collection and inconsistent `error_count` accounting. Foreground agents launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
+**⚠️ CRITICAL**: Every reviewer Task invocation **MUST explicitly pass `run_in_background: false`**. The current harness launches subagents in the background **by default**, so merely avoiding `run_in_background: true` is not enough — an omitted parameter still yields a background launch. Background agents return launch confirmation immediately and the calling LLM then attempts to end the turn while results are still pending — leading to incomplete review collection and inconsistent `error_count` accounting. Foreground agents (`run_in_background: false`) launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
 
 ### 4.4 Retry Logic
 

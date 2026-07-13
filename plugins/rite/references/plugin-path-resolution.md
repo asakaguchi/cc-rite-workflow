@@ -120,3 +120,18 @@ Command files that need plugin path resolution should include the inline one-lin
 ## Relationship to setup.md Hook Path Resolution
 
 `setup.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent between the two.
+
+## Cross-Method Version Mismatch Check (Issue #1833)
+
+The codebase contains **two jq lookup shapes** against `installed_plugins.json`:
+
+| Shape | Used by | jq filter |
+|-------|---------|-----------|
+| Canonical one-liner | this document (Priority 3) + all skill/hook call sites | `limit(1; .plugins \| to_entries[] \| select(.key \| startswith("rite@"))) \| .value[0].installPath` — first `rite@*` entry |
+| Direct key lookup | `setup.md` Phase 4.5.0 (hooks dir detection) | `.plugins["rite@rite-marketplace"][0].installPath` — exact key |
+
+When `installed_plugins.json` holds more than one `rite@*` entry (e.g., right after a marketplace cache update), the two shapes can return **different versions**, so hooks (resolved by 4.5.0) and skills/helpers (resolved by the one-liner) silently reference mixed plugin versions within one session. If sentinel formats / JSON schemas / marker conventions differ between those versions, the drift is very hard to trace.
+
+**Detection point**: `setup.md` Phase 4.5.0 runs both lookups and emits a WARNING with both paths when they differ. The resolved result stays the direct key lookup (no behavior change); the check itself is non-blocking — a jq failure in the canonical probe falls back to no warning. When `installed_plugins.json` is absent (local development), no probe runs and no warning appears.
+
+**Do NOT add further resolution shapes**: any new call site must use the canonical one-liner above. The direct key lookup in 4.5.0 is retained for backward compatibility and is the only sanctioned exception (paired with the mismatch check).

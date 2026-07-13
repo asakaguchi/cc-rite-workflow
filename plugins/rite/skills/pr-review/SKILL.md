@@ -1488,7 +1488,7 @@ If the following issues occur with the sub-agent approach:
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 
-**⚠️ CRITICAL**: Do NOT use `run_in_background: true` for review agents. Background agents return launch confirmation immediately and the calling LLM then attempts to end the turn while results are still pending — leading to incomplete review collection and inconsistent `error_count` accounting. Foreground agents launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
+**⚠️ CRITICAL**: Every reviewer Task invocation **MUST explicitly pass `run_in_background: false`**. The current harness launches subagents in the background **by default**, so merely avoiding `run_in_background: true` is not enough — an omitted parameter still yields a background launch. Background agents return launch confirmation immediately and the calling LLM then attempts to end the turn while results are still pending — leading to incomplete review collection and inconsistent `error_count` accounting. Foreground agents (`run_in_background: false`) launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
 
 ### 4.4 Retry Logic
 

@@ -16,14 +16,16 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCRIPTS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 HOOKS_DIR="$(cd "$SCRIPTS_DIR/../hooks" && pwd)"
-TEST_DIR="$(mktemp -d)"
-PASS=0
-FAIL=0
 
+# jq gate は mktemp より前に置く (mktemp 後に trap 未設置のまま exit すると temp dir が orphan 残置される)
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
 fi
+
+TEST_DIR="$(mktemp -d)"
+PASS=0
+FAIL=0
 
 cleanup() {
   git -C "$TEST_DIR/repo" worktree remove --force "$TEST_DIR/repo/.rite/worktrees/issue-99" 2>/dev/null || true

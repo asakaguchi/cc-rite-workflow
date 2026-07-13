@@ -38,7 +38,9 @@ _rite_resolve_hook_path() {
   [ -n "$current_install_path" ] || return 0
 
   # Compare: is SCRIPT_DIR different from the current version's hooks dir?
-  local current_hooks_dir="$current_install_path/plugins/rite/hooks"
+  # installPath IS the plugin root in marketplace installs (no plugins/rite/
+  # subdirectory beneath it) — see references/plugin-path-resolution.md.
+  local current_hooks_dir="$current_install_path/hooks"
   [ "$SCRIPT_DIR" != "$current_hooks_dir" ] || return 0
 
   # Validate resolved path stays within expected prefix (defense-in-depth)

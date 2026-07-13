@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-13T14:40:00+09:00 | update | [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) | raw/reviews/20260713T051932Z-pr-1847-cycle3.md を統合 — 独立レビュアーの明示的非裏付け + non-blocking worst-case の不整合による第4の orthogonal 降格軸を追加 |
+| 2026-07-13T14:35:00+09:00 | update | [Exit code semantic preservation: caller は case で語彙を保持する](pages/patterns/exit-code-semantic-preservation.md) | raw/reviews/20260713T045650Z-pr-1847-cycle2.md, raw/fixes/20260713T045756Z-pr-1847-cycle2.md を統合 — bash exit-code だけでなく markdown SKILL.md の sentinel-presence 表示ロジックでも同型の legitimate-skip/failure 混同が再演する facet を追加 |
+| 2026-07-13T14:30:00+09:00 | create | [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | raw/reviews/20260713T043138Z-pr-1847.md, raw/fixes/20260713T043947Z-pr-1847.md を新規ページ化 — command substitution が exit code に関わらず stdout を捕捉する性質と `|| var=""` フォールバックの有害性 |
 | 2026-07-13T12:15:00+00:00 | pr-1843 | reviews | 更新 1 (asymmetric-fix-transcription に rationale 注記 vs operative 列挙の変種を追記) | PR #1843 の注記強化と列挙未更新の矛盾を既存 anti-pattern の変種として統合 |
 | 2026-07-13T09:40:00+00:00 | pr-1841 | reviews | 更新 1 (same-file-must-not-vs-must-conflict に記述層 variant を追記) | PR #1841 の divergence 文書化 vs consistency 主張の隣接矛盾を既存 anti-pattern の変種として統合 |
 | 2026-07-13T09:15:00+00:00 | pr-1840 | reviews | 新規 2 (pathspec-miss-exit-zero-defeats-diff-guard, classifier-destructive-action-same-tree-alignment) | PR #1840 dirty main checkout ガードの 5 cycle レビューから、pathspec 縮退挙動の anti-pattern と分類器 3 者一致の heuristic を抽出 |

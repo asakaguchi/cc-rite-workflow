@@ -2,7 +2,7 @@
 title: "Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-09T19:44:33+09:00"
+updated: "2026-07-13T14:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260416T031452Z-pr-540.md"
@@ -16,6 +16,8 @@ sources:
     ref: "raw/reviews/20260505T095516Z-pr-834.md"
   - type: "reviews"
     ref: "raw/reviews/20260709T104501Z-pr-1812.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260713T051932Z-pr-1847-cycle3.md"
 tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract", "finding-quality-guardrail"]
 confidence: high
 ---
@@ -109,9 +111,21 @@ PR #1812 cycle 3 で観測した sub-pattern: reviewer が finding を LOW sever
 
 適用時の注意: この軸は severity が LOW（またはそれに準じる低確信度）の場合にのみ適用し、CRITICAL/HIGH の finding を推奨文の言い回しだけで降格させてはならない（severity 自体は reviewer の技術判断であり、本軸はあくまで「reviewer 自身が non-blocking と結論している」ことの明示的シグナルを拾うものであるため）。
 
+### 第4の orthogonal 軸: 独立レビュアーの非裏付け + worst-case と severity の不整合 (PR #1847 cycle 3)
+
+PR #1847 cycle 3 で観測した sub-pattern: 単一 reviewer（error-handling）が anchor 付きで HIGH finding を提出したが、**同一箇所を独立に精査した別 reviewer（prompt-engineer）が全分岐をトレースした上で「可」（指摘なし）と明示的に判定していた**。この非裏付け（non-corroboration）自体が、Critic フェーズで severity を再検討する signal として機能する。
+
+判定の根拠は 2 点の複合:
+
+1. **独立レビュアーによる明示的非裏付け**: cross-validation は通常「複数 reviewer が同一箇所を独立検出したら severity boost」という一方向の運用だが、逆方向（一方が明確に「問題なし」と判定した）も証拠として使ってよい。ただし、これは anchor 欠落や Hypothetical のような機械的 gate とは異なり、**Critic の判断**（Debate Phase を経る、または明示的な対比評価）を要する
+2. **Worst-case と severity の不整合**: 当該 finding の対象コードパスが `non_blocking: true` の警告表示止まりであり、実際に発火しても「ユーザーに警告が出るだけ」で処理は継続する設計だった。worst-case が non-blocking warning に留まるコードパスに HIGH（ブロッキング相当）の severity をつけることは、severity 定義（実際の影響範囲）と矛盾するシグナルとして扱える
+
+適用条件（濫用防止）: 本軸は「他 reviewer の非裏付け」単独では発動しない。**worst-case のブラスト半径が small/non-blocking であることの独立確認**とセットで初めて Critic 判断の根拠として十分になる。CRITICAL/HIGH の finding を単に「他が見つけなかったから」だけで降格させてはならない（false negative の見逃しリスクがあるため、severity 自体は reviewer 個々の技術判断を尊重しつつ、対比評価の記録を残す）。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](../anti-patterns/command-substitution-fallback-discards-diagnostic-json.md)
 
 ## ソース
 
@@ -121,3 +135,4 @@ PR #1812 cycle 3 で観測した sub-pattern: reviewer が finding を LOW sever
 - [PR #779 review (literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証)](../../raw/reviews/20260502T155859Z-pr-779.md)
 - [PR #834 review (11 findings 全降格 — cross-validation 合意でも literal anchor 欠落は補えない実証)](../../raw/reviews/20260505T095516Z-pr-834.md)
 - [PR #1812 review cycle 3 (推奨文の self-declared 不要性による第3の orthogonal 降格軸)](../../raw/reviews/20260709T104501Z-pr-1812.md)
+- [PR #1847 review cycle 3 (独立レビュアーの明示的非裏付け + non-blocking worst-case の不整合による第4の orthogonal 降格軸)](../../raw/reviews/20260713T051932Z-pr-1847-cycle3.md)

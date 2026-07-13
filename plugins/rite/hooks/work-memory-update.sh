@@ -276,13 +276,19 @@ update_local_work_memory() {
   # File Structure 定義) のため、body 全置換するとフェーズ遷移のたびに追記内容が消える。
   # stock の先頭 `Phase:` / `Branch:` 行のみ最新値で再生成し、それ以外の自由記述内容を
   # verbatim で引き継ぐ (WM_BODY_TEXT はサマリー領域のみを対象とする契約)。
-  local detail_extra=""
+  local detail_extra="" _detail_awk_rc=0
   if [ -f "$local_wm" ]; then
     detail_extra=$(awk '
       /^## Detail$/ {found=1; next}
       found && !body && (/^Phase: / || /^Branch: / || /^[[:space:]]*$/) {next}
       found {body=1; print}
-    ' "$local_wm" 2>/dev/null) || detail_extra=""
+    ' "$local_wm" 2>/dev/null) || _detail_awk_rc=$?
+    # awk 失敗 (I/O error / 読み取り権限剥奪等) を silent fallback にすると、蓄積 Detail の
+    # 消失が「もともと空だった」と区別できない。non-blocking は維持しつつ WARNING で観測性を確保する。
+    if [ "$_detail_awk_rc" -ne 0 ]; then
+      echo "WARNING: detail_extra awk extraction failed (rc=$_detail_awk_rc) — accumulated Detail content will be dropped from the regenerated body" >&2
+      detail_extra=""
+    fi
   fi
 
   {

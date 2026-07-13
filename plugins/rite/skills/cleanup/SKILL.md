@@ -554,9 +554,39 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 ## ステップ 8: Projects Status を Done に更新
 
-`rite-config.yml.github.projects.enabled: true` の場合のみ。詳細は [archive-procedures.md](./references/archive-procedures.md) (Projects Status Update セクション)。
+**Critical**: Do NOT skip this step. `rite-config.yml.github.projects.enabled: true` かつステップ 2 で関連 Issue が識別できている場合のみ実行し、結果を `projects_status_updated` (true/false) として context に保持してステップ 12 の表示で参照する（`{projects_enabled}` / `{project_number}` / `{owner}` / `{issue_number}` はステップ 1.4 / 2 / Placeholder Legend で確定済みの値をそのまま使う）。無効化・Issue 未識別の場合はステップ 9 へ進む。
 
-結果を `projects_status_updated` (true/false) として context に保持し、ステップ 12 の表示で参照する。
+> **Source of truth**: `plugins/rite/scripts/projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と共通）。過去に multi-stage inline pipeline で LLM の attention が sub-step 間で途切れ Status 更新が silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase 4.2 と同一原因）ため、参照のみに留めず本ステップに直接 inline する。
+
+```bash
+status_json_args=$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+# `|| status_json=""` fallback / jq 2>/dev/null 抑制 / `failed|*)` catch-all により
+# script が JSON-emit 前に死んだ場合も silent fall-through を防ぐ
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+projects_status_updated="false"  # default
+case "$status_result" in
+  updated)
+    projects_status_updated="true"
+    echo "Projects Status を \"Done\" に更新しました" ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2 ;;
+  failed|*)
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2 ;;
+esac
+```
+
+**All result branches are non-blocking** — cleanup は Projects Status 更新の失敗で止めない。`auto_add: false` は cleanup 時点で Issue は既に Project 登録済みという前提（`skills/open/SKILL.md` ステップ 2.4 が未登録時に追加している）。API レベルの詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)、親 Issue の Done 更新の完全形実装は [archive-procedures.md](./references/archive-procedures.md) Phase 3.7.2.1 / `skills/issue-close/SKILL.md` Phase 4.6.3 を参照。
 
 ---
 

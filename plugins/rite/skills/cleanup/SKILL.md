@@ -168,6 +168,7 @@ incomplete=$(printf '%s\n' "$comment_body" | sed -n '/### 進捗/,/### /p' \
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` (boolean) | `true` |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
 | `{owner}` | `rite-config.yml` → `github.projects.owner` | `asakaguchi` |
+| `{repo}` | ステップ 1.4 で取得した `gh repo view --json owner,name` の `.name` | `cc-rite-workflow` |
 
 **Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):
 
@@ -554,9 +555,42 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 ## ステップ 8: Projects Status を Done に更新
 
-`rite-config.yml.github.projects.enabled: true` の場合のみ。詳細は [archive-procedures.md](./references/archive-procedures.md) (Projects Status Update セクション)。
+**Critical**: Do NOT skip this step. `rite-config.yml.github.projects.enabled: true` かつステップ 2 で関連 Issue が識別できている場合のみ実行し、結果を `projects_status_updated` (true/false) として context に保持してステップ 12 の表示で参照する（`{projects_enabled}` / `{project_number}` / `{owner}` / `{repo}` / `{issue_number}` はステップ 1.4 / 2 / Placeholder Legend で確定済みの値をそのまま使う）。無効化・Issue 未識別の場合はステップ 9 へ進む。
 
-結果を `projects_status_updated` (true/false) として context に保持し、ステップ 12 の表示で参照する。
+> **Source of truth**: `plugins/rite/scripts/projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と共通）。過去に multi-stage inline pipeline で LLM の attention が sub-step 間で途切れ Status 更新が silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase 4.2 と同一原因）ため、参照のみに留めず本ステップに直接 inline する。
+
+```bash
+status_json_args=$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+# `jq 2>/dev/null` 抑制 / `failed|*)` catch-all により script が JSON-emit 前に死んだ場合も
+# silent fall-through を防ぐ。`|| status_json=""` は付けない — このブロックに set -e はなく、
+# command substitution は script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り
+# JSON) を正しく capture するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+projects_status_updated="false"  # default
+case "$status_result" in
+  updated)
+    projects_status_updated="true"
+    echo "Projects Status を \"Done\" に更新しました" ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2 ;;
+  failed|*)
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2 ;;
+esac
+echo "[CONTEXT] PROJECTS_STATUS_UPDATED=$projects_status_updated"
+```
+
+**All result branches are non-blocking** — cleanup は Projects Status 更新の失敗で止めない。`auto_add: false` は cleanup 時点で Issue は既に Project 登録済みという前提（`skills/open/SKILL.md` ステップ 2.4 が未登録時に追加している）。API レベルの詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)、親 Issue の Done 更新の完全形実装は [archive-procedures.md](./references/archive-procedures.md) Phase 3.7.2.1 / `skills/issue-close/SKILL.md` Phase 4.6.3 を参照。
 
 ---
 
@@ -708,9 +742,12 @@ Status: {projects_status_result}
   - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（作業ツリーで使用中なら解放後）」を付記
   - `BRANCH_DELETE_UNMERGED=1` のとき（= 未マージ PR の強制 cleanup でユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
   - いずれの `[CONTEXT]` 行も無いとき: `x`
-- `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
+- `{projects_status_result}` / `{projects_check}`: 以下を**上から評価し最初に一致したもの**を採用する（`{wiki_ingest_check}` の legitimate-skip 区別パターンと統一。ステップ8 は `projects_enabled=false` または Issue 未識別のとき丸ごと skip され `[CONTEXT] PROJECTS_STATUS_UPDATED=` を emit しないため、この legitimate skip と本物の更新失敗を区別する）:
+  - `{projects_enabled}`（Placeholder Legend の定義、`rite-config.yml` → `github.projects.enabled`）が `false` のとき: `{projects_status_result}` = `（Projects 連携無効）`、`{projects_check}` = `x`（警告ではなく informational — Wiki ingest の `reason=disabled` と同型）
+  - ステップ 2 で関連 Issue が識別できなかった（`{issue_number}` 空）とき: `{projects_status_result}` = `（関連 Issue 未識別のためスキップ）`、`{projects_check}` = `x`
+  - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
+  - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`
-- `{projects_check}`: `projects_status_updated=true` なら `x`、false なら ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

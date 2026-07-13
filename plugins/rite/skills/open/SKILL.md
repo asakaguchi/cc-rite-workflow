@@ -34,8 +34,10 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'` |
+| `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
 
-> **Note**: `{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
+> **Note**: 上記 2 行（ステップ 2.4(A) 専用と注記したもの）を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
 
 ---
 
@@ -336,9 +338,40 @@ fi
 
 ### 2.4 GitHub Projects Status 更新
 
-`rite-config.yml.github.projects.enabled: true` の場合、以下の **2 種類** の Status 更新を実行する。いずれも詳細ロジックは `../../references/projects-integration.md` を参照し、本コマンドに**複製しない**（DRY）。
+`rite-config.yml.github.projects.enabled: true` の場合、以下の **2 種類** の Status 更新を実行する。
 
-**(A) 着手 Issue 自身の Status 更新** — 着手した Issue (`{issue_number}`) 自身の Projects Status を `In Progress` に更新する（`projects-status-update.sh` 経由、§2.4.1–2.4.6）。
+**Critical**: (A) は Do NOT skip。過去に `skills/ready/SKILL.md` Phase 4.2 で「参照のみに留めた multi-stage pipeline は LLM の attention が sub-step 間で途切れると Status 更新自体が silent skip する」事象が確認されており（Status が `In Progress` へ進まず `Todo` のまま残留）、同じ理由で (A) の呼び出しは本ステップに直接 inline する。(B) は従来どおり `projects-integration.md` §2.4.7 に委譲する（複製しない）。
+
+**(A) 着手 Issue 自身の Status 更新** — 着手した Issue (`{issue_number}`) 自身の Projects Status を `In Progress` に更新する:
+
+```bash
+status_json_args=$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "In Progress" \
+  --argjson auto_add true \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+# `|| status_json=""` は付けない — このブロックに set -e はなく、command substitution は
+# script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り JSON) を正しく capture
+# するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+case "$status_result" in
+  updated)
+    echo "Projects Status を \"In Progress\" に更新しました" ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2 ;;
+  failed|*)
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"In Progress\" への更新に失敗しました。手動更新: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_progress_option_id>" >&2 ;;
+esac
+```
+
+`auto_add: true`（open 時点では Issue が未登録の可能性があるため `projects-status-update.sh` 内部で自動登録する。§2.4.3 相当）。**All result branches are non-blocking** — Status 更新の失敗で open をブロックしない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update) を参照（複製はここまで）。
 
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時、§2.4.7）** — `{issue_number}` が Sub-Issue の場合、**親 Issue の Status も In Progress に遷移させる**。これは省略不可の必須処理であり、(A) と独立に必ず実行する。ロジックは `projects-integration.md` §2.4.7 を実行する（open.md には複製しない）:
 

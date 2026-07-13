@@ -354,7 +354,10 @@ status_json_args=$(jq -n \
   --argjson auto_add true \
   --argjson non_blocking true \
   '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
-status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+# `|| status_json=""` は付けない — このブロックに set -e はなく、command substitution は
+# script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り JSON) を正しく capture
+# するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
 status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
 status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
 case "$status_result" in

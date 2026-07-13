@@ -2,7 +2,7 @@
 title: "同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾"
 domain: "anti-patterns"
 created: "2026-04-20T13:25:00+00:00"
-updated: "2026-06-05T00:04:26Z"
+updated: "2026-07-13T09:40:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260420T104328Z-pr-623.md"
@@ -14,6 +14,8 @@ sources:
     ref: "raw/fixes/20260420T144134Z-pr-624.md"
   - type: "reviews"
     ref: "raw/reviews/20260604T233350Z-pr-1272.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260713T003651Z-pr-1841.md"
 tags: [prompt-engineering, design-conflict, cross-validation, bare-sentinel, step-addition]
 confidence: high
 ---
@@ -135,3 +137,7 @@ PR #1272 (Issue #1271) で本 anti-pattern の **remediation guidance variant** 
 - [PR #624 review results (新 Step × 既存 MUST NOT 衝突、bash tool output 境界)](../../raw/reviews/20260420T143336Z-pr-624.md)
 - [PR #624 fix results (layer 明示対策の確立)](../../raw/fixes/20260420T144134Z-pr-624.md)
 - [PR #1272 review results (remediation guidance 間 no-win 矛盾の「禁止 + escape hatch」収束)](../../raw/reviews/20260604T233350Z-pr-1272.md)
+
+## 変種: 記述層の consistency 主張 vs divergence 文書化 (PR #1841)
+
+規約 (MUST/MUST NOT) だけでなく**記述層**でも同型の自己矛盾が起きる。PR #1841 では「2 つの解決方式は異なる結果を返しうる」という divergence 文書化の節を追加した際、隣接する既存文「The detection logic is intentionally consistent between the two」の絶対表現を残したため、読者がどちらを信じるべきか判断できない隣接矛盾になった (唯一の指摘)。相違を導入・文書化する変更では、同一 doc 内の consistency / 同一性主張を grep し、スコープ限定 (in approach / in shape) + 新節への cross-reference で両立させる。

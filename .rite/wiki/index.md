@@ -6,6 +6,8 @@
 
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
+| [pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する](pages/anti-patterns/pathspec-miss-exit-zero-defeats-diff-guard.md) | anti-patterns | 「差分なし → 安全」型ガードは pathspec 解決失敗 (cwd 相対 / 空 / quotePath C-quote) で「比較していないのに同一」に化け、破棄承認でデータ喪失する。PR #1840 で 3 回別形で実測。pathspec の実在解決を独立に保証する。 | 2026-07-13T09:15:00+00:00 | high |
+| [破壊的操作を承認する分類器は判定・実行・承認文言が同じ対象を見ることを保証する](pages/heuristics/classifier-destructive-action-same-tree-alignment.md) | heuristics | 判定 (working tree)・破棄 (index 復元)・承認文言 (「確認済み」) の 3 者不一致は informed consent を壊す。一致させられない dirty (staged/untracked) は判定前に保護経路へ倒す。PR #1840 実測。 | 2026-07-13T09:15:00+00:00 | high |
 | [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) | heuristics | 保存先解決の変更は save/read/delete 本体に加え、テスト assertion・lint 読取者・表示パス・canonical doc・全 caller の明示引数・standalone 保守ツールを 5 動詞 (読む/書く/消す/表示する/検査する) で全域 grep して同時追従する。PR #1839 で cycle 1 指摘 7 件中 5 件が観測面の追従漏れだった実測に基づく。 | 2026-07-13T07:40:00+00:00 | high |
 | [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) | anti-patterns | 「必ず非空値を返す」helper に値解決を委譲すると、空チェック依存の既存 ERROR ガードが dead code 化し従来エラーが silent success に変わる。委譲は helper の全域性を確認し必要なら git repo gate 等で条件化する。PR #1839 F-12 実測。 | 2026-07-13T07:40:00+00:00 | high |
 | [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) | heuristics | 修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。 | 2028-04-17T00:15:00+00:00 | high |

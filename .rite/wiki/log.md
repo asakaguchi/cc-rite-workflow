@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-14T07:35:00+09:00 | update | [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) | raw/reviews/20260713T223454Z-pr-1852.md を統合 — 再検証サイクルでの重複降格（既 Issue 化済み finding は再 Issue 化せず Decision Log 記録に留める）を追加 |
+| 2026-07-14T07:35:00+09:00 | skip | raw/reviews/20260713T150514Z-pr-1852.md | 同一 PR の cycle2 raw source に同一 finding の後続経過が含まれ既存ページへ統合済みのため、cycle1 単独は skip |
+| 2026-07-14T07:35:00+09:00 | skip | raw/fixes/20260713T154526Z-pr-1852.md | fix.md 既存の accept（認知のみ）機構の通常使用例であり、汎用的な経験則としての新規性が薄いため skip |
 | 2026-07-13T22:00:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1851 ingest 後の auto-lint) |
 | 2026-07-13T21:57:00+09:00 | update | [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | raw/reviews/20260713T123348Z-pr-1851.md を統合 — 残存 4 箇所の一掃（全 6 call site 統一）と、被委譲 script 契約の実確認による除去正当性検証・-z check 誤発火の実害特定・誤帰属コメント同時修正のレビューパターンを追加 |
 | 2026-07-13T20:12:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1850 ingest 後の auto-lint) |

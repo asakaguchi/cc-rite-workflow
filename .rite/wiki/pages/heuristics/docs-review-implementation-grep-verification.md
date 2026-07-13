@@ -2,8 +2,12 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-07-07T14:17:19+09:00"
+updated: "2026-07-13T17:35:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260713T082548Z-pr-1849.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260713T081301Z-pr-1849.md"
   - type: "reviews"
     ref: "raw/reviews/20260707T051719Z-pr-1779.md"
   - type: "reviews"
@@ -109,12 +113,18 @@ PR #1773 (Issue #1706、アンインストール手順ドキュメント、cycle
 
 本件が既存の「実装 grep 未 verify で dead reference が残る」パターンと異なる点は、**検出後の正しい対応が「削除して仕様を最新化する」ではなく「後方互換性 (旧バージョンからのアップグレード環境での残存可能性) を理由に意図的に現状維持する」であった**こと。fix cycle でこの finding を `accept (認知のみ)` として処理し、fingerprint を永続化して次 cycle 以降の再指摘を抑制した。教訓: 「このコマンドで削除される対象一覧」ドキュメントの grep verify は、乖離を機械的に炙り出すことはできるが、乖離の是正方法 (削除 vs 意図的保持) は reviewer ではなく実装コンテキスト (後方互換性要求など) を踏まえた判断が必要であり、reviewer の役割は「乖離の可視化」に留め、是正判断は fix 側の accept 経路に委ねる責務分離が有効に機能した。
 
+### Successful application — in-source 設計コメントの構造断定（trap 到達可能性）を呼び出し site grep で検証 (PR #1849)
+
+PR #1849 (Issue #1844、cycle 2 / 0 findings 収束) で、本 protocol の **in-source 設計コメント層**（bash script のヘッダコメントが主張する構造的事実）への適用を実測。file-wide trap retrofit のヘッダコメントが関数 local tmpfile の除外根拠を「command substitution の subshell 内で mktemp されるため親の trap から構造的に到達不能」と全関数に一般化したが、error-handling / code-quality の 2 reviewer が独立に全 call site を grep し、`cache_comment_id` が init mode で親シェルから直接呼ばれる 2 経路（existing_id / created_id の cache 書込）を持つことを実証（cross-validation で MEDIUM→HIGH boost、Comment Rot 判定）。fix はコメントを経路ごと（`get_owner_repo` / `get_comment_id` = subshell 経由で到達不能、`cache_comment_id` = 親シェル直接呼び出しあり）に書き分けて 1 cycle で解消し、cycle 2 で全 6 reviewer が FIXED 判定。教訓: (1) 「構造的に不可能 / 到達不能」と断定する設計コメントは、コードの動作ではなくコメント自身が正しさの根拠を主張する層であり、書く前に全呼び出し site の実行形態（command substitution subshell か親シェル直接か）を grep で確認する。(2) コメントのみの修正でも revert test / 影響スキャン（同一文言の他出現 grep）を省略しない。docstring contract 層 (PR #1296) に続き、設計根拠コメント層でも本 protocol が機能した positive evidence。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
+- [PR #1849 review cycle 1-2 (trap 被覆設計ヘッダコメントの機構誤認を 2 reviewer 独立検出、cross-validation boost、cycle 2 で FIXED 収束)](../../raw/reviews/20260713T082548Z-pr-1849.md)
+- [PR #1849 fix (経路ごとの書き分け修正で 1 cycle 解消、コメントのみ修正でも影響スキャン省略しない教訓)](../../raw/fixes/20260713T081301Z-pr-1849.md)
 - [PR #1773 review cycle 3 (Doc-Heavy Implementation Coverage 検証で削除対象一覧ドキュメントのファサード化を検出)](../../raw/reviews/20260706T220114Z-pr-1773-cycle3.md)
 - [PR #1773 fix cycle 3 (accept 決着: 後方互換性を理由に意図的現状維持、fingerprint 永続化)](../../raw/fixes/20260706T220317Z-pr-1773-cycle3.md)
 - [PR #1772 review (調査文書の定量的棚卸し全数値をgrep再実行で検証、tech-writer/code-quality両者独立全数一致、0 findings 1cycle mergeable)](../../raw/reviews/20260706T210924Z-pr-1772.md)

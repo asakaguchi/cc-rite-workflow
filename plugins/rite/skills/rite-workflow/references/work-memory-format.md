@@ -264,8 +264,13 @@ loop_count: 0
 短い人間可読サマリー
 
 ## Detail
+Phase: implement
+Branch: feat/issue-721
+
 自由記述
 ```
+
+The stock `Phase:` / `Branch:` lines at the top of `## Detail` are regenerated with the latest values on every write (`work-memory-update.sh`); the free-form text after them is carried over verbatim.
 
 ### Frontmatter Fields
 

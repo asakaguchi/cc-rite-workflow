@@ -63,9 +63,11 @@ PYTHON_SCRIPT="$SCRIPT_DIR/issue-comment-wm-update.py"
 # --- File-wide tmpfile trap 保護 ---
 # trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
 # (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
-# 対象は親シェルが直接 mktemp する tmpfile 全部。command substitution の subshell 内で mktemp
-# される関数 local (_err / _jq_err / _cid_mv_err / tmp) は親の trap から構造的に到達不能のため
-# 対象外 (通常経路は各関数の inline rm -f が清掃し、signal 時の残存は許容する)。
+# 対象は親シェル top-level で mktemp する tmpfile 全部。関数 local の tmpfile は対象外:
+# get_owner_repo / get_comment_id (_err) は command substitution subshell 経由のため親の trap
+# から構造的に到達不能。cache_comment_id (tmp / _jq_err / _cid_mv_err) は init mode で親シェル
+# から直接呼ばれる経路もあるが、いずれも通常経路は各関数の inline rm -f が清掃し、signal 時の
+# 残存は許容する。
 # backup_file は失敗時 post-mortem 用に意図的に trap 対象外 (成功時のみ明示 rm)。
 _fs_err=""
 _pre_err=""

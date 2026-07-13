@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-14T08:15:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1854 ingest 後の auto-lint) |
 | 2026-07-14T08:13:06+09:00 | skip | [raw/reviews/20260713T231306Z-pr-1854.md](raw/reviews/20260713T231306Z-pr-1854.md) | 0 findings; 唯一の観察事項（他ファイルに残る旧称 setup.md 参照）は本 PR が意図的にスコープ外とした事項の記録であり、Asymmetric Fix Transcription 等の既存パターンとも異なる一般化可能な教訓を含まないため skip |
 | 2026-07-14T07:35:00+09:00 | update | [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) | raw/reviews/20260713T223454Z-pr-1852.md を統合 — 再検証サイクルでの重複降格（既 Issue 化済み finding は再 Issue 化せず Decision Log 記録に留める）を追加 |
 | 2026-07-14T07:35:00+09:00 | skip | raw/reviews/20260713T150514Z-pr-1852.md | 同一 PR の cycle2 raw source に同一 finding の後続経過が含まれ既存ページへ統合済みのため、cycle1 単独は skip |

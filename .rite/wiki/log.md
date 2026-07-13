@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-13T20:07:00+09:00 | update | [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) | raw/reviews/20260713T104006Z-pr-1850.md を統合 — deterministic gate-exit variant（mktemp と trap の間の依存コマンド gate exit で orphan）と 2 reviewer 独立検出・sibling 間 gate 位置非対称の実測を追加 |
+| 2026-07-13T20:07:00+09:00 | update | [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) | raw/fixes/20260713T093252Z-pr-1850.md を統合 — gate を mktemp より前へ移動する最小 reorder（canonical 全面書換は sibling 対称性で見送り）の fix pattern を追加 |
 | 2026-07-13T17:42:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1849 ingest 後の auto-lint) |
 | 2026-07-13T17:36:00+09:00 | update | [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | raw/reviews/20260713T082548Z-pr-1849.md を統合 — in-source 設計コメントの構造断定（trap 到達可能性）を呼び出し site grep で検証する variant を追加 |
 | 2026-07-13T17:36:00+09:00 | update | [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | raw/fixes/20260713T081301Z-pr-1849.md を統合 — 経路ごとの書き分け修正で 1 cycle 解消、コメントのみ修正でも影響スキャンを省略しない教訓 |

@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-13T17:42:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1849 ingest 後の auto-lint) |
 | 2026-07-13T17:36:00+09:00 | update | [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | raw/reviews/20260713T082548Z-pr-1849.md を統合 — in-source 設計コメントの構造断定（trap 到達可能性）を呼び出し site grep で検証する variant を追加 |
 | 2026-07-13T17:36:00+09:00 | update | [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | raw/fixes/20260713T081301Z-pr-1849.md を統合 — 経路ごとの書き分け修正で 1 cycle 解消、コメントのみ修正でも影響スキャンを省略しない教訓 |
 | 2026-07-13T14:45:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=263, broken_refs=0 (PR #1847 ingest 後の auto-lint) |

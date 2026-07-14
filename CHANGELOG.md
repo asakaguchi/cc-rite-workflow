@@ -27,6 +27,27 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-07-15
+
+### Added
+
+- **`setup` detects and warns on a version mismatch between `plugin-path-resolution.md`'s two resolution methods** — step 4.5.0's marketplace branch now cross-checks the direct key lookup against the canonical one-liner resolution and displays both paths, the mismatch, and remediation guidance when they disagree (non-blocking; matching resolution is unaffected). Adding a third resolution method is now explicitly disallowed in `plugin-path-resolution.md`. (#1833, #1841)
+
+### Fixed
+
+- **`installPath` semantics are now consistent across all consumers** — real-environment verification against `rite@rite-marketplace` v0.8.1 confirmed `installPath` points at the plugin root itself (`hooks/`, `skills/`, `scripts/`, `references/` sit directly under it, with no `plugins/rite/` intermediate directory). `hook-preamble.sh`'s incorrect `$current_install_path/plugins/rite/hooks` reference (which had silently turned the version-redirect logic into dead code) is corrected, and `plugin-path-resolution.md` now documents the verified semantics. (#1842, #1852, #1854)
+- **Work Memory (WM) sync route is repaired** — `open/SKILL.md` step 2.5's initial WM post now wires an explicit `issue-comment-wm-sync.sh init` call with a status branch table (previously prose-only, so the call was never actually made), and `work-memory-update.sh` no longer discards the accumulated `## Detail` section on every phase-transition rewrite — it extracts and preserves that section verbatim, regenerating only the `Phase:`/`Branch:` header lines. (#1830, #1838)
+- **WM sync route follow-up hardening** — `work-memory-update.sh` surfaces a return-code-bearing WARNING when `detail_extra` awk extraction fails instead of silently falling back, `issue-comment-wm-sync.sh`'s init pre-check gains a regression test pinning its non-blocking-degrade contract, 10 parent-shell tempfiles are protected under one file-wide cleanup function with an EXIT/INT/TERM/HUP trap, and the WM-sync architecture diagram is updated to match. (#1844, #1849)
+- **Review-result and PR-state storage is unified onto `state-path-resolve.sh`** — `review-result-save.sh`'s `REVIEW_RESULTS_DIR` default and `review-source-resolve.sh`'s local-JSON read priority now resolve through the same state-root anchor `wiki-ingest-trigger.sh` already used, fixing a `multi_session` mismatch where a session worktree wrote review results and PR-state (accepted-fingerprints, fix-cycle-state) cwd-relative inside the worktree while the main checkout read/deleted from a different path (an explicit `--results-dir`/`--repo-root` still takes priority; resolution failure falls back to cwd-relative with a WARNING). (#1831, #1839)
+- **Regression tests pin the 4 observation points changed by the state-path-resolve unification** — a new `state-root-observers.test.sh` (11 assertions) covers `review-schema-version-check.sh --all` drift detection from a worktree cwd, `review-skip-notification.sh`'s state-root path display, and `distributed-fix-drift-check.sh` Pattern 6's `--repo-root` non-propagation contract, closing a gap where these behaviors were verified only by manual sandbox testing. (#1845, #1850)
+- **`open`/`cleanup`'s GitHub Projects Status update is inlined to stop silent skips** — both `open/SKILL.md` step 2.4(A) (Status → In Progress) and `cleanup/SKILL.md` step 8 (Status → Done) previously described delegation to `projects-status-update.sh` in prose only, with no actual bash call in the skill body; inside long autonomous chains like `/rite:batch-run` this reference-only step was skipped, leaving Status stuck at Todo/In Progress instead of reaching its final state. (#1846, #1847)
+- **`projects-status-update.sh` call sites no longer discard failure detail** — the `status_json=$(bash ...) || status_json=""` pattern used in `ready/SKILL.md`, `issue-close/SKILL.md`, and `cleanup/references/archive-procedures.md` overwrote the script's already-emitted failure JSON (including `.warnings[]`) with an empty string whenever the script exited non-zero; the fallback is unnecessary since command substitution captures stdout regardless of exit status, and is removed from the 4 remaining sites. (#1848, #1851)
+- **`multi_session` gains a dirty-main-checkout guard in `open`/`cleanup`** — `open` step 2.2-W detects uncommitted changes in the main checkout before creating a session worktree and asks (via `AskUserQuestion`) whether to carry them into the worktree, proceed anyway, or abort, only when they overlap the Issue's target files; `cleanup` step 4 verifies merge success after 3 failed `git merge --ff-only` retries and offers a diff-confirmed discard or a stash-and-terminate path instead of silently discarding uncommitted work or leaving conflicting state. (#1832, #1840)
+- **`pr-review` step 4.3.1 requires an explicit `run_in_background: false` on every reviewer Task spawn** — the prior prohibition ("do NOT use `true`") left the parameter's default unstated, and the harness's default of background execution meant omitting the parameter silently spawned reviewers in the background; this is now a MUST with rationale documented. (#1834, #1843)
+- **`issue-create` pre-creates labels idempotently and surfaces helper failures** — label creation no longer fails when a label already exists, and helper failures are surfaced as a result instead of being swallowed. (#1829, #1837)
+- **`lint`'s `gitignore-health-check` false positives are fixed** — the check now performs an effective-ignore determination instead of a naive pattern match, and unreachable entries introduced by `setup` are excluded from the scan. (#1836)
+- **`setup` re-runs `gh project link` idempotently after Project creation** — fixes a first-Issue-create Projects registration failure that occurred when the newly created Project wasn't yet linked to the repository. (#1835)
+
 ## [0.8.1] - 2026-07-11
 
 ### Fixed
@@ -727,6 +748,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.8.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.1...v0.7.2

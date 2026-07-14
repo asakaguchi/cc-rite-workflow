@@ -46,6 +46,10 @@ mkdir -p "$SANDBOX"
 # to differ from HEAD so the mismatch branch fires deterministically.
 HEAD_SHA=$(cd "$SANDBOX" && git rev-parse HEAD)
 BOGUS_SHA="0000000000000000000000000000000000000000"
+# Priority 2 の review_source_path は state-path-resolve 基準の絶対パスになった。
+# macOS では /tmp が /private/tmp の symlink のため、期待値は git が返す正規化済み
+# toplevel から導出する ($SANDBOX の literal 比較は Linux でしか成立しない)。
+SANDBOX_ROOT=$(cd "$SANDBOX" && git rev-parse --show-toplevel)
 
 OUT=""; ERR=""; RC=0
 run() {
@@ -161,7 +165,7 @@ mkdir -p "$SANDBOX/.rite/review-results"
 valid_json "$SANDBOX/.rite/review-results/123-20260101000000.json"
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
 assert_rc 0 "local file valid -> exit 0"
-assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file; review_source_path=.rite/review-results/123-20260101000000.json" "local_file marker + path"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file; review_source_path=$SANDBOX_ROOT/.rite/review-results/123-20260101000000.json" "local_file marker + path"
 
 # corrupt local file -> renamed + pr_comment routing
 printf 'not json{' > "$SANDBOX/.rite/review-results/123-20260102000000.json"

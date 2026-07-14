@@ -419,8 +419,9 @@ Operating rules (important):
   • After a crash / restart: just run /rite:recover — it re-enters the session
     worktree (or rebuilds it from the branch if it was removed) and continues.
 
-  • .gitignore must contain .rite/worktrees/ (/rite:setup adds it; /rite:lint
-    warns if it is missing while multi_session is enabled).
+  • .rite/worktrees/ must be effectively ignored — a broad .rite/ rule
+    suffices (/rite:setup adds an entry only when not already covered;
+    /rite:lint warns if it is not ignored while multi_session is enabled).
 
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
   - parallel  → multiple sub-agents within ONE session (.worktrees/{issue}/{task})

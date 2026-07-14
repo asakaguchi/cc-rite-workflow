@@ -417,7 +417,9 @@ Inspect the script's stdout JSON and route by `.result`:
 > **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
 >
 > ```bash
-> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> # `|| status_json=""` は付けない — command substitution は script が非ゼロ終了しても stdout
+> # (script が既に出力した失敗理由入り JSON) を capture するため、fallback は診断情報を破棄する
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
 > status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
 > status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
 > case "$status_result" in

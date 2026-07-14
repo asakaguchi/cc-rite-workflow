@@ -56,8 +56,21 @@ case "${1:-}" in
 esac
 
 # --- REPO_ROOT resolution ---
-REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}"
-if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT" ]; then
+# 既定は state-path-resolve 基準 (review-result-save.sh / review-schema-version-check.sh と同じ
+# anchor)。--show-toplevel はセッション worktree 内で worktree root を返すため、writer が main
+# root に置いた JSON を miss して migration が silent no-op 化する。REPO_ROOT env 明示は従来
+# どおり優先。git repo 外では resolver を呼ばず (非 git cwd でも cwd を正常出力するため)、
+# 従来どおり下の ERROR ガードで fail-fast させる。
+if [ -z "${REPO_ROOT:-}" ] && git rev-parse --show-toplevel >/dev/null 2>&1; then
+  _mig_script_dir="$(dirname "${BASH_SOURCE[0]}")"
+  if _mig_state_root=$("$_mig_script_dir/../hooks/state-path-resolve.sh" 2>/dev/null) && [ -n "$_mig_state_root" ]; then
+    REPO_ROOT="$_mig_state_root"
+  else
+    echo "WARNING: state-path-resolve.sh の解決に失敗。git toplevel をフォールバック使用します" >&2
+    REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+  fi
+fi
+if [ -z "${REPO_ROOT:-}" ] || [ ! -d "$REPO_ROOT" ]; then
   echo "ERROR: REPO_ROOT could not be resolved (not in a git repo and REPO_ROOT env unset)" >&2
   exit 1
 fi

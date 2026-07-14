@@ -1462,6 +1462,7 @@ If the following issues occur with the sub-agent approach:
 **Parallel execution:** Invoke multiple Task tools within a single message for all selected reviewers. Each Task uses:
 - `description`: "セキュリティ専門家 PR レビュー" (short description)
 - `subagent_type`: `rite:{reviewer_type}-reviewer` — scoped name derived from the reviewer selected in ステップ 2 (see table below)
+- `run_in_background`: `false` — foreground 起動を強制する。省略すると harness default で background 起動となり結果回収が不完全になる (下記 CRITICAL 注記参照)
 - `prompt`:
  - `review_mode == "full"`: ステップ 4.5 format (diff, spec, shared reviewer principles)
  - `review_mode == "verification"`: ステップ 4.5.1 verification template + ステップ 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from ステップ 1.2.4) in addition to the standard inputs.
@@ -1488,7 +1489,7 @@ If the following issues occur with the sub-agent approach:
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 
-**⚠️ CRITICAL**: Do NOT use `run_in_background: true` for review agents. Background agents return launch confirmation immediately and the calling LLM then attempts to end the turn while results are still pending — leading to incomplete review collection and inconsistent `error_count` accounting. Foreground agents launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
+**⚠️ CRITICAL**: Every reviewer Task invocation **MUST explicitly pass `run_in_background: false`**. The current harness launches subagents in the background **by default**, so merely avoiding `run_in_background: true` is not enough — an omitted parameter still yields a background launch. Background agents return launch confirmation immediately and the calling LLM then attempts to end the turn while results are still pending — leading to incomplete review collection and inconsistent `error_count` accounting. Foreground agents (`run_in_background: false`) launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
 
 ### 4.4 Retry Logic
 
@@ -1800,7 +1801,11 @@ case "$pr_number" in
  accepted_fingerprints=""
  ;;
  *)
- state_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
+ # state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション
+ # worktree / main checkout のどちらから実行しても同一パスに解決される (解決失敗時は cwd fallback)
+ _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+ [ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+ state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
  if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
  # accept_count は fix.md ステップ 2.1.A Step 7 と bit-exact 対称: wc -l + tr -d + numeric validation
@@ -1854,7 +1859,10 @@ case "$pr_number" in
 esac
 
 # accepted_fingerprints は本 block 内で再読込する (Step 1 と別 invocation の可能性があるため)
-state_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
+# state ルート解決は Step 1 と同一 (worktree / main checkout 間のパス一貫性)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+state_file="$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 if [ -f "$state_file" ] && [ -s "$state_file" ]; then
  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
 else
@@ -2370,7 +2378,10 @@ Claude substitutes `{total_findings}`, `{fix_introduced_count}`, `{critical_coun
 
 ```bash
 pr_number="{pr_number}"
-state_file=".rite/fix-cycle-state/${pr_number}.json"
+# fix-cycle-state もリポジトリ共通 state ルート基準 (fix.md ステップ 3.3.1 の書込側と同一解決)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 total_findings="{total_findings}"
 fix_introduced_count="{fix_introduced_count}"
 critical_count="{critical_count}"

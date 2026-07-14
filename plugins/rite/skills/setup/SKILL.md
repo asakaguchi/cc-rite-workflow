@@ -103,11 +103,27 @@ Select with AskUserQuestion:
 - 既存の Projects と連携する（リストから選択）
 - 新規 Projects を作成する
 
+どちらを選んでも、Project 番号確定後に 3.3.5（`gh project link`）を必ず実行する（既存 Project 選択時は 3.3 をスキップして 3.3.5 へ進む）。
+
 ### 3.3 If Creating New
 
 ```bash
 gh project create --owner {owner} --title "{repo-name}" --format json
 ```
+
+### 3.3.5 Link Project to Repository (Both Paths)
+
+新規作成（3.3）・既存 Project 選択（3.2）のどちらのパスでも、Project 番号が確定したら必ず実行する。`gh project link` はリポジトリと Project を関連付け、Issue 作成 helper のフィールド取得 GraphQL クエリ（`repository(owner:, name:) { projectV2(number:) }` ルート、[../../references/graphql-helpers.md](../../references/graphql-helpers.md) 参照）を解決可能にする。link しないままだと初回 `/rite:issue-create` が `project_registration: "partial"` で失敗する。
+
+```bash
+# 冪等: 既にリンク済みでも成功する。失敗しても setup は続行する（non-blocking）
+if ! gh project link {project-number} --owner {owner} 2>&1; then
+  echo "WARNING: gh project link に失敗しました。Projects のフィールド設定が初回 Issue 作成時に partial になる可能性があります" >&2
+  echo "手動で以下を実行してください: gh project link {project-number} --owner {owner} --repo {owner}/{repo-name}" >&2
+fi
+```
+
+link 失敗（権限不足・API エラー等）は WARNING と上記の手動コマンド案内のみで、setup 全体は停止せず次の Phase へ続行する。
 
 ### 3.4 Verify and Configure Fields
 
@@ -488,6 +504,21 @@ elif ! command -v jq >/dev/null 2>&1; then
 elif [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
   INSTALL_PATH=$(jq -r '.plugins["rite@rite-marketplace"][0].installPath // empty' \
     "$HOME/.claude/plugins/installed_plugins.json")
+  # 解決方式間のバージョン照合: 本 block の direct key lookup と、他スキル・hook が使う正準
+  # one-liner (plugin-path-resolution.md の rite@* 先頭エントリ) は、installed_plugins.json に
+  # 複数の rite@* エントリがあると異なるバージョンのパスを返し、1 セッション内で hooks と
+  # skills が別バージョンを参照する混在が silent に進行する。照合失敗・不一致は non-blocking
+  # (解決結果は従来どおり direct key を採用し、解決フロー自体は退行させない)
+  CANON_PATH=$(jq -r 'limit(1; .plugins | to_entries[] | select(.key | startswith("rite@"))) | .value[0].installPath // empty' \
+    "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null) || CANON_PATH=""
+  if [ -n "$CANON_PATH" ] && [ -n "$INSTALL_PATH" ] && [ "$CANON_PATH" != "$INSTALL_PATH" ]; then
+    echo "WARNING: plugin パスの解決方式間で不一致を検出しました (バージョン混在の可能性)" >&2
+    echo "  direct key lookup (.plugins[\"rite@rite-marketplace\"][0]): $INSTALL_PATH" >&2
+    echo "  正準 one-liner (rite@* 先頭エントリ): $CANON_PATH" >&2
+    echo "  影響: hooks は前者、他スキル・hook の plugin_root 解決は後者を参照するため、バージョン間で" >&2
+    echo "        sentinel / スキーマ契約が変わると追跡困難な drift になります" >&2
+    echo "  対処: Claude Code を再起動して plugin キャッシュを更新し、/rite:setup を再実行してください" >&2
+  fi
   if [ -n "$INSTALL_PATH" ] && [ -f "$INSTALL_PATH/hooks/pre-compact.sh" ]; then
     echo "MARKETPLACE:$INSTALL_PATH/hooks"
   else
@@ -959,9 +990,18 @@ Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not alrea
 
 ```bash
 # Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned" ".rite/sessions/" ".rite/worktrees/"; do
+for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned"; do
   if ! grep -qF "$entry" .gitignore 2>/dev/null; then
     echo "$entry" >> .gitignore
+  fi
+done
+
+# .rite/ 配下のディレクトリエントリは実効判定でゲートする: 既に `.rite/` 広域ルール等で
+# 実効的に ignore されている場合は書かない（親ルールに包含される到達不能な行を作らない）。
+# 未カバーのときのみ追記する（gitignore-health-check.sh の probe と同じ check-ignore 方式）。
+for dir_entry in ".rite/sessions/" ".rite/worktrees/"; do
+  if ! git check-ignore -q "${dir_entry}.rite-lint-probe" 2>/dev/null; then
+    echo "$dir_entry" >> .gitignore
   fi
 done
 ```

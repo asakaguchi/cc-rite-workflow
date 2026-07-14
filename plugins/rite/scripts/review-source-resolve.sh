@@ -356,9 +356,20 @@ fi
 # (bash-defensive-patterns.md Pattern 5 で禁止された anti-pattern)。
 # mapfile + process substitution で pipeline を分離し、配列経由で先頭要素を取得する。
 if [ -z "$review_source" ]; then
-  # .rite/review-results/ dir 不在を初回実行の正常経路として silent pass-through する
+  # 読取先はリポジトリ共通の state ルート (state-path-resolve.sh) 基準。書込側
+  # (hooks/review-result-save.sh) と同一の解決で、セッション worktree / main checkout の
+  # どちらから実行しても同じ物理パスを読む。解決失敗時は従来の cwd 相対へフォールバック
+  # (単一 checkout では同一パスのため挙動不変)。
+  _p2_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if _p2_state_root=$(bash "$_p2_script_dir/../hooks/state-path-resolve.sh" "$PWD" 2>/dev/null) && [ -n "$_p2_state_root" ]; then
+    _p2_results_dir="$_p2_state_root/.rite/review-results"
+  else
+    echo "WARNING: review-source-resolve: state-path-resolve.sh の解決に失敗。cwd 相対の .rite/review-results へフォールバックします" >&2
+    _p2_results_dir=".rite/review-results"
+  fi
+  # results dir 不在を初回実行の正常経路として silent pass-through する
   # (初回 fix / fresh clone で確実に再現する UX bug の修正)。cleanup.md ステップ 6 と対称。
-  if [ ! -d .rite/review-results ]; then
+  if [ ! -d "$_p2_results_dir" ]; then
     # dir 不在 = 正常経路。Priority 3 へ silent fall-through。
     :
   else
@@ -382,11 +393,11 @@ if [ -z "$review_source" ]; then
     # mapfile + process substitution で SIGPIPE 経路を断ち、pipefail 下でも安全に動作する
     # sort の stderr も find_err に append して捕捉する (sort OOM / /tmp full を検出)。
     files_arr=()
-    mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "${pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r 2>>"${find_err:-/dev/null}")
+    mapfile -t files_arr < <(find "$_p2_results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r 2>>"${find_err:-/dev/null}")
     latest_file="${files_arr[0]:-}"
 
     if [ -n "$find_err" ] && [ -s "$find_err" ]; then
-      echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
+      echo "WARNING: $_p2_results_dir/ 検索時にエラー発生:" >&2
       head -3 "$find_err" | sed 's/^/  /' >&2
       echo "  Priority 2 を IO エラーにより skip し、Priority 3 (PR コメント) に明示 routing します" >&2
       echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=local_file_find_io_error" >&2
@@ -395,10 +406,10 @@ if [ -z "$review_source" ]; then
     fi
     # process substitution では内部コマンドの exit code が親に伝播しない。
     # ファイルが存在するのに配列が空の場合は sort/find failure を疑い WARNING を emit する。
-    if [ ${#files_arr[@]} -eq 0 ] && [ -d .rite/review-results ]; then
-      _p2_glob_check=(.rite/review-results/"${pr_number}"-*.json)
+    if [ ${#files_arr[@]} -eq 0 ] && [ -d "$_p2_results_dir" ]; then
+      _p2_glob_check=("$_p2_results_dir"/"${pr_number}"-*.json)
       if [ -e "${_p2_glob_check[0]:-}" ]; then
-        echo "WARNING: .rite/review-results/ にマッチするファイルが存在しますが mapfile 結果が空です (sort/find failure の可能性)" >&2
+        echo "WARNING: $_p2_results_dir/ にマッチするファイルが存在しますが mapfile 結果が空です (sort/find failure の可能性)" >&2
         echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=sort_or_mapfile_failure" >&2
       fi
       unset _p2_glob_check

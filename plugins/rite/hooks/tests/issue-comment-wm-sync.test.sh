@@ -138,6 +138,104 @@ else
 fi
 echo ""
 
+# ─── TC-005: init 冪等 pre-check → 既存 replica で二重投稿しない ────────
+# init mode は投稿前に既存 replica を query し、存在すれば status=skipped;
+# reason=already_exists で exit 0 する契約 (gh issue comment は実行されない)。
+echo "TC-005: init idempotency — existing replica → status=skipped, no post"
+dir005="$TEST_DIR/tc005"
+mkdir -p "$dir005/bin"
+echo '{"active":true,"issue_number":42}' > "$dir005/.rite-flow-state"
+GH_SHIM_MARKER="$dir005/posted.marker"
+cat > "$dir005/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments") echo "111"; exit 0 ;;
+  "issue comment") touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-1"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir005/bin/gh"
+out005=$(cd "$dir005" && PATH="$dir005/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER" \
+  bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
+if printf '%s' "$out005" | grep -qF "status=skipped; reason=already_exists" && [ ! -f "$GH_SHIM_MARKER" ]; then
+  pass "TC-005: existing replica → skipped; reason=already_exists, gh issue comment 未実行"
+else
+  fail "TC-005: expected skipped/already_exists without post. out: $out005 marker=$([ -f "$GH_SHIM_MARKER" ] && echo present || echo absent)"
+fi
+echo ""
+
+# ─── TC-006: init — replica 不在なら投稿する (pre-check が正常経路を塞がない) ──
+echo "TC-006: init posts when no replica exists"
+dir006="$TEST_DIR/tc006"
+mkdir -p "$dir006/bin"
+echo '{"active":true,"issue_number":42}' > "$dir006/.rite-flow-state"
+GH_SHIM_MARKER6="$dir006/posted.marker"
+# pre-check は空を返し、投稿後の validation は id を返す (marker 存在で切替)
+cat > "$dir006/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments")
+    if [ -f "$GH_SHIM_MARKER" ]; then echo "222"; fi
+    exit 0 ;;
+  "issue comment") touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-2"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir006/bin/gh"
+out006=$(cd "$dir006" && PATH="$dir006/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER6" \
+  bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
+if printf '%s' "$out006" | grep -qF "status=success" && [ -f "$GH_SHIM_MARKER6" ]; then
+  pass "TC-006: no replica → posted + status=success"
+else
+  fail "TC-006: expected post + status=success. out: $out006 marker=$([ -f "$GH_SHIM_MARKER6" ] && echo present || echo absent)"
+fi
+echo ""
+
+# ─── TC-007: init pre-check gh api 失敗 → non-blocking degrade (WARNING + 投稿続行) ──
+# pre-check の gh api 失敗は「存在不明」であり、ここで止めると replica が永遠に作られない
+# 恐れがあるため rc 付き WARNING を出して投稿続行に倒す契約。TC-005/006 は正常経路のみで
+# この degrade 経路は未検証だった (Issue #1844 D-05)。
+echo "TC-007: init pre-check gh api failure → WARNING + posting continues"
+dir007="$TEST_DIR/tc007"
+mkdir -p "$dir007/bin"
+echo '{"active":true,"issue_number":42}' > "$dir007/.rite-flow-state"
+GH_SHIM_MARKER7="$dir007/posted.marker"
+# pre-check (marker 不在) は gh api 失敗 (exit 1 + stderr)、投稿後の validation (marker 存在) は id を返す
+cat > "$dir007/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments")
+    if [ -f "$GH_SHIM_MARKER" ]; then echo "333"; exit 0; fi
+    echo "HTTP 500: Internal Server Error" >&2; exit 1 ;;
+  "issue comment") touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-3"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir007/bin/gh"
+stderr007_file="$dir007/stderr.txt"
+out007=$(cd "$dir007" && PATH="$dir007/bin:$PATH" GH_SHIM_MARKER="$GH_SHIM_MARKER7" \
+  bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>"$stderr007_file") || true
+stderr007=$(cat "$stderr007_file" 2>/dev/null)
+if printf '%s' "$stderr007" | grep -qE 'init pre-check gh api 失敗 \(rc=1\)'; then
+  pass "TC-007: pre-check failure WARNING carries real rc (1)"
+else
+  fail "TC-007: pre-check WARNING missing or rc collapsed. stderr: $stderr007"
+fi
+if printf '%s' "$stderr007" | grep -qF 'HTTP 500: Internal Server Error'; then
+  pass "TC-007: captured gh stderr detail surfaced in WARNING"
+else
+  fail "TC-007: gh stderr detail not surfaced. stderr: $stderr007"
+fi
+if printf '%s' "$out007" | grep -qF "status=success" && [ -f "$GH_SHIM_MARKER7" ]; then
+  pass "TC-007: posting continued despite pre-check failure → status=success"
+else
+  fail "TC-007: expected post-through + status=success. out: $out007 marker=$([ -f "$GH_SHIM_MARKER7" ] && echo present || echo absent)"
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1

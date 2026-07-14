@@ -609,7 +609,10 @@ if [ "$projects_enabled" = "true" ]; then
     --argjson auto_add false --argjson non_blocking true \
     '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
   p463_err_status=$(_mktemp_or_warn "Step 1")
-  status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>"${p463_err_status:-/dev/null}") || status_json=""
+  # `|| status_json=""` は付けない — command substitution は script が非ゼロ終了しても stdout
+  # (script が既に出力した失敗理由入り JSON) を capture するため、fallback は診断情報を破棄する
+  # (JSON-emit 前に死んだ空 stdout のケースは下の -z check が p463_err_status から補足する)
+  status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>"${p463_err_status:-/dev/null}")
   status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
   status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
   # 失敗時 recovery one-liner 用に script JSON から 4 ID 抽出 (script は失敗時も emit する)

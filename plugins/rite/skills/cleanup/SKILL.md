@@ -168,6 +168,7 @@ incomplete=$(printf '%s\n' "$comment_body" | sed -n '/### 進捗/,/### /p' \
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` (boolean) | `true` |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
 | `{owner}` | `rite-config.yml` → `github.projects.owner` | `asakaguchi` |
+| `{repo}` | ステップ 1.4 で取得した `gh repo view --json owner,name` の `.name` | `cc-rite-workflow` |
 
 **Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):
 
@@ -365,11 +366,62 @@ cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
 if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
   n=0; until git fetch origin {base_branch} 2>/dev/null && git merge --ff-only origin/{base_branch} 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && { echo "WARNING: base 更新 (git fetch + git merge --ff-only origin/{base_branch}) が失敗しました (index.lock 競合 / fast-forward 不可 / コンフリクトの可能性)。git status で確認してください。" >&2; break; }; sleep 1; done
+  # retry break 後の成否検証 (Issue #1832): 失敗を silent に放置せず復旧分岐へ routing する。
+  # 典型例は「PR マージ済み内容と同じファイルの未コミット変更が残存し ff-only が上書き拒否する」ケース
+  if [ "$(git rev-parse HEAD 2>/dev/null)" = "$(git rev-parse origin/{base_branch} 2>/dev/null)" ]; then
+    echo "[CONTEXT] BASE_UPDATE=ok"
+  else
+    _bu_dirty=$(git status --porcelain 2>/dev/null) || _bu_dirty=""
+    if [ -z "$_bu_dirty" ]; then
+      echo "[CONTEXT] BASE_UPDATE=ff_failed_clean"
+    elif printf '%s\n' "$_bu_dirty" | grep -q '^[^ ]'; then
+      # X 列 (index status、行頭 1 文字) が非空白 = staged 変更または untracked (??) を含む dirty。
+      # いずれも diff 同一性を機械判定できない — 下記比較は working tree しか見ないため、untracked
+      # は比較対象外、staged 内容は未検証のまま「diff 同一」を主張することになる。
+      # 安全側の divergent へ倒す (stash 案内は -u で untracked も対象に含む)。
+      # unstaged のみの変更 (X 列が空白: " M" / " D") だけが下の比較へ進む
+      echo "[CONTEXT] BASE_UPDATE=ff_failed_divergent"
+    else
+      # unstaged の tracked 変更のみ: 比較を dirty パスに限定する。tree 全体比較 (pathspec なし)
+      # はマージが追加/削除した無関係ファイルまで D として数え、diff 同一の残存変更を divergent に
+      # 誤流出させる。pathspec は root 相対で出力されるため消費側も -C <root> で root 起点に固定
+      # し (--no-relative は diff.relative config の影響排除)、空リストは比較せず discardable に
+      # しない。比較 pipe は -z (NUL 区切り・quote なし) を xargs -0 へ直結する — 非 -z 出力は
+      # quotePath がファイル名を C-quote し、quote 済みリテラルの pathspec は実ファイルに不一致
+      # → git diff --quiet が exit 0 (差分なし扱い) を返して相違変更が discardable に誤流出する
+      # (NUL を command substitution の変数に入れると bash が落とすため、非空判定のみ別変数で行う)
+      _bu_root=$(git rev-parse --show-toplevel 2>/dev/null) || _bu_root=""
+      _bu_paths=$(git diff --name-only --no-relative HEAD 2>/dev/null) || _bu_paths=""
+      if [ -n "$_bu_root" ] && [ -n "$_bu_paths" ] && \
+         git diff --name-only --no-relative -z HEAD 2>/dev/null | xargs -0 -r git -C "$_bu_root" diff --quiet "origin/{base_branch}" -- 2>/dev/null; then
+        # dirty パスの working tree 内容が origin/{base} と一致 = 未コミット変更はマージ済み内容と diff 同一
+        echo "[CONTEXT] BASE_UPDATE=ff_failed_discardable"
+      else
+        echo "[CONTEXT] BASE_UPDATE=ff_failed_divergent"
+      fi
+    fi
+    # dirty 一覧は marker と区別できるようデリミタで囲んで表示する (ファイル名由来の偽 marker 混入防止)
+    if [ -n "$_bu_dirty" ]; then
+      echo "--- dirty files begin ---"
+      printf '%s\n' "$_bu_dirty"
+      echo "--- dirty files end ---"
+    fi
+  fi
 else
   echo "WARNING: main checkout が '{base_branch}' ではなく '$cur_branch' 上にあるため base 更新を skip しました。" >&2
   echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
+  echo "[CONTEXT] BASE_UPDATE=skipped_not_on_base"
 fi
 ```
+
+`BASE_UPDATE` marker で分岐する（Issue #1832。破棄・stash は必ずユーザー確認を挟み、無確認の破壊的操作をしない。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
+
+| `BASE_UPDATE` | アクション |
+|---|---|
+| `ok` / `skipped_not_on_base` | 従来どおり後続へ（`skipped_not_on_base` は既存 WARNING の可視化のみ） |
+| `ff_failed_clean` | 未コミット変更なしの ff 失敗（履歴 diverge / index.lock 恒常化等）。既存 WARNING どおり `git status` 確認を案内し、非ブロッキングで後続へ |
+| `ff_failed_discardable` | **unstaged の tracked 変更のみ**の dirty で、その全パスが **origin/{base_branch} と diff 同一**（マージ済み内容の残存）。AskUserQuestion「dirty パス限定の diff 同一を確認済み。未コミット変更を破棄して base 更新を再実行 / そのまま続行（手動対応）」を表示。**承認後のみ** `git checkout -- :/`（cwd 非依存に repo 全体を index 内容へ復元。discardable は staged なしを判定済みのため index == HEAD であり、HEAD 内容への復元と等価）で破棄し、上記 retry ループを 1 回再実行する。再実行後も `BASE_UPDATE=ok` にならない場合は `ff_failed_divergent` と同等に stash 案内で terminate する（2 回目の破棄承認は求めない） |
+| `ff_failed_divergent` | 未コミット変更がマージ済み内容と**異なる**か、diff 同一性を機械判定できない dirty（untracked は git diff が比較できず、staged 変更は working tree 比較で内容を検証できないため、いずれもここに倒す）。stash 案内を表示して terminate（データ喪失なし）: `git stash push -u -m "rite-cleanup: manual-stash before base update (issue-{issue_number})"` を提示し、ユーザー実行後の `/rite:recover` 再開を案内する。自動 stash はしない |
 
 > **multi_session 無効（従来モード）の場合**: 従来どおり `git checkout {base_branch} && git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を実行する（base branch 以外にいて未コミット変更があれば「stash して続行 / キャンセル」を確認。stash は `git stash push -m "rite-cleanup: auto-stash before cleanup"`）。fast-forward 不可 / コンフリクト時は `git status` で確認・解決後の再実行を案内し terminate。
 
@@ -458,6 +510,12 @@ case "$pr_number" in
     exit 0 ;;
 esac
 
+# 削除対象はリポジトリ共通の state ルート基準 (state-path-resolve.sh)。書込側
+# (review-result-save.sh / fix.md 2.1.A / fix.md 3.3.1) と同一解決のため、セッション worktree に
+# 書かれて main checkout の削除が no-op になる不整合を防ぐ (解決失敗時は cwd fallback)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+
 rite_rm() {
   local label="$1"; shift
   local f
@@ -473,12 +531,12 @@ rite_rm() {
 }
 
 rite_rm review_results \
-  .rite/review-results/${pr_number}-*.json \
-  .rite/review-results/${pr_number}-*.json.corrupt-*
-rite_rm fix_retry_state ".rite/state/fix-fallback-retry-${pr_number}.count"
-rite_rm fix_cycle_state ".rite/fix-cycle-state/${pr_number}.json"
-rite_rm legacy_fix_cycle_state ".rite/fix-cycle-state.json"
-rite_rm accepted_fingerprints ".rite/state/accepted-fingerprints-${pr_number}.txt"
+  "$_state_root"/.rite/review-results/${pr_number}-*.json \
+  "$_state_root"/.rite/review-results/${pr_number}-*.json.corrupt-*
+rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number}.count"
+rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
+rite_rm legacy_fix_cycle_state "$_state_root/.rite/fix-cycle-state.json"
+rite_rm accepted_fingerprints "$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 ```
 
 `.rite/wiki-worktree/` は永続 worktree のため削除しない (再作成コストが高く各 PR cycle を跨いで保持する)。手動削除が必要なら `git worktree remove .rite/wiki-worktree && git worktree prune`。
@@ -497,9 +555,42 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 ## ステップ 8: Projects Status を Done に更新
 
-`rite-config.yml.github.projects.enabled: true` の場合のみ。詳細は [archive-procedures.md](./references/archive-procedures.md) (Projects Status Update セクション)。
+**Critical**: Do NOT skip this step. `rite-config.yml.github.projects.enabled: true` かつステップ 2 で関連 Issue が識別できている場合のみ実行し、結果を `projects_status_updated` (true/false) として context に保持してステップ 12 の表示で参照する（`{projects_enabled}` / `{project_number}` / `{owner}` / `{repo}` / `{issue_number}` はステップ 1.4 / 2 / Placeholder Legend で確定済みの値をそのまま使う）。無効化・Issue 未識別の場合はステップ 9 へ進む。
 
-結果を `projects_status_updated` (true/false) として context に保持し、ステップ 12 の表示で参照する。
+> **Source of truth**: `plugins/rite/scripts/projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と共通）。過去に multi-stage inline pipeline で LLM の attention が sub-step 間で途切れ Status 更新が silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase 4.2 と同一原因）ため、参照のみに留めず本ステップに直接 inline する。
+
+```bash
+status_json_args=$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+# `jq 2>/dev/null` 抑制 / `failed|*)` catch-all により script が JSON-emit 前に死んだ場合も
+# silent fall-through を防ぐ。`|| status_json=""` は付けない — このブロックに set -e はなく、
+# command substitution は script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り
+# JSON) を正しく capture するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+projects_status_updated="false"  # default
+case "$status_result" in
+  updated)
+    projects_status_updated="true"
+    echo "Projects Status を \"Done\" に更新しました" ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2 ;;
+  failed|*)
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2 ;;
+esac
+echo "[CONTEXT] PROJECTS_STATUS_UPDATED=$projects_status_updated"
+```
+
+**All result branches are non-blocking** — cleanup は Projects Status 更新の失敗で止めない。`auto_add: false` は cleanup 時点で Issue は既に Project 登録済みという前提（`skills/open/SKILL.md` ステップ 2.4 が未登録時に追加している）。API レベルの詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)、親 Issue の Done 更新の完全形実装は [archive-procedures.md](./references/archive-procedures.md) Phase 3.7.2.1 / `skills/issue-close/SKILL.md` Phase 4.6.3 を参照。
 
 ---
 
@@ -651,9 +742,12 @@ Status: {projects_status_result}
   - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（作業ツリーで使用中なら解放後）」を付記
   - `BRANCH_DELETE_UNMERGED=1` のとき（= 未マージ PR の強制 cleanup でユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
   - いずれの `[CONTEXT]` 行も無いとき: `x`
-- `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
+- `{projects_status_result}` / `{projects_check}`: 以下を**上から評価し最初に一致したもの**を採用する（`{wiki_ingest_check}` の legitimate-skip 区別パターンと統一。ステップ8 は `projects_enabled=false` または Issue 未識別のとき丸ごと skip され `[CONTEXT] PROJECTS_STATUS_UPDATED=` を emit しないため、この legitimate skip と本物の更新失敗を区別する）:
+  - `{projects_enabled}`（Placeholder Legend の定義、`rite-config.yml` → `github.projects.enabled`）が `false` のとき: `{projects_status_result}` = `（Projects 連携無効）`、`{projects_check}` = `x`（警告ではなく informational — Wiki ingest の `reason=disabled` と同型）
+  - ステップ 2 で関連 Issue が識別できなかった（`{issue_number}` 空）とき: `{projects_status_result}` = `（関連 Issue 未識別のためスキップ）`、`{projects_check}` = `x`
+  - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
+  - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`
-- `{projects_check}`: `projects_status_updated=true` なら `x`、false なら ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

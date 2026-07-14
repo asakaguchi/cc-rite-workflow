@@ -35,7 +35,8 @@ Usage: review-schema-version-check.sh [options]
 Options:
   --all              Scan .rite/review-results/*.json in REPO_ROOT
   --target FILE      Check FILE (repeatable). Path may be absolute or relative.
-  --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
+  --repo-root DIR    Repository root (default: state-path-resolve.sh resolution;
+                     falls back to git rev-parse --show-toplevel with a WARNING)
   --quiet            Suppress per-file drift output (exit code still reflects state)
   -h, --help         Show this help
 
@@ -84,9 +85,23 @@ if [ "$USE_ALL" -eq 0 ] && [ "${#TARGETS[@]}" -eq 0 ]; then
   exit 2
 fi
 
-# Resolve REPO_ROOT only when --all is used (per-target paths are resolved as-is)
+# Resolve REPO_ROOT only when --all is used (per-target paths are resolved as-is).
+# review-results は state-path-resolve 基準の共有 root に保存される (review-result-save.sh と
+# 同じ anchor)。--show-toplevel はセッション worktree 内で worktree root を返すため、writer と
+# 読取先が分裂して本チェックが silent no-op 化する。--repo-root 明示指定は従来どおり優先。
 if [ "$USE_ALL" -eq 1 ]; then
-  REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+  # git repo 外では resolver を呼ばない: state-path-resolve.sh は非 git cwd でも cwd を正常出力
+  # として返すため、無条件に採用すると従来の ERROR exit 2 が silent success (exit 0 clean) に
+  # 化ける。repo 外の ad-hoc 実行は従来どおり下の ERROR ガードで fail-fast させる。
+  if [ -z "$REPO_ROOT" ] && git rev-parse --show-toplevel >/dev/null 2>&1; then
+    _check_script_dir="$(dirname "${BASH_SOURCE[0]}")"
+    if _check_state_root=$("$_check_script_dir/../state-path-resolve.sh" 2>/dev/null) && [ -n "$_check_state_root" ]; then
+      REPO_ROOT="$_check_state_root"
+    else
+      echo "WARNING: state-path-resolve.sh の解決に失敗。git toplevel をフォールバック使用します" >&2
+      REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+    fi
+  fi
   if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT" ]; then
     echo "ERROR: REPO_ROOT could not be resolved (not in a git repo and --repo-root unset)" >&2
     exit 2

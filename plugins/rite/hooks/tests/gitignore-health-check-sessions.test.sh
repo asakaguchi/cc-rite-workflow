@@ -77,6 +77,29 @@ echo "=== TC-5: wiki disabled + sessions ignored → healthy (exit 0) ==="
 run_case "${WIKI_OFF}${MS_OFF}" $'.rite/sessions/\n'
 assert "TC-5 exit 0" "0" "$RUN_RC"
 
+echo "=== TC-7: broad .rite/ rule only (no individual rule) → healthy (exit 0) ==="
+# 実効判定の核: 個別ルール `.rite/sessions/` が無くても親 `.rite/` 広域ルールで probe が
+# ignore されていれば healthy。check-ignore -v はディレクトリ pruning により親ルールを報告
+# するため、特定ルール文字列一致を要求するとこの構成が偽陽性 DRIFT になる — その回帰を防ぐ。
+run_case "${WIKI_OFF}${MS_OFF}" $'.rite/\n'
+assert "TC-7 exit 0 (broad rule effective)" "0" "$RUN_RC"
+
+echo "=== TC-8: ms enabled + broad .rite/ rule only → sessions/worktrees とも healthy (exit 0) ==="
+run_case "${WIKI_OFF}${MS_ON}" $'.rite/\n'
+assert "TC-8 exit 0 (broad rule covers both probes)" "0" "$RUN_RC"
+
+echo "=== TC-9: sessions negation leak (.rite/sessions/* + !.rite/sessions/**) → drift (exit 1) ==="
+# negation-leak 回帰: git check-ignore -v は negation ルールにマッチした場合も rc=0 を返す
+# (verbose モードは negation マッチも「マッチあり」として数える) ため、rc のみの実効判定だと
+# probe が実際には ignore されず leak する構成を healthy と誤判定する。matched pattern の
+# 先頭 `!` 検査が無いとこのケースが exit 0 になる回帰を防ぐ。
+run_case "${WIKI_OK}${MS_OFF}" $'.rite/sessions/*\n!.rite/sessions/**\n'
+assert "TC-9 exit 1 (negation match is not healthy)" "1" "$RUN_RC"
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (sessions)"*) pass "TC-9 sessions negation drift emitted" ;;
+  *) fail "TC-9 sessions negation drift message missing: $RUN_OUT" ;;
+esac
+
 echo "=== TC-6: ms enabled + BOTH sessions and worktrees NOT ignored → sessions fires first ==="
 # Genuine ordering proof: when BOTH the sessions rule AND the worktrees rule are missing
 # (and multi_session is enabled so the worktrees check is active), the script must emit

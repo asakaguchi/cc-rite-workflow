@@ -286,7 +286,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.8.1",
+ "version": "0.8.2",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "asakaguchi" },
  "license": "MIT"
@@ -474,7 +474,8 @@ followed by AskUserQuestion confirmation)
 2. Present options:
  - Link to existing Projects
  - Create new Projects
-3. Auto-configure fields
+3. Link the Project to the repository (`gh project link`, idempotent, non-blocking on failure)
+4. Auto-configure fields
 
 #### Phase 4: Template Generation
 1. Check `.github/ISSUE_TEMPLATE/`
@@ -1233,7 +1234,7 @@ WM_SOURCE="implement" WM_PHASE="lint" \
 | `WM_PHASE` | Yes | Current phase (`lint`, `implement`, `pr`, etc.; see `PHASE_ENUM_V3` in `flow-state.sh`) |
 | `WM_PHASE_DETAIL` | Yes | Detailed phase description |
 | `WM_NEXT_ACTION` | Yes | Next action |
-| `WM_BODY_TEXT` | Yes | Update content text |
+| `WM_BODY_TEXT` | Yes | Update content text (summary area only — free-form content under `## Detail` is preserved across updates) |
 | `WM_ISSUE_NUMBER` | Yes | Issue number |
 
 ### Work Memory Lock (`work-memory-lock.sh`)
@@ -1411,7 +1412,7 @@ The per-session flow-state structure above isolates the **state** layer; **Workt
 
 The session worktree is one of **four non-overlapping worktree namespaces** (`.rite/worktrees/issue-{N}` session / `.worktrees/{issue}/{task}` parallel sub-agent / `pr-{N}-cycle{X}` reviewer transient / `.rite/wiki-worktree` wiki); the reap's strict regex guarantees it never touches the other three. See [`references/git-worktree-patterns.md` → Multi-Session Patterns](../plugins/rite/references/git-worktree-patterns.md#multi-session-patterns).
 
-**Shared state root (worktree-aware resolution):** `state-path-resolve.sh` detects a linked worktree (via `git rev-parse --git-common-dir`) and resolves state / locks / wiki-worktree to the **main checkout root** even when the session cwd is inside a worktree, so cross-session exclusion (work-memory lock, the `.rite/state/` flock group, the single `.rite/wiki-worktree`) stays intact. Non-worktree sessions resolve byte-identically to today (pinned by `state-path-resolve.test.sh`). Transient per-session artifacts (`.rite/review-results/`, `.rite/fix-cycle-state/`, `.rite/tmp/`) intentionally stay **cwd-relative (worktree-local)** so they vanish with the worktree and never cross-contaminate sessions.
+**Shared state root (worktree-aware resolution):** `state-path-resolve.sh` detects a linked worktree (via `git rev-parse --git-common-dir`) and resolves state / locks / wiki-worktree to the **main checkout root** even when the session cwd is inside a worktree, so cross-session exclusion (work-memory lock, the `.rite/state/` flock group, the single `.rite/wiki-worktree`) stays intact. Non-worktree sessions resolve byte-identically to today (pinned by `state-path-resolve.test.sh`). PR-state artifacts (`.rite/review-results/`, `.rite/fix-cycle-state/`, `.rite/state/accepted-fingerprints-*`) also resolve to this **shared state root** (Issue #1831): a save from inside a session worktree must be readable by the fix loop and deletable by `/rite:cleanup` from the main checkout, so keeping them worktree-local silently split the save/read/delete paths. Same-PR filename collisions across sessions are handled by the `~<hex>` suffix in `review-result-schema.md`. Only `.rite/tmp/` intentionally stays **cwd-relative (worktree-local)** so it vanishes with the worktree.
 
 **Issue claim mechanism (always-on):** Independently of `multi_session.enabled`, `/rite:open` Step 1.6 acquires an Issue claim *before* any branch / worktree side-effect (fail-fast against double-starting the same Issue), and `/rite:cleanup` releases it. Claims live at `.rite/state/issue-claims/issue-{N}.json` and are managed by `hooks/issue-claim.sh {claim|release|check} --issue N`. **Liveness** reuses the flow-state heartbeat — a claim is live iff the holding session's flow-state is `active=true` and `updated_at` is within 2h (the same threshold and `parse_iso8601_to_epoch` as `session-ownership.sh`); no new heartbeat file is introduced. On detecting another **live** claim, `/rite:open` always surfaces an AskUserQuestion (never an unattended steal); a stale claim is reclaimed only by the reap path under the clean-worktree gate. Claims are **not** released at session end, so a crashed session's work stays resumable. Because claims only ever create files under the already-gitignored `.rite/state/`, the mechanism is silent and backward-compatible when there is no conflict (Decision D-3: always-on regardless of the worktree flag).
 
@@ -1419,7 +1420,7 @@ The session worktree is one of **four non-overlapping worktree namespaces** (`.r
 
 **Crash recovery / `/rite:recover`:** After a crash a new session starts at the repository root. `/rite:recover` re-enters the worktree *before* any branch-dependent cross-check (flow-state `worktree` → else issue-number → path derivation), and reconstructs a missing worktree from the branch (local → `git worktree add`; remote-only → `git fetch` + `--track -b`; nowhere → AskUserQuestion). The `worktree` flow-state field is a **same-session hint only** — the canonical session↔worktree correspondence is the issue-number → path derivation, because `session_id` changes on crash (see the schema table's `worktree` row above).
 
-**Configuration:** `multi_session.enabled` (default `true`; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:setup`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
+**Configuration:** `multi_session.enabled` (default `true`; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.rite/worktrees/` must be effectively ignored by `.gitignore` — a broad `.rite/` rule suffices (`/rite:setup` adds an entry only when not already covered; `gitignore-health-check.sh` probes with `git check-ignore` and emits a non-blocking warning if the path is not ignored while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
 
 ### Local Work Memory + Compact Resilience
 

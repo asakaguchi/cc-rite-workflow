@@ -45,12 +45,48 @@
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
 #   `[CONTEXT] WM_UPDATE_FAILED=1` にマップする (`[fix:pushed-wm-stale]` routing 用)。
+#
+# Status output (stdout, init mode) — caller shim 用の機械可読 1 行:
+#   status=success                          replica 投稿 + 検証成功
+#   status=skipped; reason=already_exists   replica 既存 (冪等 pre-check による skip)
+#   status=unverified                       投稿は実行されたが検証 (3 回 retry) で発見できず
+#   (status 行なし)                          投稿本体 gh issue comment / owner-repo 取得 / mktemp の
+#                                           失敗 (WARNING + exit 0、non-blocking)
+#   skills/open/SKILL.md ステップ 2.5 はこの行を read し、status 分岐表で続行判断する。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 PYTHON_SCRIPT="$SCRIPT_DIR/issue-comment-wm-update.py"
+
+# --- File-wide tmpfile trap 保護 ---
+# trap + cleanup パターンの canonical 説明は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
+# 対象は親シェル top-level で mktemp する tmpfile 全部。関数 local の tmpfile は対象外:
+# get_owner_repo / get_comment_id (_err) は command substitution subshell 経由のため親の trap
+# から構造的に到達不能。cache_comment_id (tmp / _jq_err / _cid_mv_err) は init mode で親シェル
+# から直接呼ばれる経路もあるが、いずれも通常経路は各関数の inline rm -f が清掃し、signal 時の
+# 残存は許容する。
+# backup_file は失敗時 post-mortem 用に意図的に trap 対象外 (成功時のみ明示 rm)。
+_fs_err=""
+_pre_err=""
+tmpfile=""
+_init_err=""
+_verify_err=""
+_cb_err=""
+body_tmp=""
+updated_tmp=""
+py_err_tmp=""
+patch_err=""
+_rite_wm_sync_cleanup() {
+  rm -f "${_fs_err:-}" "${_pre_err:-}" "${tmpfile:-}" "${_init_err:-}" "${_verify_err:-}" \
+    "${_cb_err:-}" "${body_tmp:-}" "${updated_tmp:-}" "${py_err_tmp:-}" "${patch_err:-}"
+}
+trap 'rc=$?; _rite_wm_sync_cleanup; exit $rc' EXIT
+trap '_rite_wm_sync_cleanup; exit 130' INT
+trap '_rite_wm_sync_cleanup; exit 143' TERM
+trap '_rite_wm_sync_cleanup; exit 129' HUP
 
 # Resolve repository root for .rite-flow-state access
 CWD="${CWD:-$(pwd)}"
@@ -297,14 +333,33 @@ fi
 if [ "$MODE" = "init" ]; then
   TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S+09:00')
 
-  # set -e 配下で mktemp が /tmp full / inode 枯渇 / readonly fs で失敗すると、trap 設定前
-  # に abort する。明示 rc check で degrade させ、init mode を skip して上位で続行する。
-  tmpfile=""
+  # 冪等 pre-check: replica が既に存在する場合は二重投稿せず skip する (作成後の validation と
+  # 同じ query)。pre-check の gh api 失敗は「存在不明」であり、ここで止めると replica が永遠に
+  # 作られない恐れがあるため投稿続行に倒す (non-blocking)。
+  _pre_err=$(mktemp 2>/dev/null) || _pre_err=""
+  _pre_rc=0
+  existing_id=$(gh api "repos/${OWNER_REPO}/issues/${ISSUE}/comments" \
+    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' \
+    2>"${_pre_err:-/dev/null}") || _pre_rc=$?
+  if [ "$_pre_rc" -ne 0 ]; then
+    echo "[rite] WARNING: issue-comment-wm-sync: init pre-check gh api 失敗 (rc=$_pre_rc) — 存在不明のため投稿を続行します" >&2
+    [ -n "$_pre_err" ] && [ -s "$_pre_err" ] && head -3 "$_pre_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    existing_id=""
+  fi
+  [ -n "$_pre_err" ] && rm -f "$_pre_err"
+  if [ -n "$existing_id" ]; then
+    cache_comment_id "$existing_id"
+    echo "status=skipped; reason=already_exists"
+    exit 0
+  fi
+
+  # set -e 配下で mktemp が /tmp full / inode 枯渇 / readonly fs で失敗しても file-wide trap
+  # 設置済みのため orphan は残らない。明示 rc check で degrade させ、init mode を skip して
+  # 上位で続行する (cleanup は file-wide の _rite_wm_sync_cleanup に委譲)。
   if ! tmpfile=$(mktemp 2>/dev/null); then
     echo "[rite] WARNING: issue-comment-wm-sync: init mode mktemp failed (/tmp full or readonly?). Skipping comment creation." >&2
     exit 0
   fi
-  trap 'rm -f "$tmpfile"' EXIT
 
   cat <<INIT_EOF > "$tmpfile"
 ## 📜 rite 作業メモリ
@@ -417,28 +472,22 @@ COMMENT_ID=$(get_comment_id "$ISSUE" "$OWNER_REPO") || {
 }
 
 # Step 2: Get current body
-# /tmp 関連の failure (inode 枯渇 / readonly fs / quota) は set -e 配下で trap 設定前に
-# abort し orphan tempfile を残しうる。各 mktemp で rc を見て degrade させる。
-body_tmp=""
-updated_tmp=""
-py_err_tmp=""
+# /tmp 関連の failure (inode 枯渇 / readonly fs / quota) は各 mktemp で rc を見て degrade させる
+# (途中失敗時の先行 tmpfile は file-wide trap が清掃する)。
 if ! body_tmp=$(mktemp 2>/dev/null); then
   echo "[rite] WARNING: issue-comment-wm-sync: update mode body_tmp mktemp 失敗。skip." >&2
   exit 0
 fi
 if ! updated_tmp=$(mktemp 2>/dev/null); then
-  rm -f "$body_tmp"
   echo "[rite] WARNING: issue-comment-wm-sync: update mode updated_tmp mktemp 失敗。skip." >&2
   exit 0
 fi
 if ! py_err_tmp=$(mktemp 2>/dev/null); then
-  rm -f "$body_tmp" "$updated_tmp"
   echo "[rite] WARNING: issue-comment-wm-sync: update mode py_err_tmp mktemp 失敗。skip." >&2
   exit 0
 fi
 # Backup は失敗時の post-mortem 用。/tmp に蓄積した場合は `rm -f /tmp/rite-wm-backup-*` で手動清掃。
 backup_file="/tmp/rite-wm-backup-${ISSUE}-$(date +%s).md"
-trap 'rm -f "$body_tmp" "$updated_tmp" "$py_err_tmp"' EXIT
 
 # Capture gh stderr so that auth expiry / rate limit / 404 / network failure are
 # distinguishable in the operator log instead of collapsing into an empty body.

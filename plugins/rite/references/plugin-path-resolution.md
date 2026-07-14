@@ -23,6 +23,12 @@ The plugin root is resolved using a 3-tier priority system:
 | 2 (local dev) | `plugins/rite` directory check | Local development checkout | Always in local dev |
 | 3 (fallback) | `installed_plugins.json` lookup | Claude Code marketplace metadata | After marketplace install |
 
+## `installPath` Semantics
+
+`installed_plugins.json`'s `installPath` field **is** the plugin root itself — it does **not** point to a parent directory containing a `plugins/rite/` subdirectory. Verified against a live marketplace install (`rite@rite-marketplace`, v0.8.1): `installPath` resolved to `~/.claude/plugins/cache/rite-marketplace/rite/0.8.1`, and `hooks/`, `skills/`, `scripts/`, `references/` exist directly under that path — there is no nested `plugins/rite/` directory.
+
+Every consumer of `installPath` must derive the hooks/skills/scripts dir as `$INSTALL_PATH/hooks` (etc.), never `$INSTALL_PATH/plugins/rite/hooks`. This matches Priority 3 above and `skills/setup/SKILL.md` Phase 4.5.0. `hooks/hook-preamble.sh` previously assumed the wrong (`plugins/rite/`-nested) layout, which made its version-redirect check silently never match.
+
 ## Inline One-Liner (for command files)
 
 **Use this one-liner directly in command files** instead of referencing this document. This prevents Claude LLM from improvising its own resolution logic:
@@ -117,6 +123,21 @@ Command files that need plugin path resolution should include the inline one-lin
 
 **Important**: New command files should embed the one-liner directly rather than referencing this document with a link. Existing command files that still use the link-reference pattern (`per [Plugin Path Resolution](...)`) will be migrated incrementally to the inline one-liner in future Issues.
 
-## Relationship to setup.md Hook Path Resolution
+## Relationship to skills/setup/SKILL.md Hook Path Resolution
 
-`setup.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent between the two.
+`skills/setup/SKILL.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent in approach (both look up `rite@*` entries in `installed_plugins.json`), though the two use **different jq shapes** that can diverge — see [Cross-Method Version Mismatch Check](#cross-method-version-mismatch-check-issue-1833) below for the divergence and its mitigation.
+
+## Cross-Method Version Mismatch Check (Issue #1833)
+
+The codebase contains **two jq lookup shapes** against `installed_plugins.json`:
+
+| Shape | Used by | jq filter |
+|-------|---------|-----------|
+| Canonical one-liner | this document (Priority 3) + all skill/hook call sites | `limit(1; .plugins \| to_entries[] \| select(.key \| startswith("rite@"))) \| .value[0].installPath` — first `rite@*` entry |
+| Direct key lookup | `skills/setup/SKILL.md` Phase 4.5.0 (hooks dir detection) | `.plugins["rite@rite-marketplace"][0].installPath` — exact key |
+
+When `installed_plugins.json` holds more than one `rite@*` entry (e.g., right after a marketplace cache update), the two shapes can return **different versions**, so hooks (resolved by 4.5.0) and skills/helpers (resolved by the one-liner) silently reference mixed plugin versions within one session. If sentinel formats / JSON schemas / marker conventions differ between those versions, the drift is very hard to trace.
+
+**Detection point**: `skills/setup/SKILL.md` Phase 4.5.0 runs both lookups and emits a WARNING with both paths when they differ. The resolved result stays the direct key lookup (no behavior change); the check itself is non-blocking — a jq failure in the canonical probe falls back to no warning. When `installed_plugins.json` is absent (local development), no probe runs and no warning appears.
+
+**Do NOT add further resolution shapes**: any new call site must use the canonical one-liner above. The direct key lookup in 4.5.0 is retained for backward compatibility and is the only sanctioned exception (paired with the mismatch check).

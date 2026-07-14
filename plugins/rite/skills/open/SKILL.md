@@ -34,8 +34,10 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'` |
+| `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
 
-> **Note**: `{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
+> **Note**: 上記 2 行（ステップ 2.4(A) 専用と注記したもの）を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
 
 ---
 
@@ -224,6 +226,25 @@ wt_path="$repo_root/$wt_rel"
 branch="{branch_name}"
 base="{base_branch}"
 
+# dirty main checkout 検出 (Issue #1832): worktree は origin/{base} 起点で作られるため、
+# main checkout の未コミット変更は構造的に引き継がれない。作業対象と重なる変更が警告なく
+# worktree から欠落するのを防ぐ (git status 失敗時はガード skip = 従来挙動で続行)
+if _dirty_files=$(git -C "$repo_root" status --porcelain 2>/dev/null); then
+  if [ -n "$_dirty_files" ]; then
+    echo "[CONTEXT] MAIN_DIRTY=yes"
+    echo "[CONTEXT] MAIN_CHECKOUT_ROOT=$repo_root"
+    # dirty 一覧は marker と区別できるようデリミタで囲んで表示する (ファイル名由来の偽 marker 混入防止)
+    echo "--- dirty files begin ---"
+    printf '%s\n' "$_dirty_files"
+    echo "--- dirty files end ---"
+  else
+    echo "[CONTEXT] MAIN_DIRTY=no"
+  fi
+else
+  echo "WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します (従来挙動で続行)" >&2
+  echo "[CONTEXT] MAIN_DIRTY=unknown"
+fi
+
 # ref lock 競合対策の 3 回リトライ (references/git-worktree-patterns.md 参照)
 n=0; until git fetch origin "$base" 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && break; sleep 1; done
 
@@ -256,6 +277,21 @@ fi
 | `branch_only` | branch 存在・worktree なし → `git worktree add "{path}" "{branch}"`（`-b` なし） |
 | `create_new` | branch も worktree もなし → `git worktree add -b "{branch}" "{path}" "origin/{base_branch}"` |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
+
+**dirty main checkout ガード（Issue #1832）**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する全経路**（`branch_only` / `create_new` / `stale_residue` で「削除して再作成」を選択した場合。`reuse` は既存 worktree 継続のため対象外）で、`git worktree add` を実行する**前に**評価する。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない（marker は行頭 `[CONTEXT]` の行のみ）:
+
+| `MAIN_DIRTY` | アクション |
+|---|---|
+| `no` / `unknown` | ガードなしで従来どおり続行（`unknown` = git status 失敗、WARNING は bash block が emit 済み） |
+| `yes` | LLM が dirty ファイル一覧（デリミタ内の porcelain 行）と Issue 本文の **Target Files（Section 4.1 の表）/ 変更予定領域** を突合する。**重なりなし** → 従来どおり続行（確認なし）。**重なりあり** → 下記 AskUserQuestion を表示し、確認なしに `git worktree add` へ進まない |
+
+重なりあり時の AskUserQuestion（3 択）:
+
+- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイルを worktree へ搬送する（modified / untracked が対象。削除された Target File は搬送対象外として一覧にその旨を表示）。転送元ルートは 2.2-W の `[CONTEXT] MAIN_CHECKOUT_ROOT=` の値を使う（**cwd=worktree で `git rev-parse --show-toplevel` を再計算してはならない** — worktree root が返り、clean な base 版を搬送元に誤解決する）。各ファイルにつき `mkdir -p "$(dirname "{wt_path}/{relpath}")" && cp "{main_checkout_root}/{relpath}" "{wt_path}/{relpath}"` を実行する（`{relpath}` は porcelain 行から抽出したパス: 行頭 3 文字の status 部（`XY␠`）を除き、`"` で囲まれた行は unquote し、rename 行 `R old -> new` は `->` 右側の new を使い、`?? dir/` に畳まれた untracked ディレクトリは `cp -r` で搬送する）。main checkout 側の変更はそのまま残す（破棄しない）
+- **そのまま続行**: 搬送せず worktree を作成する（未コミット変更は worktree に含まれないことを了解済みとして続行）
+- **中止**: workflow を終了し、main checkout を無変更で残す
+
+> setup 直後のブートストラップ（setup が main checkout に生成した未コミットの rite-config.yml / .gitignore をこの Issue でコミットする）は正当なユースケースであり、「搬送して続行」で通す。ユーザー確認なしに未コミット変更を破棄・stash してはならない。
 
 ### 2.3-W EnterWorktree 入場（multi_session 有効時）
 
@@ -302,9 +338,40 @@ fi
 
 ### 2.4 GitHub Projects Status 更新
 
-`rite-config.yml.github.projects.enabled: true` の場合、以下の **2 種類** の Status 更新を実行する。いずれも詳細ロジックは `../../references/projects-integration.md` を参照し、本コマンドに**複製しない**（DRY）。
+`rite-config.yml.github.projects.enabled: true` の場合、以下の **2 種類** の Status 更新を実行する。
 
-**(A) 着手 Issue 自身の Status 更新** — 着手した Issue (`{issue_number}`) 自身の Projects Status を `In Progress` に更新する（`projects-status-update.sh` 経由、§2.4.1–2.4.6）。
+**Critical**: (A) は Do NOT skip。過去に `skills/ready/SKILL.md` Phase 4.2 で「参照のみに留めた multi-stage pipeline は LLM の attention が sub-step 間で途切れると Status 更新自体が silent skip する」事象が確認されており（Status が `In Progress` へ進まず `Todo` のまま残留）、同じ理由で (A) の呼び出しは本ステップに直接 inline する。(B) は従来どおり `projects-integration.md` §2.4.7 に委譲する（複製しない）。
+
+**(A) 着手 Issue 自身の Status 更新** — 着手した Issue (`{issue_number}`) 自身の Projects Status を `In Progress` に更新する:
+
+```bash
+status_json_args=$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "In Progress" \
+  --argjson auto_add true \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+# `|| status_json=""` は付けない — このブロックに set -e はなく、command substitution は
+# script が非ゼロ終了しても stdout (script が既に出力した失敗理由入り JSON) を正しく capture
+# するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+case "$status_result" in
+  updated)
+    echo "Projects Status を \"In Progress\" に更新しました" ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2 ;;
+  failed|*)
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"In Progress\" への更新に失敗しました。手動更新: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_progress_option_id>" >&2 ;;
+esac
+```
+
+`auto_add: true`（open 時点では Issue が未登録の可能性があるため `projects-status-update.sh` 内部で自動登録する。§2.4.3 相当）。**All result branches are non-blocking** — Status 更新の失敗で open をブロックしない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update) を参照（複製はここまで）。
 
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時、§2.4.7）** — `{issue_number}` が Sub-Issue の場合、**親 Issue の Status も In Progress に遷移させる**。これは省略不可の必須処理であり、(A) と独立に必ず実行する。ロジックは `projects-integration.md` §2.4.7 を実行する（open.md には複製しない）:
 
@@ -316,7 +383,29 @@ fi
 
 ### 2.5 Work Memory 初期化
 
-Issue の comment として work memory を初期投稿する。`コマンド:` 行は `rite:open` を記載。詳細は `../../skills/rite-workflow/references/work-memory-format.md` 参照。
+Issue の comment として work memory (backup replica) を初期投稿する。ローカルファイルが SoT で Issue コメントは replica (`../../skills/rite-workflow/references/work-memory-format.md` 参照)。投稿は `issue-comment-wm-sync.sh` の init mode に委譲する — この replica が無いと、以降の全フェーズの `issue-comment-wm-sync.sh update` 呼び出しが `status=skipped; reason=no_comment` で skip され、compact / cross-session recovery のバックアップ経路が機能しない:
+
+```bash
+# init は non-blocking 契約: gh 失敗 (auth / rate limit / network) でも helper は WARNING を出して
+# exit 0 を返すため、失敗時も open は後続ステップへ続行する。status 行の有無は投稿・検証段が決める:
+# 投稿・検証段まで到達すれば status 行あり (success / unverified)、投稿本体 gh issue comment の
+# 失敗では status 行なし (下表 4 行目参照)。pre-check gh api 失敗は non-blocking で続行のみで、
+# status 行は後続の投稿結果に従う。
+# replica が既に存在する場合は helper が冪等に skip する (status=skipped; reason=already_exists)。
+init_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh init \
+  --issue {issue_number} --branch "{branch_name}" 2>&1) || true
+printf '%s\n' "$init_out" | tail -3
+echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=//p' | tail -1)"
+```
+
+`status=` 行による分岐 (いずれも続行 — replica 作成失敗で open を止めない):
+
+| status | 意味 | アクション |
+|--------|------|-----------|
+| `success` | replica 作成 + 検証済み | 続行 |
+| `skipped; reason=already_exists` | replica 既存 (冪等 skip) | 続行 |
+| `unverified` | 投稿は実行されたが検証 (3 回 retry) で発見できず | WARNING として続行 (以降の update が `no_comment` skip になる可能性を認識) |
+| (status 行なし = gh 失敗等) | 投稿失敗 | WARNING として続行 (non-blocking) |
 
 ### 2.6 flow-state 更新
 

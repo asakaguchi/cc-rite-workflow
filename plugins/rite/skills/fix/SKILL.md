@@ -1941,7 +1941,12 @@ esac
 
 # Step 2: パス先行宣言 → cleanup 関数定義 → 4 行 trap 設置 → mktemp の順 (canonical pattern)
 tmpfile=""
-state_dir=".rite/state"
+# state ファイルはリポジトリ共通の state ルート基準 (state-path-resolve.sh)。セッション worktree /
+# main checkout のどちらから実行しても同一パスに解決される (pr-review.md ステップ 5.1.2.A の
+# 読取側と同一解決。解決失敗時は cwd fallback)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+state_dir="$_state_root/.rite/state"
 state_file="${state_dir}/accepted-fingerprints-${pr_number}.txt"
 _rite_fix_phase21A_cleanup() {
   rm -f "${tmpfile:-}"
@@ -2614,11 +2619,13 @@ EOF
 After committing, record the current fix cycle's data to `.rite/fix-cycle-state/{pr_number}.json` for convergence monitoring and cross-session context preservation.
 
 ```bash
-# Ensure directory exists
-mkdir -p .rite/fix-cycle-state
+# fix-cycle-state もリポジトリ共通 state ルート基準 (pr-review.md ステップ 5.3.8 の読取側と同一解決)
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+mkdir -p "$_state_root/.rite/fix-cycle-state"
 
 pr_number="{pr_number}"
-state_file=".rite/fix-cycle-state/${pr_number}.json"
+state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 commit_sha_after=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 commit_sha_before=$(git rev-parse HEAD~1 2>/dev/null || echo "unknown")
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
@@ -3173,7 +3180,16 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 | 1〜4 件 | `{N}` | 空文字列 |
 | 5 件以上 (≥5 警告発火、AC-4) | `{N}` | ` ⚠️ reviewer の精度を疑うべき水準` |
 
-**読み出し方法**: `wc -l < ".rite/state/accepted-fingerprints-{pr_number}.txt" 2>/dev/null | tr -d '[:space:]'` で取得し、`case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac` で数値正規化する (BSD wc は出力先頭に空白を付ける platform 依存問題を回避、ステップ 2.1.A Step 7 と bit-exact 対称)。ファイル不在時 / 空ファイル時は `0`。state file は cycle を跨いで永続化される (Issue 完了まで保持) ため、本 cycle で新規 accept が 0 件でも累積件数が表示される。
+**読み出し方法**: 本読み出しはステップ 2.1.A と別 Bash invocation で実行される可能性があるため、`_state_root` の解決を必ず同一 invocation 内に inline する (pr-review.md 5.1.2.A Step 2 の再 inline と同型。解決行なしで verbatim 実行すると `$_state_root` 未束縛 → `/.rite/state/...` の ENOENT が `2>/dev/null` で握り潰され accept_count が silent に 0 化する):
+
+```bash
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+accept_count=$(wc -l < "$_state_root/.rite/state/accepted-fingerprints-{pr_number}.txt" 2>/dev/null | tr -d '[:space:]')
+case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
+```
+
+数値正規化 (BSD wc は出力先頭に空白を付ける platform 依存問題を回避、ステップ 2.1.A Step 7 と bit-exact 対称)。ファイル不在時 / 空ファイル時は `0`。state file は cycle を跨いで永続化される (Issue 完了まで保持) ため、本 cycle で新規 accept が 0 件でも累積件数が表示される。
 
 **`acknowledged_nit_count` との関係**: 両者は **独立したカウンタ**。`acknowledged_nit_count` は reviewer の scope 判定 (`scope == "nit-noted"`) で reply-only 経路に流れた finding 数 (ステップ 2.4.N)、`accept_count` は user が ステップ 2.1 で「accept (認知のみ)」を選択した finding 数 (ステップ 2.1.A)。両方とも最終的に `status == "acknowledged"` になるが、エントリ経路 (reviewer 判定 vs user 判定) と永続化方法 (ステップ 2.4.N tempfile vs `.rite/state/accepted-fingerprints-*.txt`) が異なる。
 

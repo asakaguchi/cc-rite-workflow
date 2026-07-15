@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-16T06:07:53+09:00 | create | [best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める](pages/heuristics/best-effort-matcher-declare-common-set-to-stop-whackamole.md) | PR #1865 の 6+3 cycle raw source 8 件を統合 — allowlist の COMMON-SET 宣言で列挙外ベクタ追加の whack-a-mole を止める / 列挙完全性欠落（非 blocking）と検出機構の構造欠陥（blocking）の別クラス切り分け / out-of-scope doc 追記は網羅不能につき mergeable を正常出口とする経験則 |
+| 2026-07-16T06:07:53+09:00 | update | [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) | raw/reviews/20260715T194532Z-pr-1865.md ほか pr-1865 の 3 件を統合 — 未クォート for-loop の glob 展開が length-guard 後にトークン数を膨らませ入力サイズ bound を破る機構（noglob=set -f で封鎖 + CWD 依存 over-DENY）を追加 |
 | 2026-07-14T08:15:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1854 ingest 後の auto-lint) |
 | 2026-07-14T08:13:06+09:00 | skip | [raw/reviews/20260713T231306Z-pr-1854.md](raw/reviews/20260713T231306Z-pr-1854.md) | 0 findings; 唯一の観察事項（他ファイルに残る旧称 setup.md 参照）は本 PR が意図的にスコープ外とした事項の記録であり、Asymmetric Fix Transcription 等の既存パターンとも異なる一般化可能な教訓を含まないため skip |
 | 2026-07-14T07:35:00+09:00 | update | [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) | raw/reviews/20260713T223454Z-pr-1852.md を統合 — 再検証サイクルでの重複降格（既 Issue 化済み finding は再 Issue 化せず Decision Log 記録に留める）を追加 |

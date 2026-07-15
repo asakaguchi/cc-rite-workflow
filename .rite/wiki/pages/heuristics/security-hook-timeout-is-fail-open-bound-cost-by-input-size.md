@@ -4,7 +4,7 @@ title: "セキュリティ境界 hook の timeout は fail-open — 評価コス
 domain: "heuristics"
 description: "PreToolUse 等の hook timeout は fail-open (timeout→tool 許可) なので、hook の評価コストが入力サイズで発散すると timeout→fail-open bypass が成立する。反復回数上限では不十分で、全パターン検査の前に入力バイト長の O(1) ガードを置き O(n²) 経路を短絡する。"
 created: "2026-07-03T08:30:23+00:00"
-updated: "2026-07-03T08:30:23+00:00"
+updated: "2026-07-16T06:07:53+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260703T070536Z-pr-1736.md"
@@ -16,7 +16,13 @@ sources:
     ref: "raw/fixes/20260703T075749Z-pr-1736.md"
   - type: "reviews"
     ref: "raw/reviews/20260703T082154Z-pr-1736.md"
-tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass"]
+  - type: "reviews"
+    ref: "raw/reviews/20260715T194532Z-pr-1865.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260715T195606Z-pr-1865.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260715T203920Z-pr-1865.md"
+tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass", "noglob", "glob", "unquoted-loop"]
 confidence: high
 ---
 
@@ -48,6 +54,15 @@ PR #1736（`pre-tool-bash-guard.sh` の Pattern 4 = reviewer 状態変更 git gu
 - ガードは対象セッション（reviewer subagent 等）に **scope** する。main セッションを size で誤 deny しない（誤 deny 禁止）。main セッションが huge input で遅くなるのは fail-open な convenience パターン側の pre-existing な性質でありセキュリティ bypass ではない（別スコープ）。
 - **allow→deny flip が防御価値の証拠**: 本来 allow される read-only なコマンド（例 `git status`）を巨大化したものが deny に変わることを確認すると、ガードが「本来通るものを止めている」ことが実証できる（脅威モデルの本質）。
 
+### 入力サイズ bound を破る glob 展開（unquote for-loop、PR #1865）
+
+上記の O(1) 入力サイズ bound は「トークン数 ≈ 入力バイト長」を暗黙前提とする。**未クォートの `for x in $var` ループはトークンごとにパス名展開（globbing）を起こす**ため、この前提が破れ bound が無効化される:
+
+- length-guard 済みの短い入力（例 20B の `echo /bigdir/*`）でも、`*` が hook プロセス CWD に対し展開され、大ディレクトリなら 100 万トークンに膨れる。**glob 展開は length-guard の後で起きる**ため展開後トークン数は入力バイト長に拘束されず、O(1) サイズガードを素通りして検出ループが無制限反復 → timeout → fail-open。反復回数キャップだけでは（各反復が安価でも反復数が glob 依存で無限に増えるため）防げない。glob メタ文字 `*`/`?`/`[` は `;&|(){}` 等のメタ文字正規化を生き延びる点に注意。
+- 加えて glob 展開は CWD 内容に依存した **非決定的な over-DENY 誤検出**も招く（CWD に検出対象 verb 名のファイルがあると正当な read が誤 deny される = 誤検出禁止 AC に反する）。
+- **塞ぎ方 = noglob**: 検出ループ区間を `set -f`/`set +f`（noglob）で囲うと、トークンが literal 保持され展開後トークン数が length-guard 済み入力に再 bound される。over-DENY 誤検出と timeout 無制限反復の**両方が同時に閉じ、反復キャップは不要になる**。`case` / `[[ == ]]` のパターンマッチは `set -f` の影響を受けない（パス名展開のみ無効化）ので検出ロジックは不変。直前の noglob 状態を `case $- in *f*)` で save/restore すると、enclosing の shell state を壊さず drift-safe。
+- この欠陥は「allowlist 列挙の穴」ではなく**検出機構そのものの構造欠陥**であり、列挙完全性の非 blocking 判断とは別クラスの blocking finding として扱う（[best-effort matcher の COMMON-SET 宣言](./best-effort-matcher-declare-common-set-to-stop-whackamole.md) 参照）。
+
 ### 併走する 2 つの副次教訓
 
 - **テスト用 fault-injection は fail-closed 側限定**: セキュリティ hook をテストするための env var 等の fault-injection を本番コードに置く場合、set 時に **allow へ反転する経路（fail-open injection）を作らない**。deny のみを誘発する self-restrictive な fail-closed 側に限定する。fail-open 側の injection は settings.json の env 等で有効化できる allow-all バックドアになる。fail-open 不変性は injection ではなく trap 配線の static 検証で pin する。
@@ -66,3 +81,6 @@ PR #1736（`pre-tool-bash-guard.sh` の Pattern 4 = reviewer 状態変更 git gu
 - [PR #1736 review results (cycle 2) — 反復上限では各反復 O(入力長) を縛れず bypass 未解消、O(1) 総バイト長ガードを正規化前に置くべきとの再指摘 (HIGH)](../../raw/reviews/20260703T073719Z-pr-1736.md)
 - [PR #1736 fix results (cycle 2) — 全検査の前に ${#COMMAND} の O(1) ガードを追加し O(n²) heredoc 除去 (${COMMAND%%<<*}=45s) と Pattern 2 regex (>2min) を一括短絡](../../raw/fixes/20260703T075749Z-pr-1736.md)
 - [PR #1736 review results (cycle 4) — 全 4 reviewer 指摘ゼロで収束。O(1) 総バイト長ガードで全経路封鎖を実機検証](../../raw/reviews/20260703T082154Z-pr-1736.md)
+- [PR #1865 review results (follow-up cycle1) — 未クォート `for x in $var` の glob 展開が length-guard 後にトークン数を膨らませ入力サイズ bound を破る HIGH（+ CWD 依存 over-DENY 誤検出）](../../raw/reviews/20260715T194532Z-pr-1865.md)
+- [PR #1865 fix results (follow-up cycle1) — 検出ループを `set -f`/`set +f` で noglob 化し over-DENY と timeout 無制限反復を同時封鎖、noglob 状態を save/restore](../../raw/fixes/20260715T195606Z-pr-1865.md)
+- [PR #1865 review results (follow-up cycle3) — noglob 修正を全 reviewer が実機検証（fail-on-revert / glob-target が Layer-1 落ちする net-positive）し mergeable 収束](../../raw/reviews/20260715T203920Z-pr-1865.md)

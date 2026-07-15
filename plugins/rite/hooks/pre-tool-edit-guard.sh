@@ -185,7 +185,7 @@ if [ -z "$TARGET_ROOT" ]; then
   #       axis (git status --porcelain ignores .git). This hook is the structural defense for the
   #       Edit/Write/MultiEdit/NotebookEdit path; deny git-internal writes there, allow only genuine
   #       non-repo scratch. (Reviewer .git writes via the Bash tool — e.g. `echo > .git/hooks/...`,
-  #       `ln -s` symlink redirection — are a broader gap tracked separately, out of Issue #1860's
+  #       `ln -s` symlink redirection — are a broader gap tracked in #1864, out of Issue #1860's
   #       Edit/Write scope; pre-tool-bash-guard.sh only blocks state-mutating git verbs today.)
   if [ "$(git -C "$_tdir" rev-parse --is-inside-git-dir 2>/dev/null)" = "true" ]; then
     _deny_kind="git-dir"

@@ -695,7 +695,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # --- (H) reviewer WRITE into a .git directory (shell redirect / file-mutating verb) ---
   # pre-tool-edit-guard.sh structurally blocks the Edit/Write/MultiEdit/NotebookEdit path into a
   # parent .git; this closes the sibling Bash-tool gap (Issue #1864 AC-1). A reviewer subagent can
-  # `echo pwned > <repo>/.git/hooks/pre-commit` (or via tee/cp/mv/ln/install/rsync/truncate/dd) to
+  # `echo pwned > <repo>/.git/hooks/pre-commit` (or via tee/cp/mv/ln/install/rsync/truncate/dd/sponge/patch) to
   # plant a hook or rewrite .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) — either
   # runs arbitrary code in the non-sandboxed MAIN session on the next git op, strictly worse than a
   # source edit and invisible to `git status`. This block runs INSIDE the Pattern-4 fail-CLOSED
@@ -718,6 +718,13 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #     quoting `> $'\x2egit/hooks/x'` (`\x2e`→`.`) — the `$`/`(`/`)` are collapsed to spaces by the
   #     meta-char normalization, so the path is not visible statically (ANSI-C escape decoding is a
   #     `$`-expansion, not plain quote-removal, so it is NOT dequoted below).
+  #   - GLOB-expanded write targets: `> .git*/config`, `> .gi?/config`, `cp x .git*/hooks/y` — the
+  #     `*`/`?`/`[` survive meta-char normalization, but the tokenizer below runs under `set -f`
+  #     (noglob), so the token stays LITERAL (`.git*/config`) and does not match the `.git`-component
+  #     globs. Catching this would mean un-noglobbing, which re-opens the hook-CWD pathname-expansion
+  #     DoS (→ timeout → fail-open) and the over-DENY this fix closes — and `.git*` is statically
+  #     indistinguishable from a legit `.git*`→`.github` expansion anyway. Same Layer-1-only class as
+  #     `$VAR`/`$(cmd)` above.
   #   - INTERPRETER-embedded writes: `python3 -c "open('.git/hooks/x','w')"`, `perl -e ...` — the
   #     write is inside an opaque quoted argument.
   #   - HEREDOC-body redirects: `cat <<EOF > .git/hooks/x` — CMD_CHECK cuts at `<<`, so a redirect

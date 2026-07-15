@@ -1795,6 +1795,18 @@ assert_subagent_deny_gitdir "patch .git/config blocked" "patch .git/config"
 echo "TC-125y3: subagent quoted verb 'sponge' into .git → deny (verb dequote)"
 assert_subagent_deny_gitdir "'sponge' .git blocked" "echo x | 'sponge' .git/hooks/pre-commit"
 
+# --- file-verb blocklist completeness: install / rsync / truncate are IN the case list
+# (tee|cp|mv|ln|install|rsync|truncate|dd|sponge|patch) but lacked dedicated deny tests; pin them so
+# a future edit that drops one literal from the case is caught (Issue #1864 follow-up). ---
+echo "TC-125z1: subagent install into .git/hooks → deny"
+assert_subagent_deny_gitdir "install into .git blocked" "install -m755 /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125z2: subagent rsync into .git/hooks → deny"
+assert_subagent_deny_gitdir "rsync into .git blocked" "rsync /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125z3: subagent truncate .git/config → deny"
+assert_subagent_deny_gitdir "truncate .git/config blocked" "truncate -s 0 .git/config"
+
 # --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"

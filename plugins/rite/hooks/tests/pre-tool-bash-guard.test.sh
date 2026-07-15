@@ -1734,6 +1734,21 @@ assert_subagent_deny_gitdir "dd of='.git' (single-quoted) blocked" "dd if=/tmp/e
 echo "TC-125r: subagent dd of=\".git/…\" (double-quoted value) → deny"
 assert_subagent_deny_gitdir "dd of=\".git\" (double-quoted) blocked" "dd if=/tmp/evil of=\".git/hooks/pre-commit\""
 
+# --- interior / nested quotes (Issue #1864 cycle-3 fix: global quote removal) ---
+# A quote placed BETWEEN path components survives a fixed surrounding-strip but is removed by the
+# shell before opening the path — global `${tok//[\"\']/}` closes the whole class.
+echo "TC-125s: subagent dd of= with INTERIOR quote → deny"
+assert_subagent_deny_gitdir "dd of=.g'i't/… (interior quote) blocked" "dd if=/tmp/evil of=.g'i't/hooks/pre-commit"
+
+echo "TC-125t: subagent redirect into adjacent-quoted .git → deny"
+assert_subagent_deny_gitdir "echo > '.git'/… (adjacent quote) blocked" "echo x > '.git'/hooks/pre-commit"
+
+echo "TC-125u: subagent cp into interior-quoted .git → deny"
+assert_subagent_deny_gitdir "cp into .g'i't/… (interior quote) blocked" "cp /tmp/evil .g'i't/hooks/pre-commit"
+
+echo "TC-125v: subagent dd of= with NESTED quotes → deny"
+assert_subagent_deny_gitdir "dd of=''.git/…'' (nested quotes) blocked" "dd if=/tmp/evil of=''.git/hooks/pre-commit''"
+
 # --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"
@@ -1760,8 +1775,9 @@ assert_subagent_allow "tee reading FROM .git via < allowed" "tee /tmp/x < .git/c
 echo "TC-125-ALLOW-i: dd READING .git via if= (of= writes elsewhere) → allow"
 assert_subagent_allow "dd if=.git/config of=/tmp/x allowed (read source)" "dd if=.git/config of=/tmp/x"
 
-# Symmetric read-allow guard on /git-ancestor paths: the _gd_src snapshot fix must NOT over-block
-# a plain READ just because the path contains a `/git` segment (regression guard for the fix).
+# Over-broadening sentinel on /git-ancestor paths: a plain READ (cat/grep — no redirect, no file
+# verb) must stay allowed even when the path contains a `/git` segment. (The WRITE-side regression
+# guard for the _gd_src snapshot fix is TC-125l/m; these pin that reads never start being blocked.)
 echo "TC-125-ALLOW-j: read .git under /srv/git ancestor (cat) → allow"
 assert_subagent_allow "cat /srv/git/.../.git/config allowed" "cat /srv/git/proj/.git/config"
 

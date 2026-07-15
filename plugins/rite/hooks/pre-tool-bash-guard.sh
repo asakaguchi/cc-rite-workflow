@@ -717,13 +717,14 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #     target after the marker is stripped (`cat > .git/hooks/x <<EOF` IS caught). Scanning raw
   #     $COMMAND to fix this would false-match `>.git` text inside heredoc/PR bodies and, under this
   #     fail-CLOSED region, turn those into spurious denies — so it is deliberately not done.
-  #   - FLAG-embedded write targets other than `dd of=`: a target glued to a flag rather than given
-  #     positionally — `install --target-directory=.git/hooks` / `install -t.git/hooks`, GNU
-  #     `cp --target-directory=.git/…` — is NOT parsed. Only the POSITIONAL destination of a
-  #     file-verb is matched (`install src .git/hooks/x` and `install -t .git/hooks src` with a
-  #     SPACE ARE caught). `dd of=` is the one flag-target special-cased, because `of=` is dd's
-  #     SOLE output form (dd has no positional destination); adding per-flag parsing for every verb
-  #     (`-t`/`--target-directory=`/…) is scope creep, so those stay Layer-1-only.
+  #   - FLAG-embedded write targets other than `dd of=`: a target GLUED to a flag — `install
+  #     --target-directory=.git/hooks` / `install -t.git/hooks`, GNU `cp --target-directory=.git/…`
+  #     — is NOT parsed. Only a .git path that surfaces as its OWN token is matched, i.e. a
+  #     positional arg or a SPACE-separated flag argument (`install src .git/hooks/x` and
+  #     `install -t .git/hooks src` — the standalone `.git/hooks` token — ARE caught). `dd of=` is
+  #     the one glued-target special-cased, because `of=` is dd's SOLE output form (dd has no
+  #     positional destination); adding per-flag parsing for every verb (`-t`/`--target-directory=`
+  #     /…) is scope creep, so those stay Layer-1-only.
   #   Note: Layer 3 (post-review-state-verify.sh) does NOT backstop these — `.git` writes are
   #   invisible to `git status --porcelain`. A complete guarantee needs a different layer
   #   (filesystem permissions / sandbox), which is out of scope for this hook.
@@ -756,16 +757,18 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     _gd_prev=""
     _gd_fileverb=0
     for _gd_tok in $_gdw; do
-      # strip one layer of surrounding quotes, then a leading `of=` (dd's write-target argument)
-      # so `dd … of=.git/hooks/x` is detected while `dd if=.git/config …` (read source) is not.
-      # The quote strip is re-applied AFTER the `of=` strip because the quote can sit INSIDE the
-      # value (`of='.git/hooks/x'`): the first strip only removes the trailing quote (the token
-      # starts with `o`), leaving a stranded leading quote after `#of=` that would defeat the
-      # gitpath glob. Re-stripping normalizes `of='.git/x'` / `of=".git/x"` to `.git/x` (Issue #1864
-      # cycle-2 fix — value-quoted `of=` was a fail-open .git-write bypass).
-      _gd_p="${_gd_tok#[\"\']}"; _gd_p="${_gd_p%[\"\']}"
+      # Remove ALL quote chars from the token (mirroring the shell's own quote-removal), THEN strip
+      # a leading `of=` (dd's write-target argument), so `dd … of=.git/hooks/x` is detected while
+      # `dd if=.git/config …` (read source) is not. GLOBAL removal — not a fixed number of
+      # surrounding strips — is required because a quote can sit ANYWHERE and the shell strips every
+      # one before opening the path: surrounding (`of='.git/x'`), nested (`of=''.git/x''`), or
+      # INTERIOR between components (`of=.g'i't/hooks/x`, `> '.git'/hooks/x`). The gitpath check must
+      # see the same fully-dequoted path the shell writes to (Issue #1864 cycle-3 fix — interior /
+      # nested quotes were a fail-open .git-write bypass that a fixed surrounding-strip missed).
+      # Note: `_gd_prev` (redirect / `<` read-skip) and `_gd_verb` (file-verb latch) below use the
+      # RAW `_gd_tok`, so this dequoting affects ONLY the gitpath component match.
+      _gd_p="${_gd_tok//[\"\']/}"
       _gd_p="${_gd_p#of=}"
-      _gd_p="${_gd_p#[\"\']}"; _gd_p="${_gd_p%[\"\']}"
       _gd_is_gitpath=0
       case "$_gd_p" in
         .git|.git/*|*/.git|*/.git/*) _gd_is_gitpath=1 ;;

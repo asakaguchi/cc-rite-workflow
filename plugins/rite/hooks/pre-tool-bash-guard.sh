@@ -605,6 +605,21 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       WT_POSITIONAL_COUNT=0
       WT_HAS_DETACH=0
       WT_NEW_BRANCH_FLAG=0
+      # noglob-scope the unquoted `$WT_ARGS` word-split loop (mirrors the (H) tokenizer at
+      # ~line 789, Issue #1866 follow-up to #1864). Without `set -f`, glob metachars (`*`/`?`/`[`)
+      # surviving the meta-char normalization undergo pathname expansion against the hook CWD,
+      # exposing two failure modes the sibling (H) loop already closed:
+      #   (a) OVER-DENY — a `*` that expands to a CWD entry named like a new-branch flag (e.g. a
+      #       file `-b`) makes a legit `git worktree add <path> <ref>` mis-detect as a branch-
+      #       creating form and get wrongly DENIED (violates AC-1 "read-only git not mis-detected").
+      #   (b) TIMEOUT→FAIL-OPEN — glob expansion is NOT bounded by the 64KB length guard, so a
+      #       large-dir glob makes this loop iterate unboundedly → the PreToolUse hook times out →
+      #       fails OPEN → the worktree-add branch-leak check it exists to enforce is bypassed.
+      # `case` pattern matching is unaffected by noglob (it is filename generation only), so the
+      # detection logic below is unchanged. Save/restore the prior noglob state (drift-safe; this
+      # hook leaves it off today). No `break` in the loop, so the restore after `done` always runs.
+      case $- in *f*) _wt_noglob_was_set=1 ;; *) _wt_noglob_was_set=0 ;; esac
+      set -f
       for tok in $WT_ARGS; do
         case "$tok" in
           --detach|--detach=*)
@@ -627,6 +642,8 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
             WT_POSITIONAL_COUNT=$((WT_POSITIONAL_COUNT + 1)) ;;
         esac
       done
+      # Restore the prior noglob state (only re-enable globbing if this hook had it on before).
+      [ "$_wt_noglob_was_set" = "1" ] || set +f
       # Deny logic:
       #   (a) new-branch flag present at any position → leak (regardless of --detach)
       #   (b) positional_count <= 1 AND no --detach → bare `add <path>`, auto-creates branch → leak

@@ -1867,6 +1867,32 @@ fi
 rm -rf "$tc125_noglob_dir"
 echo ""
 
+# --- noglob regression for the `git worktree add` arg loop (Issue #1866, sibling of TC-125) ---
+# The `for tok in $WT_ARGS` loop (~line 608) that counts positional args / detects new-branch
+# flags now runs under `set -f`, so a glob metachar surviving in the worktree-add args is NOT
+# pathname-expanded against the hook CWD. Without noglob, a bare `*` in the args expands to CWD
+# entries; a file named exactly `-b` (the new-branch flag token) then latches WT_NEW_BRANCH_FLAG
+# and a legit `git worktree add <path> <existing-ref>` is wrongly DENIED (AC-1 over-DENY false
+# positive; an unbounded glob could also time the hook out → fail-open, bypassing the branch-leak
+# check). This pins the fix: with `set -f` the `*` stays a literal positional token → allow.
+#   Command shape note: the trailing `*` is a deliberately adversarial 4th token (git itself would
+#   reject a 3rd positional) — its only job is to be a glob that expands against the crafted CWD.
+#   The assertion is about the GUARD not over-denying due to CWD pollution, not about git accepting
+#   the command. Runs from a temp CWD holding a `-b` file so the pre-fix (globbing) path over-DENYs
+#   (fail-on-revert): verified empirically that the un-fixed loop returns deny for this input.
+tc126_noglob_dir=$(mktemp -d)
+: > "$tc126_noglob_dir/-b"    # a file named like the new-branch flag token — would set WT_NEW_BRANCH_FLAG if globbed
+_tc126_noglob_prev=$(pwd)
+if cd "$tc126_noglob_dir"; then
+  echo "TC-126-ALLOW-noglob: worktree-add args with a bare glob not polluted by CWD flag-file → allow (set -f)"
+  assert_subagent_allow "worktree add with bare glob + existing ref allowed under noglob" "git worktree add /tmp/wt develop *"
+  cd "$_tc126_noglob_prev" || true
+else
+  fail "TC-126-ALLOW-noglob setup: cd into temp dir failed"
+fi
+rm -rf "$tc126_noglob_dir"
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

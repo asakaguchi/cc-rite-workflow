@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-16T08:16:06+09:00 | lint:warning | — | contradictions=0, stale=2, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1867 ingest 後の auto-lint。stale 2 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-16T08:16:06+09:00 | update | [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) | raw/reviews/20260715T230852Z-pr-1867.md を統合 — #1865 が残した兄弟 `for tok in $WT_ARGS`（:608 worktree-add 引数走査）を同型 noglob スコープで水平展開。同一ファイル内の全 unquote for-loop への水平展開・sibling grep 照合レビュー・over-DENY 回帰テストの fail-on-revert 実機確認を追加 |
 | 2026-07-16T06:15:39+09:00 | lint:warning | — | contradictions=0, stale=2, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1865 ingest 後の auto-lint。stale 2 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-16T06:07:53+09:00 | create | [best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める](pages/heuristics/best-effort-matcher-declare-common-set-to-stop-whackamole.md) | PR #1865 の 6+3 cycle raw source 8 件を統合 — allowlist の COMMON-SET 宣言で列挙外ベクタ追加の whack-a-mole を止める / 列挙完全性欠落（非 blocking）と検出機構の構造欠陥（blocking）の別クラス切り分け / out-of-scope doc 追記は網羅不能につき mergeable を正常出口とする経験則 |

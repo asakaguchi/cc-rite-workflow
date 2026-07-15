@@ -1653,6 +1653,88 @@ rm -rf "$tc124_dir"
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-125: reviewer WRITE into a .git directory (Issue #1864 AC-1, sub-block (H))
+# The Bash-tool sibling of pre-tool-edit-guard's .git protection: a reviewer must not
+# `echo pwned > .git/hooks/pre-commit` (RCE via next git op). Reading .git stays allowed.
+# --------------------------------------------------------------------------
+# --- Helper: deny assertion for the reviewer-gitdir-write pattern ---
+assert_subagent_deny_gitdir() {
+  local label="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
+  local decision reason
+  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
+    pass "$label"
+  else
+    fail "$label — expected deny (reviewer-gitdir-write), got decision=$decision reason=$reason"
+  fi
+}
+
+echo "TC-125a: subagent redirect into .git/hooks → deny"
+assert_subagent_deny_gitdir "echo > .git/hooks/pre-commit blocked" "echo pwned > .git/hooks/pre-commit"
+
+echo "TC-125b: subagent append (>>) into .git/hooks → deny"
+assert_subagent_deny_gitdir "echo >> .git/hooks/pre-commit blocked" "echo pwned >> .git/hooks/pre-commit"
+
+echo "TC-125c: subagent redirect (no space) into .git/config → deny"
+assert_subagent_deny_gitdir "echo >.git/config blocked" "echo x >.git/config"
+
+echo "TC-125d: subagent redirect into ABSOLUTE .git path → deny"
+assert_subagent_deny_gitdir "abs .git redirect blocked" "echo x > /tmp/repo/.git/hooks/pre-commit"
+
+echo "TC-125e: subagent redirect into ./.git → deny (leading ./)"
+assert_subagent_deny_gitdir "./.git redirect blocked" "echo x > ./.git/config"
+
+echo "TC-125f: subagent redirect with QUOTED .git target → deny"
+assert_subagent_deny_gitdir "quoted .git target blocked" "echo x > \".git/hooks/pre-commit\""
+
+echo "TC-125g: subagent redirect into .git after a meta-boundary (&&) → deny"
+assert_subagent_deny_gitdir "compound redirect into .git blocked" "cat foo && echo x > .git/config"
+
+echo "TC-125h: subagent tee into .git/hooks → deny"
+assert_subagent_deny_gitdir "tee into .git blocked" "echo x | tee .git/hooks/pre-commit"
+
+echo "TC-125i: subagent cp into .git/hooks → deny"
+assert_subagent_deny_gitdir "cp into .git blocked" "cp /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125j: subagent ln -s into .git/hooks → deny"
+assert_subagent_deny_gitdir "ln -s into .git blocked" "ln -s /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125k: subagent mv into .git → deny"
+assert_subagent_deny_gitdir "mv into .git blocked" "mv /tmp/evil .git/hooks/pre-commit"
+
+# --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
+echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
+assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"
+
+echo "TC-125-ALLOW-b: subagent LISTS .git/hooks (ls) → allow"
+assert_subagent_allow "ls .git/hooks/ allowed" "ls .git/hooks/"
+
+echo "TC-125-ALLOW-c: subagent greps .git/config → allow"
+assert_subagent_allow "grep .git/config allowed" "grep hooksPath .git/config"
+
+echo "TC-125-ALLOW-d: subagent legit isolation worktree setup → allow"
+assert_subagent_allow "git worktree add --detach (isolation) allowed" \
+  "git worktree add --detach /tmp/rite-review-mutation-abc HEAD"
+
+echo "TC-125-ALLOW-e: boundary — dir literally named 'foo.git/' is NOT the .git component → allow"
+assert_subagent_allow "redirect into myrepo.git/description NOT blocked" "echo x > myrepo.git/description"
+
+echo "TC-125-ALLOW-f: redirect into a NON-.git path → allow"
+assert_subagent_allow "redirect into /tmp/out.txt allowed" "echo x > /tmp/out.txt"
+
+echo "TC-125-ALLOW-g: .git as INPUT-redirect source (read) → allow"
+assert_subagent_allow "tee reading FROM .git via < allowed" "tee /tmp/x < .git/config"
+
+echo "TC-125-ALLOW-h: MAIN session redirect into .git → allow (reviewer-only guard)"
+assert_main_allow "main-session .git write not blocked by (H)" "echo x > .git/hooks/pre-commit"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -156,6 +156,27 @@ case "$FILE_PATH" in
   *)  ABS_PATH="${CWD%/}/$FILE_PATH" ;;
 esac
 
+# --- Physically resolve a FINAL-element symlink before isolation scoping (Issue #1864 AC-2) ---
+# The _tdir walk below resolves INTERMEDIATE dirs physically (via `[ -d ]` / `git -C`), but the
+# target's own final element is never dereferenced. A reviewer could drop a symlink inside its
+# sanctioned isolation worktree pointing at the parent repo's .git —
+# `ln -s <main>/.git/hooks/pre-commit <iso>/evil` (ln is a Bash-tool op, out of THIS hook's Edit
+# path) — then `Write file_path=<iso>/evil`: _tdir resolves to the isolation root → allowed, and
+# the write follows the link into the parent .git. Resolve the final symlink PHYSICALLY here so
+# such a target lands on the real parent .git (→ git-dir deny below) instead. `realpath` follows
+# every link and resolves `..` against the REAL directory tree, so it cannot be forged the way a
+# lexical `..` collapse could (the property the block below relies on). A legitimate symlink that
+# stays inside the isolation worktree still resolves to a path inside it → still allowed (no
+# regression). realpath failure (e.g. the link's target parent dir is missing) leaves ABS_PATH
+# unchanged and falls through to the _tdir walk — no worse than before this fix.
+#   Note (Issue #1864 AC-3): Claude Code's own Edit/Write tools REFUSE to write through a
+#   final-element symlink ("Refusing to write through symlink …"), verified empirically, so this
+#   is defense-in-depth — it does not rely on that (undocumented) harness behavior.
+if [ -L "$ABS_PATH" ]; then
+  _resolved=$(realpath "$ABS_PATH" 2>/dev/null) || _resolved=""
+  [ -n "$_resolved" ] && ABS_PATH="$_resolved"
+fi
+
 # --- Resolve the git worktree that OWNS the target ---
 # The isolation allowance is defined by "the target lives inside a sanctioned reviewer isolation
 # worktree", NOT by "the path string contains the token". Resolve the target's own worktree by
@@ -184,9 +205,8 @@ if [ -z "$TARGET_ROOT" ]; then
   #       strictly worse than a source-file edit, and invisible to the worktree-hash post-condition
   #       axis (git status --porcelain ignores .git). This hook is the structural defense for the
   #       Edit/Write/MultiEdit/NotebookEdit path; deny git-internal writes there, allow only genuine
-  #       non-repo scratch. (Reviewer .git writes via the Bash tool — e.g. `echo > .git/hooks/...`,
-  #       `ln -s` symlink redirection — are a broader gap tracked in #1864, out of Issue #1860's
-  #       Edit/Write scope; pre-tool-bash-guard.sh only blocks state-mutating git verbs today.)
+  #       non-repo scratch. (The sibling Bash-tool vector — `echo > .git/hooks/...`, `tee`/`cp`/`ln`
+  #       into .git — is closed by pre-tool-bash-guard.sh sub-block (H), Issue #1864 AC-1.)
   if [ "$(git -C "$_tdir" rev-parse --is-inside-git-dir 2>/dev/null)" = "true" ]; then
     _deny_kind="git-dir"
   else

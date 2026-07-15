@@ -683,6 +683,66 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     fi
   fi
 
+  # --- (H) reviewer WRITE into a .git directory (shell redirect / file-mutating verb) ---
+  # pre-tool-edit-guard.sh structurally blocks the Edit/Write/MultiEdit/NotebookEdit path into a
+  # parent .git; this closes the sibling Bash-tool gap (Issue #1864 AC-1). A reviewer subagent can
+  # `echo pwned > <repo>/.git/hooks/pre-commit` (or via tee/cp/mv/ln/install/rsync/truncate) to
+  # plant a hook or rewrite .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) — either
+  # runs arbitrary code in the non-sandboxed MAIN session on the next git op, strictly worse than a
+  # source edit and invisible to `git status`. This block runs INSIDE the Pattern-4 fail-CLOSED
+  # trap region (before the restore below), so a crash here denies rather than allows. Only WRITES
+  # into a .git dir component are denied; READING .git (cat/ls/grep .git/config) stays allowed (no
+  # write operator/verb present).
+  #
+  # Scope & known limitations (shared with this guard's other patterns; documented, not bugs):
+  #   - Runs on CMD_CHECK (heredoc-stripped `${COMMAND%%<<*}`), so a redirect target AFTER a heredoc
+  #     marker — `cat <<EOF > .git/hooks/x` — is stripped with the heredoc and NOT caught (same
+  #     class as the pipe-heredoc note above); `cat > .git/hooks/x <<EOF` IS caught. Scanning raw
+  #     $COMMAND to fix this would false-match `>.git` text inside heredoc / PR bodies and — under
+  #     this fail-CLOSED region — turn those into spurious denies, so it is deliberately not done.
+  #   - A `>` or a .git path inside a quoted string (`echo "text > .git/x"`) can false-match. Rare
+  #     in a read-only reviewer command; the deny message explains the block so it is recoverable.
+  #   - `.git` is matched as a genuine path COMPONENT only (`(^|/).git(/|$)` via the case globs),
+  #     so a dir literally named `foo.git/` (e.g. a bare-repo clone) is NOT matched.
+  #   - `cp`/`mv`/`ln`/`rsync`/`install` fire even when the .git path is the SOURCE (`cp .git/config
+  #     /tmp/x`), not only the destination — a read-copy a reviewer should do with `cat` instead;
+  #     accepted to keep the matcher simple (an explicit `< .git/x` input redirect IS excluded).
+  #     `sed -i` / in-place editors are out of scope (Layer 3 post-condition gate covers them).
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    # Reuse CMD_NORMALIZED (meta-chars ;&|(){}`$ already collapsed to spaces; the normalization
+    # does NOT strip `>`/`<`, so redirects survive) but surface `>>`/`>`/`<` as standalone tokens
+    # so `x>.git/y` and `x >> .git/y` both tokenize. Append order matters: `>>` before `>`.
+    _gdw=" $CMD_NORMALIZED "
+    _gdw="${_gdw//>>/ > }"
+    _gdw="${_gdw//>/ > }"
+    _gdw="${_gdw//</ < }"
+    while [[ "$_gdw" == *"  "* ]]; do _gdw="${_gdw//  / }"; done
+    _gd_prev=""
+    _gd_fileverb=0
+    for _gd_tok in $_gdw; do
+      # strip one layer of surrounding quotes for path inspection
+      _gd_p="${_gd_tok#[\"\']}"; _gd_p="${_gd_p%[\"\']}"
+      _gd_is_gitpath=0
+      case "$_gd_p" in
+        .git|.git/*|*/.git|*/.git/*) _gd_is_gitpath=1 ;;
+      esac
+      # A .git path that is an INPUT redirect source (`… < .git/config`) is a READ → never a write.
+      if [ "$_gd_prev" = "<" ]; then _gd_prev="$_gd_tok"; continue; fi
+      # Redirect vector: the previous surfaced token was `>` and this token is a .git path.
+      if [ "$_gd_prev" = ">" ] && [ "$_gd_is_gitpath" = "1" ]; then
+        BLOCKED_PATTERN="reviewer-gitdir-write"; BLOCKED_SUBKIND="gitdir-write"; break
+      fi
+      # File-mutating-verb vector: a write verb seen earlier + a .git path arg now.
+      case "$_gd_tok" in
+        tee|cp|mv|ln|install|rsync|truncate) _gd_fileverb=1 ;;
+      esac
+      if [ "$_gd_is_gitpath" = "1" ] && [ "$_gd_fileverb" = "1" ]; then
+        BLOCKED_PATTERN="reviewer-gitdir-write"; BLOCKED_SUBKIND="gitdir-write"; break
+      fi
+      _gd_prev="$_gd_tok"
+    done
+  fi
+
   if [ -n "$BLOCKED_PATTERN" ]; then
     BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash push/restore/commit/push/merge/rebase/cherry-pick/revert/tag -a -d -f/clean/gc/branch -D --delete/update-ref/symbolic-ref/am/apply/mv/notes/config/remote/bisect/filter-branch/replace/reflog expire/worktree remove/fetch --prune/--force/etc.) are forbidden inside reviewer contexts."
     BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory, 'git tag -l' / 'git stash list' / 'git reflog' / 'git branch --list' for display-only queries, or bare 'git fetch' (without --prune/--force) for ref sync. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list. If this block fires on a main session (not a reviewer subagent), check whether CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE env vars are accidentally set; recover with: unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE"
@@ -702,6 +762,13 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     if [ "$BLOCKED_SUBKIND" = "oversized-normalization" ]; then
       BLOCKED_REASON="This reviewer command carries an abnormally large number of git global flags (e.g. many repeated -C / -c). Normalizing that many flags could exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so such oversized commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard. $BLOCKED_REASON"
       BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations never need this many global flags. $BLOCKED_ALTERNATIVE"
+    fi
+    # (gitdir-write) Reviewer writing into a .git directory via shell redirect / file-op (H).
+    # REPLACE (not prepend) the generic git-verb message — this is not a git command, and the
+    # generic "State-changing git commands …" text would mislabel a plain `echo > .git/hooks/x`.
+    if [ "$BLOCKED_SUBKIND" = "gitdir-write" ]; then
+      BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap (Issue #1864)."
+      BLOCKED_ALTERNATIVE="Reviewers are strictly read-only — never write into .git. To INSPECT it, read instead: 'cat .git/config', 'git config --list', 'git cat-file -p <obj>', 'git show <ref>:<file>', 'git rev-parse'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi
   # Restore the Patterns 1-3 fail-open trap for the shared result-emit section

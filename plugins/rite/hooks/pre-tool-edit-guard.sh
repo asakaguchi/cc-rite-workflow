@@ -72,7 +72,10 @@ _rite_teg_fail_closed() {
   local _rc=$?
   trap - ERR  # prevent re-entrancy while emitting the deny
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-edit-guard: WARNING deny-emit crashed (rc=$_rc) — DENIED via fail-closed" >&2
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (reviewer-edit-parent-tree): scope confirmed but deny-emit crashed; denying fail-closed to avoid bypassing the reviewer read-only guard."}}\n'
+  # Kind-neutral static reason: this trap fires for BOTH deny kinds (parent-tree and git-dir),
+  # so it must not hardcode either — a crashed git-dir deny (RCE vector) mislabeled as parent-tree
+  # would understate the block. Kept fully static (no interpolation) per the crash-handler contract.
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (reviewer-edit): scope confirmed but deny-emit crashed; denying fail-closed to avoid bypassing the reviewer read-only guard."}}\n'
   exit 2
 }
 trap '_rite_teg_fail_open' ERR
@@ -179,8 +182,11 @@ if [ -z "$TARGET_ROOT" ]; then
   #       writing into .git (e.g. .git/hooks/pre-commit, or .git/config core.hooksPath / alias.*=!sh)
   #       can execute arbitrary code in the non-sandboxed MAIN session on the next git operation —
   #       strictly worse than a source-file edit, and invisible to the worktree-hash post-condition
-  #       axis (git status --porcelain ignores .git). This hook is the sole structural defense, so
-  #       deny git-internal writes; allow only genuine non-repo scratch.
+  #       axis (git status --porcelain ignores .git). This hook is the structural defense for the
+  #       Edit/Write/MultiEdit/NotebookEdit path; deny git-internal writes there, allow only genuine
+  #       non-repo scratch. (Reviewer .git writes via the Bash tool — e.g. `echo > .git/hooks/...`,
+  #       `ln -s` symlink redirection — are a broader gap tracked separately, out of Issue #1860's
+  #       Edit/Write scope; pre-tool-bash-guard.sh only blocks state-mutating git verbs today.)
   if [ "$(git -C "$_tdir" rev-parse --is-inside-git-dir 2>/dev/null)" = "true" ]; then
     _deny_kind="git-dir"
   else

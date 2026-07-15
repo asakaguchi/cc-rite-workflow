@@ -35,12 +35,13 @@ ISO_REV_DIR=$(mktemp -u -t rite-revert-test-XXXXXX)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_MUT_DIR" HEAD )
 ( cd "$TEST_REPO" && git worktree add --detach -q "$ISO_REV_DIR" HEAD )
 OUTSIDE_DIR=$(mktemp -d)   # a plain, non-repo scratch dir
+shimdir=""                 # set by TC-FAILCLOSED; cleaned here so an interrupt leaves no residue
 
 cleanup() {
   rm -f "$STDERR_FILE"
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_MUT_DIR" 2>/dev/null ) || true
   ( cd "$TEST_REPO" 2>/dev/null && git worktree remove --force "$ISO_REV_DIR" 2>/dev/null ) || true
-  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR"
+  rm -rf "$TEST_REPO" "$ISO_MUT_DIR" "$ISO_REV_DIR" "$OUTSIDE_DIR" ${shimdir:+"$shimdir"}
 }
 trap cleanup EXIT
 

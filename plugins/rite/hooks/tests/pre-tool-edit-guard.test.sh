@@ -48,6 +48,7 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
 fi
+REAL_JQ=$(command -v jq)   # absolute path, captured before any PATH-shim test shadows `jq`
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
@@ -250,6 +251,55 @@ out=$(jq -n --arg tp "$SUBAGENT_TRANSCRIPT" --arg cwd "$TEST_REPO" \
   '{tool_name: "Edit", tool_input: {}, cwd: $cwd, transcript_path: $tp}' \
   | bash "$HOOK" 2>"$STDERR_FILE") && rc=0 || rc=$?
 assert_allow "missing file_path fails open (cannot scope)" "$out" "$rc"
+echo ""
+
+# --------------------------------------------------------------------------
+# .git-internal writes → deny (Issue #1860 review cycle 2 — .git/hooks/pre-commit
+# etc. would give main-session code execution; git rev-parse --show-toplevel is empty
+# inside .git so the naive "empty → allow" branch used to let these through).
+# --------------------------------------------------------------------------
+assert_deny_gitdir() {
+  local label="$1" out="$2"
+  if [ "$(decision_of "$out")" = "deny" ] && [[ "$(reason_of "$out")" == *"reviewer-edit-git-dir"* ]]; then
+    pass "$label"
+  else
+    fail "$label — expected git-dir deny, got decision=$(decision_of "$out") reason=$(reason_of "$out")"
+  fi
+}
+
+echo "TC-GITDIR-hooks: subagent Write into .git/hooks/pre-commit → deny"
+out=$(run_edit_guard "Write" "$TEST_REPO/.git/hooks/pre-commit" "$TEST_REPO" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny_gitdir "write into .git/hooks blocked (RCE vector)" "$out"
+echo ""
+
+echo "TC-GITDIR-config: subagent Edit to .git/config → deny"
+out=$(run_edit_guard "Edit" "$TEST_REPO/.git/config" "$TEST_REPO" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny_gitdir "write into .git/config blocked" "$out"
+echo ""
+
+# --------------------------------------------------------------------------
+# fail-closed: a crash in the deny-emit (jq -n) still DENIES (exit 2), never allows.
+# A PATH shim fails only `jq -n` (the deny payload) and passes every INPUT-parsing jq
+# through to the real jq, so scope is confirmed and only the final emit crashes.
+# --------------------------------------------------------------------------
+echo "TC-FAILCLOSED: deny-emit jq crash → fail-closed (deny + exit 2)"
+shimdir=$(mktemp -d)
+cat > "$shimdir/jq" <<SHIM
+#!/bin/bash
+for a in "\$@"; do [ "\$a" = "-n" ] && exit 1; done
+exec "$REAL_JQ" "\$@"
+SHIM
+chmod +x "$shimdir/jq"
+rc=0
+out=$(jq -n --arg p "$TEST_REPO/src/x.py" --arg cwd "$TEST_REPO" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Edit", tool_input: {file_path: $p}, cwd: $cwd, transcript_path: $tp}' \
+  | PATH="$shimdir:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$(decision_of "$out")" = "deny" ] && [ "$rc" = "2" ]; then
+  pass "deny-emit crash denies fail-closed (exit 2)"
+else
+  fail "expected deny + exit 2, got decision=$(decision_of "$out") rc=$rc"
+fi
+rm -rf "$shimdir"
 echo ""
 
 # --------------------------------------------------------------------------

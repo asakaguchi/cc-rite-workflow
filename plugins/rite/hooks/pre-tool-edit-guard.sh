@@ -12,21 +12,24 @@
 #   in `agents/_reviewer-base.md` alone does not stop LLM agents. This hook is
 #   the structural enforcement layer for the Edit/Write side.
 #
-# Scope (all three must hold to deny):
+# Scope (all must hold to deny):
 #   1. tool_name ∈ {Edit, Write, MultiEdit, NotebookEdit}
 #   2. subagent context (reviewer) — same 3-tier detection as pre-tool-bash-guard.sh
-#   3. target path is inside the parent repo working tree AND NOT inside a
-#      sanctioned reviewer isolation worktree (`rite-review-mutation-*` /
-#      `rite-revert-test-*` under $TMPDIR). The isolation allowlist is checked
-#      FIRST because a reviewer cd's into the mutation dir, so the repo-internal
-#      check would otherwise false-deny legitimate worktree-only mutation testing
-#      (AC-4). MultiEdit is included even though Issue #1860's Technical Notes
-#      list only {Edit, Write, NotebookEdit}: MultiEdit mutates files identically
-#      and omitting it would be a trivial bypass of a security boundary.
+#   3. the target's OWN git worktree (resolved by walking the target path up to its
+#      nearest existing ancestor, then `git -C <ancestor> rev-parse`) is a real
+#      parent working tree — i.e. its toplevel is NOT a sanctioned reviewer isolation
+#      worktree (root named `rite-review-mutation-*` / `rite-revert-test-*`). Deciding
+#      isolation on the resolved worktree root (not the raw path string) is what closes
+#      the substring / `..` re-entry forgery found in review cycle 1. A write into a
+#      .git directory of a non-isolation worktree also denies (review cycle 2:
+#      .git/hooks/pre-commit etc. → main-session code execution). MultiEdit is included
+#      even though Issue #1860's Technical Notes list only {Edit, Write, NotebookEdit}:
+#      MultiEdit mutates files identically and omitting it would be a trivial bypass.
 #
 # Fail direction (mirrors pre-tool-bash-guard.sh Pattern 4):
-#   - A crash BEFORE scope (subagent + repo-internal + non-isolation) is confirmed
-#     fails OPEN (exit 0 = allow) so a main-session Edit is never false-blocked.
+#   - A crash BEFORE scope is confirmed (subagent + target resolved to a non-isolation
+#     worktree / its .git dir) fails OPEN (exit 0 = allow) so a main-session Edit and a
+#     genuine non-repo scratch write are never false-blocked.
 #   - A crash AFTER scope is confirmed fails CLOSED (deny + exit 2) so a single
 #     parse crash never silently bypasses the reviewer read-only guard.
 #
@@ -48,6 +51,11 @@ export _RITE_HOOK_RUNNING_PRETOOL_EDIT=1
 # Hook version resolution preamble (before INPUT=$(cat) to preserve stdin).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+# control-char-neutralize.sh provides neutralize_ctrl, used to sanitize the byte-oriented
+# RITE_DEBUG diagnostic snippet below (parity with pre-tool-bash-guard.sh, which sources it
+# for the same reason). Sourced without a guard: if the helper is missing (plugin broken) the
+# resulting exit is non-blocking under PreToolUse = allow, the same fail-open the sibling relies on.
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Fail-OPEN ERR trap (default): any unexpected crash before scope is confirmed
 # allows the tool rather than blocking it. Swapped to fail-CLOSED once the deny
@@ -90,15 +98,16 @@ CWD=$(printf '%s' "$JQ_OUT" | cut -f2)
 [ -n "$FILE_PATH" ] || exit 0
 
 # --- Reviewer subagent detection (3-tier) ---
-# The detection LOGIC (the 3 tiers below) is the canonical copy from
-# pre-tool-bash-guard.sh (Pattern 4) and is kept in sync with it: an intentional
+# The detection LOGIC and the jq program below are the canonical copy from
+# pre-tool-bash-guard.sh (Pattern 4) and are kept in sync with it: an intentional
 # defense-in-depth duplication (a shared lib used by only two hooks would force a
-# risky refactor of the heavily-pinned bash-guard). Observability differs by design:
-# the sibling wraps this jq with a RITE_DEBUG stderr-capture because it is the first
-# jq to touch INPUT there; here two prior jq calls (tool_name, file/notebook path)
-# have already parsed the same INPUT, so a parse failure at this third jq is
-# unreachable — the `|| JQ_SA=$'\t\t'` fallback is a formality, not a live silent-bypass
-# path, and needs no debug logging.
+# risky refactor of the heavily-pinned bash-guard). The `|| JQ_SA=$'\t\t'` fallback is a
+# live silent-bypass path, NOT a formality: a valid-JSON envelope with a non-scalar
+# `.transcript_path` (array/object) makes jq's @tsv fail at runtime, and the fallback
+# then zeroes out Tier 1/2 → IS_SUBAGENT=0 → allow. So, exactly like the sibling, capture
+# this jq's stderr and surface it under RITE_DEBUG so a detection-path drop is observable.
+# (Do NOT add `| strings` to `.transcript_path` to swallow the error — that would diverge
+# the jq program from the canonical copy and break the "keep in sync" contract.)
 #   Tier 1 (primary):  transcript_path glob `*/subagents/*` — current Claude Code
 #                      convention routing subagent sessions under a subagents/ dir.
 #   Tier 2 (fallback): hook input JSON `subagent_type` / `agent_type` STRING field
@@ -107,7 +116,15 @@ CWD=$(printf '%s' "$JQ_OUT" | cut -f2)
 # Forward-compat caveat: presence-only fires on any non-empty string; if a future
 # SDK emits sentinel values like "main"/"none" on main-session hooks this would
 # false-positive — upgrade to an allow-list glob (e.g. `*-reviewer`) at that point.
-JQ_SA=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>/dev/null) || JQ_SA=$'\t\t'
+_jq_sa_err=$(mktemp 2>/dev/null) || _jq_sa_err=""
+JQ_SA=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>"${_jq_sa_err:-/dev/null}") || JQ_SA=$'\t\t'
+if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_jq_sa_err" ] && [ -s "$_jq_sa_err" ]; then
+  printf '[%s] pre-tool-edit-guard: subagent-detection jq stderr: %s\n' \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    "$(head -c 200 "$_jq_sa_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" \
+    >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+fi
+[ -n "$_jq_sa_err" ] && rm -f "$_jq_sa_err"
 TRANSCRIPT_PATH=$(printf '%s' "$JQ_SA" | cut -f1)
 INPUT_SUBAGENT_TYPE=$(printf '%s' "$JQ_SA" | cut -f2)
 INPUT_AGENT_TYPE=$(printf '%s' "$JQ_SA" | cut -f3)
@@ -150,31 +167,53 @@ done
 [ -d "$_tdir" ] || _tdir="${CWD:-.}"
 # git -C chdir's to the resolved ancestor and reports the worktree toplevel that owns it.
 TARGET_ROOT=$(git -C "$_tdir" rev-parse --show-toplevel 2>/dev/null) || TARGET_ROOT=""
-# Target is not inside any git repo (e.g. /tmp scratch) → cannot be the parent working tree →
-# allow (fail-open; scope not confirmed).
-[ -n "$TARGET_ROOT" ] || exit 0
-TARGET_ROOT="${TARGET_ROOT%/}"
 
-# --- Isolation allowance: the target's OWN worktree is a sanctioned isolation worktree ---
-# Reviewers legitimately run mutation experiments in a detached worktree created via
-# `mktemp -d -t rite-review-mutation-XXXXXX` + `git worktree add --detach` (or the
-# `rite-revert-test-*` sibling namespace — same prefixes swept by pr-cycle-cleanup.sh Step 4).
-# Matching on TARGET_ROOT (the target's resolved worktree root), not the raw path, means only a
-# genuine isolation worktree is allowed — closing the substring / `..` re-entry bypass.
-case "$TARGET_ROOT" in
-  */rite-review-mutation-*|*/rite-revert-test-*) exit 0 ;;
-esac
+# `_deny_kind` stays empty for an allow; it is set to "parent-tree" or "git-dir" when the write
+# must be denied. Both deny kinds share the fail-CLOSED emit at the end of this block.
+_deny_kind=""
+if [ -z "$TARGET_ROOT" ]; then
+  # `--show-toplevel` is empty for two very different reasons, which MUST NOT be conflated:
+  #   (a) the ancestor is in NO git repo (genuine /tmp scratch) → allow (fail-open), or
+  #   (b) the target is INSIDE a .git directory — `rev-parse --show-toplevel` reports no work tree
+  #       there, so the old blanket `|| exit 0` allowed it (Issue #1860 review cycle 2). A reviewer
+  #       writing into .git (e.g. .git/hooks/pre-commit, or .git/config core.hooksPath / alias.*=!sh)
+  #       can execute arbitrary code in the non-sandboxed MAIN session on the next git operation —
+  #       strictly worse than a source-file edit, and invisible to the worktree-hash post-condition
+  #       axis (git status --porcelain ignores .git). This hook is the sole structural defense, so
+  #       deny git-internal writes; allow only genuine non-repo scratch.
+  if [ "$(git -C "$_tdir" rev-parse --is-inside-git-dir 2>/dev/null)" = "true" ]; then
+    _deny_kind="git-dir"
+  else
+    exit 0   # genuine non-repo scratch → allow (fail-open; scope not confirmed)
+  fi
+else
+  TARGET_ROOT="${TARGET_ROOT%/}"
+  # --- Isolation allowance: the target's OWN worktree is a sanctioned isolation worktree ---
+  # Reviewers legitimately run mutation experiments in a detached worktree created via
+  # `mktemp -d -t rite-review-mutation-XXXXXX` + `git worktree add --detach` (or the
+  # `rite-revert-test-*` sibling namespace — same prefixes swept by pr-cycle-cleanup.sh Step 4).
+  # Matching on TARGET_ROOT (the target's resolved worktree root), not the raw path, means only a
+  # genuine isolation worktree is allowed — closing the substring / `..` re-entry bypass.
+  case "$TARGET_ROOT" in
+    */rite-review-mutation-*|*/rite-revert-test-*) exit 0 ;;
+  esac
+  _deny_kind="parent-tree"
+fi
 
-# --- Scope confirmed: subagent + target inside a non-isolation (parent) working tree → DENY ---
+# --- Scope confirmed: subagent + write into a parent working tree OR its .git dir → DENY ---
 # Swap to the fail-CLOSED trap so any crash from here on denies rather than allows.
 trap '_rite_teg_fail_closed' ERR
 
 # Log block event (stderr, for effect measurement) — mirror bash-guard's format.
 PATH_SUMMARY="${ABS_PATH:0:120}"
 PATH_SUMMARY="${PATH_SUMMARY//\"/\\\"}"
-echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] edit-guard: BLOCKED tool=$TOOL_NAME path=\"$PATH_SUMMARY\"" >&2
+echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] edit-guard: BLOCKED kind=$_deny_kind tool=$TOOL_NAME path=\"$PATH_SUMMARY\"" >&2
 
-_deny_reason="BLOCKED (reviewer-edit-parent-tree): Reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which resolves inside the repository working tree (${TARGET_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: 'git worktree add --detach \$(mktemp -d -t rite-review-mutation-XXXXXX) HEAD' and edit files THERE (a real worktree whose root is named rite-review-mutation-* / rite-revert-test-* is allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+if [ "$_deny_kind" = "git-dir" ]; then
+  _deny_reason="BLOCKED (reviewer-edit-git-dir): Reviewer subagents must not write into a Git internal directory. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which is inside a .git directory. Writing there — .git/hooks/*, .git/config (core.hooksPath / alias / core.fsmonitor), etc. — can execute arbitrary code in the non-sandboxed main session on the next git operation. Reviewers are strictly read-only: inspect refs/blobs with 'git show', 'git cat-file', 'git rev-parse' instead. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
+else
+  _deny_reason="BLOCKED (reviewer-edit-parent-tree): Reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which resolves inside the repository working tree (${TARGET_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: 'git worktree add --detach \$(mktemp -d -t rite-review-mutation-XXXXXX) HEAD' and edit files THERE (a real worktree whose root is named rite-review-mutation-* / rite-revert-test-* is allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+fi
 # jq is required to emit the permission payload; an intermittent jq failure would
 # silently downgrade the deny to allow, so the fail-CLOSED trap catches a crash
 # here and emits a static deny + exit 2.

@@ -1727,6 +1727,13 @@ assert_subagent_deny_gitdir "\\cp into .git blocked" "\\cp /tmp/evil .git/hooks/
 echo "TC-125p: subagent dd of=.git/hooks → deny"
 assert_subagent_deny_gitdir "dd of=.git blocked" "dd if=/tmp/evil of=.git/hooks/pre-commit"
 
+# --- value-quoted dd of= (Issue #1864 cycle-2 fix: quote-strip-after-of= ordering) ---
+echo "TC-125q: subagent dd of='.git/…' (single-quoted value) → deny"
+assert_subagent_deny_gitdir "dd of='.git' (single-quoted) blocked" "dd if=/tmp/evil of='.git/hooks/pre-commit'"
+
+echo "TC-125r: subagent dd of=\".git/…\" (double-quoted value) → deny"
+assert_subagent_deny_gitdir "dd of=\".git\" (double-quoted) blocked" "dd if=/tmp/evil of=\".git/hooks/pre-commit\""
+
 # --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"
@@ -1752,6 +1759,14 @@ assert_subagent_allow "tee reading FROM .git via < allowed" "tee /tmp/x < .git/c
 
 echo "TC-125-ALLOW-i: dd READING .git via if= (of= writes elsewhere) → allow"
 assert_subagent_allow "dd if=.git/config of=/tmp/x allowed (read source)" "dd if=.git/config of=/tmp/x"
+
+# Symmetric read-allow guard on /git-ancestor paths: the _gd_src snapshot fix must NOT over-block
+# a plain READ just because the path contains a `/git` segment (regression guard for the fix).
+echo "TC-125-ALLOW-j: read .git under /srv/git ancestor (cat) → allow"
+assert_subagent_allow "cat /srv/git/.../.git/config allowed" "cat /srv/git/proj/.git/config"
+
+echo "TC-125-ALLOW-k: read .git under ~/github ancestor (grep) → allow"
+assert_subagent_allow "grep /home/u/github/.../.git/config allowed" "grep hooksPath /home/u/github/proj/.git/config"
 
 echo "TC-125-ALLOW-h: MAIN session redirect into .git → allow (reviewer-only guard)"
 assert_main_allow "main-session .git write not blocked by (H)" "echo x > .git/hooks/pre-commit"

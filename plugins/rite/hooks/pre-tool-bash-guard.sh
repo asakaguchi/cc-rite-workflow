@@ -351,7 +351,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # literal `/git` segment — `> /srv/git/repo/.git/config` becomes `> /srv git/repo/.git/config`,
   # detaching `>` from the `.git` token so (H)'s adjacency test misses (silent allow of an RCE
   # write). (H) needs the path INTACT, so it tokenizes from this pre-munge snapshot instead of the
-  # verb-normalized CMD_NORMALIZED. `_gd_src` is initialized empty for `set -u` safety.
+  # verb-normalized CMD_NORMALIZED. (`set -u` safety at the (H) use site is via `${_gd_src:-}`.)
   _gd_src="$CMD_NORMALIZED"
   # Absolute-path / explicit-invocation bypass guard:
   # Pattern 4 全体は `*" git <verb> "*` glob に依存するため、`git` を直接呼び出さない
@@ -717,6 +717,13 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #     target after the marker is stripped (`cat > .git/hooks/x <<EOF` IS caught). Scanning raw
   #     $COMMAND to fix this would false-match `>.git` text inside heredoc/PR bodies and, under this
   #     fail-CLOSED region, turn those into spurious denies — so it is deliberately not done.
+  #   - FLAG-embedded write targets other than `dd of=`: a target glued to a flag rather than given
+  #     positionally — `install --target-directory=.git/hooks` / `install -t.git/hooks`, GNU
+  #     `cp --target-directory=.git/…` — is NOT parsed. Only the POSITIONAL destination of a
+  #     file-verb is matched (`install src .git/hooks/x` and `install -t .git/hooks src` with a
+  #     SPACE ARE caught). `dd of=` is the one flag-target special-cased, because `of=` is dd's
+  #     SOLE output form (dd has no positional destination); adding per-flag parsing for every verb
+  #     (`-t`/`--target-directory=`/…) is scope creep, so those stay Layer-1-only.
   #   Note: Layer 3 (post-review-state-verify.sh) does NOT backstop these — `.git` writes are
   #   invisible to `git status --porcelain`. A complete guarantee needs a different layer
   #   (filesystem permissions / sandbox), which is out of scope for this hook.
@@ -728,6 +735,12 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #   - cp/mv/ln/rsync/install fire even when the .git path is the SOURCE (`cp .git/config /tmp/x`),
   #     not only the destination — a read-copy a reviewer should do with `cat` instead; accepted to
   #     keep the matcher simple (an explicit `< .git/x` input redirect IS excluded as a read).
+  #   - The file-verb latch is set by a matching token ANYWHERE and persists across the (space-
+  #     collapsed) command, so it can over-DENY a later .git READ in the same command line — both a
+  #     cross-boundary read (`cp a b ; cat .git/config`) and a path ARG whose basename is a verb
+  #     (`grep x /tmp/cp .git/config` → `/tmp/cp` basename `cp` latches). This is fail-CLOSED (it
+  #     denies a read, never allows a write), rare, and recoverable via the deny message; accepted
+  #     rather than track command boundaries (which the meta-char collapse has already erased).
   if [ -z "$BLOCKED_PATTERN" ]; then
     # Tokenize from _gd_src (the PRE-`/git`-munge snapshot captured above), NOT CMD_NORMALIZED:
     # the `/git`→` git` invocation-normalization corrupts any redirect-target path with a literal
@@ -745,8 +758,14 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     for _gd_tok in $_gdw; do
       # strip one layer of surrounding quotes, then a leading `of=` (dd's write-target argument)
       # so `dd … of=.git/hooks/x` is detected while `dd if=.git/config …` (read source) is not.
+      # The quote strip is re-applied AFTER the `of=` strip because the quote can sit INSIDE the
+      # value (`of='.git/hooks/x'`): the first strip only removes the trailing quote (the token
+      # starts with `o`), leaving a stranded leading quote after `#of=` that would defeat the
+      # gitpath glob. Re-stripping normalizes `of='.git/x'` / `of=".git/x"` to `.git/x` (Issue #1864
+      # cycle-2 fix — value-quoted `of=` was a fail-open .git-write bypass).
       _gd_p="${_gd_tok#[\"\']}"; _gd_p="${_gd_p%[\"\']}"
       _gd_p="${_gd_p#of=}"
+      _gd_p="${_gd_p#[\"\']}"; _gd_p="${_gd_p%[\"\']}"
       _gd_is_gitpath=0
       case "$_gd_p" in
         .git|.git/*|*/.git|*/.git/*) _gd_is_gitpath=1 ;;

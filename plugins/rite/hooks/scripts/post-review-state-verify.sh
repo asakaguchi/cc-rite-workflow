@@ -18,17 +18,24 @@
 #       --original-branch <name> \
 #       [--original-stash-count <N>] \
 #       [--original-branch-list-hash <hash>] \
+#       [--original-worktree-hash <hash>] \
 #       [--auto-recover true|false]
 #
 # Arguments:
 #   --original-branch <name>           Review 開始時の current branch 名 (required)
 #   --original-stash-count <N>         Review 開始時の `git stash list` 行数 (optional)
 #   --original-branch-list-hash <hash> Review 開始時の `git branch --list | sort | md5sum` (optional)
+#   --original-worktree-hash <hash>    Review 開始時の `git status --porcelain | md5sum` (optional、Issue #1860)
 #   --auto-recover                     drift 検出時に automatic recovery を行う (default: true)
 #
+# State vector axes (drift 検出の優先順): branch → stash → branch_list → worktree。
+# branch drift のみ auto-recover 対象 (exit 1 で block しうる)。stash / branch_list /
+# worktree drift は内容を失うリスク回避のため advisory (WARNING + 手動 triage、exit 0)。
+#
 # Exit codes:
-#   0 — no drift, or drift detected and successfully recovered
-#   1 — drift detected and recovery failed (manual intervention required)
+#   0 — no drift, or drift detected and (branch) successfully recovered,
+#       or advisory drift (stash / branch_list / worktree)
+#   1 — branch drift detected and recovery failed (manual intervention required)
 #   2 — invalid arguments
 #
 # Output:
@@ -36,12 +43,14 @@
 #   stdout: machine-readable JSON summary
 #     {"drift": false}
 #     {"drift": true, "type": "branch", "from": "...", "to": "...", "recovered": true}
+#     {"drift": true, "type": "worktree", "detail": "...", "recovered": false}
 
 set -uo pipefail  # 意図的に -e なし: drift detection 自体を fail とせず、結果を JSON で返す
 
 ORIGINAL_BRANCH=""
 ORIGINAL_STASH_COUNT=""
 ORIGINAL_BRANCH_LIST_HASH=""
+ORIGINAL_WORKTREE_HASH=""
 AUTO_RECOVER="true"
 
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
@@ -60,6 +69,10 @@ while [ $# -gt 0 ]; do
       ;;
     --original-branch-list-hash)
       ORIGINAL_BRANCH_LIST_HASH="${2:-}"
+      shift; shift
+      ;;
+    --original-worktree-hash)
+      ORIGINAL_WORKTREE_HASH="${2:-}"
       shift; shift
       ;;
     --auto-recover)
@@ -117,6 +130,15 @@ if [ -n "$_hash_cmd" ]; then
 else
   current_branch_list_hash=""
 fi
+# Worktree axis (Issue #1860): `git status --porcelain` hash captures working-tree
+# + index drift (modified / staged / untracked) that the branch / stash /
+# branch_list axes cannot see — e.g. a reviewer editing a source file in place via
+# Edit/Write and hand-restoring it, or leaving a `.bak` untracked. Advisory only.
+if [ -n "$_hash_cmd" ]; then
+  current_worktree_hash=$(git status --porcelain 2>/dev/null | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
+else
+  current_worktree_hash=""
+fi
 
 # --- Drift detection ---
 drift_detected="false"
@@ -155,6 +177,18 @@ if [ "$drift_detected" = "false" ] \
   drift_detail="reviewer leaked named branch(es); compare 'git branch --list' before/after"
 fi
 
+# worktree_hash check (Issue #1860): 両側に hash 値がある場合のみ比較する。
+# 空文字列 (hash コマンド非利用 or hash 計算失敗) は比較不可として skip し silent
+# false-negative を防ぐ (branch_list check と同一ガード)。
+if [ "$drift_detected" = "false" ] \
+   && [ -n "$ORIGINAL_WORKTREE_HASH" ] \
+   && [ -n "$current_worktree_hash" ] \
+   && [ "$current_worktree_hash" != "$ORIGINAL_WORKTREE_HASH" ]; then
+  drift_detected="true"
+  drift_type="worktree"
+  drift_detail="reviewer mutated the working tree/index (Edit/Write or state-changing git); compare 'git status --porcelain' before/after"
+fi
+
 if [ "$drift_detected" = "false" ]; then
   printf '{"drift":false}\n'
   exit 0
@@ -164,7 +198,14 @@ fi
 echo "WARNING: Reviewer subagent caused parent session state drift" >&2
 echo "  type: $drift_type" >&2
 echo "  detail: $drift_detail" >&2
-echo "  context: pre-tool-bash-guard hook (Pattern 4) did not block this mutation — investigate transcript_path detection or hook registration" >&2
+# 一次防御 hook の名指しは drift 軸で出し分ける: worktree drift は Edit/Write または
+# state-changing git のどちらでも起こりうるため両 hook を、それ以外の軸は git 経路の
+# pre-tool-bash-guard.sh を指す (Issue #1860)。
+if [ "$drift_type" = "worktree" ]; then
+  echo "  context: pre-tool-edit-guard hook (Edit/Write/MultiEdit/NotebookEdit) and/or pre-tool-bash-guard hook (Pattern 4, state-changing git) did not block this mutation — investigate subagent detection (transcript_path) or hook registration" >&2
+else
+  echo "  context: pre-tool-bash-guard hook (Pattern 4) did not block this mutation — investigate transcript_path detection or hook registration" >&2
+fi
 
 recovered="false"
 recovery_error=""
@@ -195,6 +236,13 @@ if [ "$drift_type" = "branch_list" ]; then
   echo "  manual action: review 'git branch --list' for unexpected names matching reviewer experiment patterns" >&2
 fi
 
+# worktree drift は自動 recovery しない (reviewer が加えた変更を破棄すると PR ブランチの
+# 正当な作業まで巻き添えにするリスク。auto-recover は Issue #1860 の明示 non-goal)。
+if [ "$drift_type" = "worktree" ]; then
+  echo "  recovery: SKIPPED (working-tree drift is not auto-recovered — a blind revert could discard legitimate PR work)" >&2
+  echo "  manual action: run 'git status --porcelain' and 'git diff' to triage the drift; a reviewer subagent likely edited a file in place (Edit/Write) or ran a state-changing git command — restore intended state manually before /rite:fix consumes the diff" >&2
+fi
+
 # --- JSON summary ---
 # `drift_detail` / `drift_type` は他 hook script 由来の長文メッセージを内包する可能性があるため、
 # printf で JSON value に直接埋め込むのではなく jq で escape する。
@@ -203,8 +251,8 @@ jq -nc --arg t "$drift_type" --arg d "$drift_detail" --arg r "$recovered" \
   '{drift: true, type: $t, detail: $d, recovered: ($r == "true")}'
 
 # Exit code: recovered=true → 0、recovered=false → 1 (manual intervention required)
-if [ "$recovered" = "true" ] || [ "$drift_type" = "stash" ] || [ "$drift_type" = "branch_list" ]; then
-  # stash/branch_list は自動 recover しないが advisory として exit 0 (review flow を block しない)
+if [ "$recovered" = "true" ] || [ "$drift_type" = "stash" ] || [ "$drift_type" = "branch_list" ] || [ "$drift_type" = "worktree" ]; then
+  # stash/branch_list/worktree は自動 recover しないが advisory として exit 0 (review flow を block しない)
   exit 0
 fi
 exit 1

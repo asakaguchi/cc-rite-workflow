@@ -1749,6 +1749,24 @@ assert_subagent_deny_gitdir "cp into .g'i't/… (interior quote) blocked" "cp /t
 echo "TC-125v: subagent dd of= with NESTED quotes → deny"
 assert_subagent_deny_gitdir "dd of=''.git/…'' (nested quotes) blocked" "dd if=/tmp/evil of=''.git/hooks/pre-commit''"
 
+# --- backslash-escaped .git path components (Issue #1864 cycle-4 fix: backslash removal) ---
+# POSIX quote-removal strips `\` too; the shell resolves `.g\it`→`.git`, so the gitpath check must
+# strip backslashes as well as quotes to see the real target.
+echo "TC-125w1: subagent redirect into backslash-in-component .git → deny"
+assert_subagent_deny_gitdir "echo > .g\\it/… blocked" "echo pwned > .g\\it/hooks/pre-commit"
+
+echo "TC-125w2: subagent redirect into leading-backslash .git → deny"
+assert_subagent_deny_gitdir "echo > \\.git/… blocked" "echo pwned > \\.git/hooks/pre-commit"
+
+echo "TC-125w3: subagent dd of= with backslash component → deny"
+assert_subagent_deny_gitdir "dd of=.g\\it/… blocked" "dd if=/tmp/evil of=.g\\it/hooks/pre-commit"
+
+echo "TC-125w4: subagent tee with backslash component → deny"
+assert_subagent_deny_gitdir "tee .g\\it/… blocked" "echo x | tee .g\\it/hooks/pre-commit"
+
+echo "TC-125w5: subagent dd with backslash-escaped of= prefix → deny"
+assert_subagent_deny_gitdir "dd \\of=.git/… blocked" "dd if=/tmp/evil \\of=.git/hooks/pre-commit"
+
 # --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"

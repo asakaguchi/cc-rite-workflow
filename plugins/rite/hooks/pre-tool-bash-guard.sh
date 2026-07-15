@@ -709,8 +709,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # argument (tee/cp/mv/ln/install/rsync/truncate), and `dd of=<path>`. The following are OUT OF
   # SCOPE for a static matcher and are covered by Layer 1 (the reviewer prompt / _reviewer-base.md
   # READ-ONLY contract) ONLY — NOT by this hook and NOT by Layer 3:
-  #   - Targets needing RUNTIME resolution: `> $VAR`, `> $(cmd)` (the `$`/`(`/`)` are collapsed to
-  #     spaces by the meta-char normalization, so the value/path is not visible statically).
+  #   - Targets needing RUNTIME resolution or `$`-EXPANSION: `> $VAR`, `> $(cmd)`, and ANSI-C
+  #     quoting `> $'\x2egit/hooks/x'` (`\x2e`→`.`) — the `$`/`(`/`)` are collapsed to spaces by the
+  #     meta-char normalization, so the path is not visible statically (ANSI-C escape decoding is a
+  #     `$`-expansion, not plain quote-removal, so it is NOT dequoted below).
   #   - INTERPRETER-embedded writes: `python3 -c "open('.git/hooks/x','w')"`, `perl -e ...` — the
   #     write is inside an opaque quoted argument.
   #   - HEREDOC-body redirects: `cat <<EOF > .git/hooks/x` — CMD_CHECK cuts at `<<`, so a redirect
@@ -757,17 +759,23 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     _gd_prev=""
     _gd_fileverb=0
     for _gd_tok in $_gdw; do
-      # Remove ALL quote chars from the token (mirroring the shell's own quote-removal), THEN strip
-      # a leading `of=` (dd's write-target argument), so `dd … of=.git/hooks/x` is detected while
-      # `dd if=.git/config …` (read source) is not. GLOBAL removal — not a fixed number of
-      # surrounding strips — is required because a quote can sit ANYWHERE and the shell strips every
-      # one before opening the path: surrounding (`of='.git/x'`), nested (`of=''.git/x''`), or
-      # INTERIOR between components (`of=.g'i't/hooks/x`, `> '.git'/hooks/x`). The gitpath check must
-      # see the same fully-dequoted path the shell writes to (Issue #1864 cycle-3 fix — interior /
-      # nested quotes were a fail-open .git-write bypass that a fixed surrounding-strip missed).
-      # Note: `_gd_prev` (redirect / `<` read-skip) and `_gd_verb` (file-verb latch) below use the
-      # RAW `_gd_tok`, so this dequoting affects ONLY the gitpath component match.
+      # Dequote the token the way the SHELL does before opening the path, THEN strip a leading `of=`
+      # (dd's write-target argument), so `dd … of=.git/hooks/x` is detected while `dd if=.git/config
+      # …` (read source) is not. POSIX quote-removal strips exactly THREE characters wherever they
+      # sit — `"`, `'`, and unquoted `\` — so ALL three are removed globally here. A fixed
+      # surrounding strip, or removing only the quotes, leaves an obfuscated write vector: quotes
+      # ANYWHERE (`of='.git/x'`, `of=''.git/x''`, `of=.g'i't/hooks/x`, `> '.git'/hooks/x`) and
+      # backslashes ANYWHERE (`> .g\it/hooks/x`, `> \.git/x`, `dd of=.g\it/…`) all still open the
+      # real `.git` for the shell. Backslash removal runs BEFORE the `of=` strip so `\of=.git/x`
+      # (escaped `o`) normalizes to `of=.git/x` first (Issue #1864 cycle-3/4 fix — interior/nested
+      # quotes and backslash-escaped path components were fail-open .git-write bypasses). Only the
+      # `.git` component match uses `_gd_p`; `_gd_prev` (redirect / `<` read-skip) and `_gd_verb`
+      # (file-verb latch) below use the RAW `_gd_tok`.
+      # Note: `$'…'` ANSI-C escape decoding (`$'\x2egit'` → `.git`) is NOT done — that is a
+      # `$`-triggered EXPANSION, already class-B out-of-scope (the `$` is collapsed to a space by
+      # the meta-char normalization above, same as `$VAR` / `$(cmd)`), covered by Layer 1.
       _gd_p="${_gd_tok//[\"\']/}"
+      _gd_p="${_gd_p//\\/}"
       _gd_p="${_gd_p#of=}"
       _gd_is_gitpath=0
       case "$_gd_p" in

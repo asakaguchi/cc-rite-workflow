@@ -1300,9 +1300,11 @@ Reviewer subagent が READ-ONLY 契約を破って parent session の working tr
 一次防御は `plugins/rite/hooks/pre-tool-bash-guard.sh` Pattern 4 (subagent context で state-mutating git command を block する PreToolUse hook)。本 snapshot + ステップ 5.0.A verify は hook が edge case (transcript_path に `/subagents/` が含まれない subagent ルーティング等) で機能しなかった場合の **defense-in-depth post-condition gate**。
 
 ```bash
-# 3 変数 (ORIG_BR / ORIG_SC / ORIG_BLH) は ステップ 5.0.A の post-review-state-verify.sh 引数として
-# 再利用するため会話 context に保持する (Bash tool 間で shell 変数は引き継がれない)。
+# 4 変数 (ORIG_BR / ORIG_SC / ORIG_BLH / ORIG_WTH) は ステップ 5.0.A の post-review-state-verify.sh
+# 引数として再利用するため会話 context に保持する (Bash tool 間で shell 変数は引き継がれない)。
 # detached HEAD は `DETACHED:<short-hash>` sentinel に置換 (verifier 側で branch drift check を skip)。
+# ORIG_WTH は working tree / index の drift (Edit/Write in-place mutation や state-changing git) を
+# 捕捉する 4 軸目 (Issue #1860)。branch/stash/branch_list では見えない porcelain 差分を検出する。
 # rationale: references/design-rationale.md#state-snapshot-notes
 ORIG_BR=$(git branch --show-current 2>/dev/null || echo "")
 if [ -z "$ORIG_BR" ]; then
@@ -1311,15 +1313,18 @@ fi
 ORIG_SC=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
 if command -v md5sum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | md5sum | awk '{print $1}')
+ ORIG_WTH=$(git status --porcelain 2>/dev/null | md5sum | awk '{print $1}')
 elif command -v shasum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | shasum | awk '{print $1}')
+ ORIG_WTH=$(git status --porcelain 2>/dev/null | shasum | awk '{print $1}')
 else
  ORIG_BLH="" # hash 計算不可 — branch_list drift check は skip 扱い (verifier 側で空文字列を skip)
+ ORIG_WTH="" # hash 計算不可 — worktree drift check は skip 扱い (verifier 側で空文字列を skip)
 fi
-echo "review_pre_state: branch=$ORIG_BR stash_count=$ORIG_SC branch_list_hash=$ORIG_BLH"
+echo "review_pre_state: branch=$ORIG_BR stash_count=$ORIG_SC branch_list_hash=$ORIG_BLH worktree_hash=$ORIG_WTH"
 ```
 
-LLM は出力 3 値 (`ORIG_BR`, `ORIG_SC`, `ORIG_BLH`) を ステップ 5.0.A の `post-review-state-verify.sh` 引数に literal substitute する。**Mapping for ステップ 5.0.A**: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}` (大文字 shell 変数 → 小文字 placeholder)。
+LLM は出力 4 値 (`ORIG_BR`, `ORIG_SC`, `ORIG_BLH`, `ORIG_WTH`) を ステップ 5.0.A の `post-review-state-verify.sh` 引数に literal substitute する。**Mapping for ステップ 5.0.A**: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`, `$ORIG_WTH → {orig_wth}` (大文字 shell 変数 → 小文字 placeholder)。
 
 ### 4.0.W Wiki Query Injection (Conditional)
 
@@ -1599,9 +1604,9 @@ Verification モードのレビュー指示テンプレート本文は [referenc
 
 ### 5.0.A Post-Review State Verification
 
-ステップ 4 (parallel review execution) で起動した reviewer subagent が `pre-tool-bash-guard.sh` Pattern 4 を bypass し、parent session の working tree / branch / stash list を mutate しなかったことを post-condition で verify する。drift 検出時は WARNING を stderr に emit し、可能なら `git checkout` で automatic recovery を試みる。
+ステップ 4 (parallel review execution) で起動した reviewer subagent が `pre-tool-bash-guard.sh` Pattern 4 (state-changing git) / `pre-tool-edit-guard.sh` (Edit/Write/MultiEdit/NotebookEdit) を bypass し、parent session の working tree / branch / stash list を mutate しなかったことを post-condition で verify する。drift 検出時は WARNING を stderr に emit し、branch drift のみ `git checkout` で automatic recovery を試みる (worktree drift は auto-recover せず手動 triage を案内 — Issue #1860)。
 
-ステップ 4.0.A で記録した `ORIG_BR` / `ORIG_SC` / `ORIG_BLH` をリテラル substitute する (ステップ 4.0.A の大文字 shell 変数 → ステップ 5.0.A の小文字 placeholder への mapping: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`)。
+ステップ 4.0.A で記録した `ORIG_BR` / `ORIG_SC` / `ORIG_BLH` / `ORIG_WTH` をリテラル substitute する (ステップ 4.0.A の大文字 shell 変数 → ステップ 5.0.A の小文字 placeholder への mapping: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`, `$ORIG_WTH → {orig_wth}`)。
 
 ```bash
 # {plugin_root} と {orig_br} / {orig_sc} / {orig_blh} (ステップ 4.0.A の出力値) をリテラル substitute する。
@@ -1628,6 +1633,13 @@ case "{orig_blh}" in
  exit 1
  ;;
 esac
+case "{orig_wth}" in
+ "{"*"}")
+ echo "ERROR: ステップ 5.0.A の {orig_wth} placeholder が literal substitute されていません (値: '{orig_wth}')." >&2
+ echo "[CONTEXT] POST_REVIEW_VERIFY_FAILED=1; reason=orig_wth_placeholder_residue" >&2
+ exit 1
+ ;;
+esac
 
 # stdout (JSON line) のみ result_json に収集し、stderr の WARNING は
 # Bash tool 経由で会話 context に直接届く (2>&1 で混合させると JSON line を機械的に取り出せない)。
@@ -1635,6 +1647,7 @@ result_json=$(bash {plugin_root}/hooks/scripts/post-review-state-verify.sh \
  --original-branch "{orig_br}" \
  --original-stash-count "{orig_sc}" \
  --original-branch-list-hash "{orig_blh}" \
+ --original-worktree-hash "{orig_wth}" \
  --auto-recover true) || true
 printf '%s\n' "$result_json"
 ```
@@ -1646,6 +1659,7 @@ printf '%s\n' "$result_json"
 | `orig_br_placeholder_residue` | ステップ 5.0.A の `{orig_br}` placeholder が literal substitute されず `{...}` 形状のまま到達 (ステップ 4.0.A 未実行 / Bash tool 間変数の引き継ぎ失敗) |
 | `orig_sc_placeholder_residue` | ステップ 5.0.A の `{orig_sc}` placeholder が未 substitute (同上) |
 | `orig_blh_placeholder_residue` | ステップ 5.0.A の `{orig_blh}` placeholder が未 substitute (同上) |
+| `orig_wth_placeholder_residue` | ステップ 5.0.A の `{orig_wth}` placeholder が未 substitute (同上) |
 
 スクリプトは stderr に WARNING を emit (Bash tool が transcript に取り込む)、stdout に `{"drift":..., "type":..., "recovered":...}` JSON line を出力する。drift 検出時の処理は **non-blocking** (review flow は継続)、drift 結果は ステップ 5.4 完了レポートに reflect される。drift は WARNING として surface され、ユーザーが必要に応じて手動 triage する。
 

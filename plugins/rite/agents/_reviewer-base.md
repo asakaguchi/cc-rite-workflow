@@ -28,6 +28,7 @@ Any Bash invocation that matches the following patterns is forbidden inside a re
 | `git reflog expire` / `git reflog delete` | reflog 改変 | 代替なし — reviewer は実行禁止。`git reflog` の単純な display は read-only として許可 |
 | `git am` / `git apply` | patch 適用 (index 書き換え) | `git show <ref>` で patch 内容のみを参照する |
 | `git mv` / `git notes add/edit/append/remove` / `git config` / `git remote add/remove/set-url` | tracked file rename / notes 書き換え / local config / remote 編集 | 代替なし — reviewer は実行禁止 |
+| `> .git/…` / `>> .git/…` リダイレクト・`tee` / `cp` / `mv` / `ln` / `install` / `rsync` / `truncate` / `dd of=` / `sponge` / `patch` 等で `.git` ディレクトリ配下へ**書き込み** | `.git/hooks/*` / `.git/config` (`core.hooksPath` / `alias.*=!sh` 等) の書き換えは次の git 操作で非サンドボックスの main session で任意コード実行を招く (pre-tool-bash-guard.sh sub-block (H) が deny)。verb 列挙は non-exhaustive (COMMON-SET) — 列挙外の write ツールも `.git` 書き込みは一律禁止 | `.git` の**読み取り**は許可 — `cat .git/config` / `git config --list` / `git cat-file` / `git show <ref>:<file>` / `dd if=.git/config` を使う。`.git` への書き込みは禁止 |
 
 ### Allowed Bash/Git commands
 

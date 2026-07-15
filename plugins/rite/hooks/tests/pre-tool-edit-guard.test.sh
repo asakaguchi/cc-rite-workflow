@@ -279,6 +279,42 @@ assert_deny_gitdir "write into .git/config blocked" "$out"
 echo ""
 
 # --------------------------------------------------------------------------
+# Final-element symlink resolution (Issue #1864 AC-2): a symlink dropped INSIDE a
+# sanctioned isolation worktree that points at the parent repo's .git / working tree
+# is physically resolved (realpath) BEFORE the isolation decision, so it can no longer
+# dodge the guard by landing _tdir on the isolation root. AC-3 note: Claude Code's own
+# Edit/Write tools already refuse symlink writes, so this is defense-in-depth.
+# --------------------------------------------------------------------------
+echo "TC-SYMLINK-gitdir: isolation symlink → parent .git → deny (git-dir)"
+ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/evil-into-gitdir"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-gitdir" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny_gitdir "isolation symlink into parent .git resolved & blocked" "$out"
+rm -f "$ISO_MUT_DIR/evil-into-gitdir"
+echo ""
+
+echo "TC-SYMLINK-tree: isolation symlink → parent working tree → deny (parent-tree)"
+ln -s "$TEST_REPO/tracked.py" "$ISO_MUT_DIR/evil-into-tree"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-into-tree" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny "isolation symlink into parent working tree resolved & blocked" "$out"
+rm -f "$ISO_MUT_DIR/evil-into-tree"
+echo ""
+
+echo "TC-SYMLINK-local: isolation-internal symlink → allow (no regression)"
+: > "$ISO_MUT_DIR/realfile.txt"
+ln -s "$ISO_MUT_DIR/realfile.txt" "$ISO_MUT_DIR/local-link"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/local-link" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") && rc=0 || rc=$?
+assert_allow "isolation-internal symlink still allowed" "$out" "$rc"
+rm -f "$ISO_MUT_DIR/local-link" "$ISO_MUT_DIR/realfile.txt"
+echo ""
+
+echo "TC-SYMLINK-main: MAIN-session write to symlink into parent .git → allow (IS_SUBAGENT=0)"
+ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/main-link"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/main-link" "$ISO_MUT_DIR" "$MAIN_TRANSCRIPT") && rc=0 || rc=$?
+assert_allow "main-session symlink write not blocked" "$out" "$rc"
+rm -f "$ISO_MUT_DIR/main-link"
+echo ""
+
+# --------------------------------------------------------------------------
 # fail-closed: a crash in the deny-emit (jq -n) still DENIES (exit 2), never allows.
 # A PATH shim fails only `jq -n` (the deny payload) and passes every INPUT-parsing jq
 # through to the real jq, so scope is confirmed and only the final emit crashes.

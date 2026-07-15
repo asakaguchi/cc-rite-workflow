@@ -271,7 +271,8 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-session_id=$(basename "$(bash {plugin_root}/hooks/flow-state.sh path)" .flow-state)
+fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
+session_id=$(basename "$fs_path" .flow-state)
 queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 cb_mode=interactive
 # session_id 解決不可（空）→ 自セッションのキューを特定できないため安全側 interactive のまま

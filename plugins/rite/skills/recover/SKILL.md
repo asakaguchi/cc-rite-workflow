@@ -412,7 +412,8 @@ Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-session_id=$(basename "$(bash {plugin_root}/hooks/flow-state.sh path)" .flow-state)
+fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
+session_id=$(basename "$fs_path" .flow-state)
 queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 source {plugin_root}/hooks/session-ownership.sh
 

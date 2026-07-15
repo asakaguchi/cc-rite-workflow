@@ -1609,7 +1609,7 @@ Verification モードのレビュー指示テンプレート本文は [referenc
 ステップ 4.0.A で記録した `ORIG_BR` / `ORIG_SC` / `ORIG_BLH` / `ORIG_WTH` をリテラル substitute する (ステップ 4.0.A の大文字 shell 変数 → ステップ 5.0.A の小文字 placeholder への mapping: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`, `$ORIG_WTH → {orig_wth}`)。
 
 ```bash
-# {plugin_root} と {orig_br} / {orig_sc} / {orig_blh} (ステップ 4.0.A の出力値) をリテラル substitute する。
+# {plugin_root} と {orig_br} / {orig_sc} / {orig_blh} / {orig_wth} (ステップ 4.0.A の出力値) をリテラル substitute する。
 # Placeholder 残留 fail-fast gate: `{...}` 形状のまま渡ると verifier が silent false-positive cascade を
 # 起こすため早期 reject する。detached HEAD は ステップ 4.0.A で sentinel 変換済みのため常に非空で到達する。
 case "{orig_br}" in

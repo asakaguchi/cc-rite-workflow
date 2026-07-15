@@ -90,9 +90,15 @@ CWD=$(printf '%s' "$JQ_OUT" | cut -f2)
 [ -n "$FILE_PATH" ] || exit 0
 
 # --- Reviewer subagent detection (3-tier) ---
-# CANONICAL COPY lives in pre-tool-bash-guard.sh (Pattern 4). Keep the two in
-# sync: this is an intentional defense-in-depth duplication (a shared lib used by
-# only two hooks would force a risky refactor of the heavily-pinned bash-guard).
+# The detection LOGIC (the 3 tiers below) is the canonical copy from
+# pre-tool-bash-guard.sh (Pattern 4) and is kept in sync with it: an intentional
+# defense-in-depth duplication (a shared lib used by only two hooks would force a
+# risky refactor of the heavily-pinned bash-guard). Observability differs by design:
+# the sibling wraps this jq with a RITE_DEBUG stderr-capture because it is the first
+# jq to touch INPUT there; here two prior jq calls (tool_name, file/notebook path)
+# have already parsed the same INPUT, so a parse failure at this third jq is
+# unreachable — the `|| JQ_SA=$'\t\t'` fallback is a formality, not a live silent-bypass
+# path, and needs no debug logging.
 #   Tier 1 (primary):  transcript_path glob `*/subagents/*` — current Claude Code
 #                      convention routing subagent sessions under a subagents/ dir.
 #   Tier 2 (fallback): hook input JSON `subagent_type` / `agent_type` STRING field
@@ -119,44 +125,47 @@ fi
 # guarantee that /rite:open → implement.md Edit/Write is unaffected (AC-4).
 [ "$IS_SUBAGENT" = "1" ] || exit 0
 
-# --- Absolute path resolution (naive join; no symlink/`..` canonicalization) ---
-# A relative file_path is resolved against the tool's cwd. `..` escapes are not
-# normalized here: an adversarial `..`-laden path simply won't match the repo
-# prefix below and falls OPEN — the post-condition axis (post-review-state-verify.sh
-# worktree hash) still catches the resulting dirty tree (defense-in-depth).
+# --- Absolute path resolution (join relative against cwd; do NOT collapse `..` lexically) ---
+# `..` is resolved PHYSICALLY by `git -C` / `[ -d ]` below, never by string munging. A lexical
+# collapse (or a raw substring match) would let a reviewer forge an isolation path —
+# `<repo>/rite-review-mutation-x/../plugins/rite/hooks.json` re-enters a tracked file, and
+# `<repo>/src/rite-review-mutation-hack.py` embeds the token in a filename — both empirically
+# bypassed the old substring allowlist (Issue #1860 review cycle 1).
 case "$FILE_PATH" in
   /*) ABS_PATH="$FILE_PATH" ;;
   *)  ABS_PATH="${CWD%/}/$FILE_PATH" ;;
 esac
 
-# --- Isolation allowlist (checked BEFORE repo-internal — AC-4 critical) ---
-# Reviewers legitimately cd into a detached mutation worktree created via
-# `mktemp -d -t rite-review-mutation-XXXXXX` / `rite-revert-test-*` under $TMPDIR
-# (see agents/_reviewer-base.md "Mutation experiments"). Because the reviewer cd's
-# INTO that dir, `git -C "$cwd" rev-parse --show-toplevel` returns the mutation
-# dir itself, so the repo-internal check below would false-deny a legitimate
-# in-worktree edit. Short-circuit to allow when the target is under a sanctioned
-# reviewer isolation prefix. (Namespace source of truth: the same prefixes swept
-# by hooks/scripts/pr-cycle-cleanup.sh Step 4.)
-case "$ABS_PATH" in
+# --- Resolve the git worktree that OWNS the target ---
+# The isolation allowance is defined by "the target lives inside a sanctioned reviewer isolation
+# worktree", NOT by "the path string contains the token". Resolve the target's own worktree by
+# walking up to its nearest EXISTING ancestor, then asking git. `[ -d ]` and `git -C` both chdir
+# and resolve `..` physically, so a path carrying a non-existent `..` segment lands on the real
+# parent repo (→ deny), not on a forged isolation dir. Walking to the nearest existing ancestor
+# also covers a brand-new file in a not-yet-created dir (the ancestor still resolves to the repo).
+_tdir=$(dirname "$ABS_PATH")
+while [ -n "$_tdir" ] && [ "$_tdir" != "/" ] && [ ! -d "$_tdir" ]; do
+  _tdir=$(dirname "$_tdir")
+done
+[ -d "$_tdir" ] || _tdir="${CWD:-.}"
+# git -C chdir's to the resolved ancestor and reports the worktree toplevel that owns it.
+TARGET_ROOT=$(git -C "$_tdir" rev-parse --show-toplevel 2>/dev/null) || TARGET_ROOT=""
+# Target is not inside any git repo (e.g. /tmp scratch) → cannot be the parent working tree →
+# allow (fail-open; scope not confirmed).
+[ -n "$TARGET_ROOT" ] || exit 0
+TARGET_ROOT="${TARGET_ROOT%/}"
+
+# --- Isolation allowance: the target's OWN worktree is a sanctioned isolation worktree ---
+# Reviewers legitimately run mutation experiments in a detached worktree created via
+# `mktemp -d -t rite-review-mutation-XXXXXX` + `git worktree add --detach` (or the
+# `rite-revert-test-*` sibling namespace — same prefixes swept by pr-cycle-cleanup.sh Step 4).
+# Matching on TARGET_ROOT (the target's resolved worktree root), not the raw path, means only a
+# genuine isolation worktree is allowed — closing the substring / `..` re-entry bypass.
+case "$TARGET_ROOT" in
   */rite-review-mutation-*|*/rite-revert-test-*) exit 0 ;;
 esac
 
-# --- Repo-internal check ---
-# Resolve the parent working tree root from the tool cwd. If git can't resolve a
-# toplevel (not a repo), we cannot confirm the write is repo-internal → allow
-# (fail-open; scope not confirmed).
-REPO_ROOT=$(git -C "${CWD:-.}" rev-parse --show-toplevel 2>/dev/null) || REPO_ROOT=""
-[ -n "$REPO_ROOT" ] || exit 0
-REPO_ROOT="${REPO_ROOT%/}"
-
-# Deny only when the absolute target path is under the repo root.
-case "$ABS_PATH" in
-  "$REPO_ROOT"/*) ;;   # inside the parent working tree → fall through to deny
-  *) exit 0 ;;         # outside the repo (e.g. /tmp scratch) → allow
-esac
-
-# --- Scope confirmed: subagent + repo-internal + non-isolation → DENY ---
+# --- Scope confirmed: subagent + target inside a non-isolation (parent) working tree → DENY ---
 # Swap to the fail-CLOSED trap so any crash from here on denies rather than allows.
 trap '_rite_teg_fail_closed' ERR
 
@@ -165,7 +174,7 @@ PATH_SUMMARY="${ABS_PATH:0:120}"
 PATH_SUMMARY="${PATH_SUMMARY//\"/\\\"}"
 echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] edit-guard: BLOCKED tool=$TOOL_NAME path=\"$PATH_SUMMARY\"" >&2
 
-_deny_reason="BLOCKED (reviewer-edit-parent-tree): Reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which is inside the repository working tree (${REPO_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: 'git worktree add --detach \$(mktemp -d -t rite-review-mutation-XXXXXX) HEAD' and edit files THERE (paths under rite-review-mutation-* / rite-revert-test-* are allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
+_deny_reason="BLOCKED (reviewer-edit-parent-tree): Reviewer subagents must not mutate the parent working tree. The ${TOOL_NAME} tool targeted '${ABS_PATH}', which resolves inside the repository working tree (${TARGET_ROOT}). Reviewers are strictly read-only — inspect files with Read/Grep and compare historical content with 'git show <ref>:<file>'. If you need a mutation/verification experiment, do it in an isolated detached worktree under \$TMPDIR: 'git worktree add --detach \$(mktemp -d -t rite-review-mutation-XXXXXX) HEAD' and edit files THERE (a real worktree whose root is named rite-review-mutation-* / rite-revert-test-* is allowed). See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement / Mutation experiments)."
 # jq is required to emit the permission payload; an intermittent jq failure would
 # silently downgrade the deny to allow, so the fail-CLOSED trap catches a crash
 # here and emits a static deny + exit 2.

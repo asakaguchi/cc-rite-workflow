@@ -267,13 +267,16 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ## ステップ 6: サーキットブレーカー（cycle 上限到達時のみ）
 
-ステップ 1 で `ITERATE_CB=fire`（`cycle_count >= max_review_cycles`）となったときのみ到達する。まず batch 実行（`/rite:batch-run` 経由）か対話実行かを run-queue.json から判定する。`/rite:batch-run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
+ステップ 1 で `ITERATE_CB=fire`（`cycle_count >= max_review_cycles`）となったときのみ到達する。まず batch 実行（`/rite:batch-run` 経由）か対話実行かを **自セッションの** run-queue（`run-queue-{session_id}.json`）から判定する。`/rite:batch-run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。iterate は batch-run から**同一セッションで invoke される**ため、driving 中なら本 iterate の ambient session_id と run-queue の session_id は一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、Issue #1859 AC-2）。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-queue_file="$state_root/.rite/state/run-queue.json"
+session_id=$(basename "$(bash {plugin_root}/hooks/flow-state.sh path)" .flow-state)
+queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 cb_mode=interactive
-if [ -f "$queue_file" ]; then
+# session_id 解決不可（空）→ 自セッションのキューを特定できないため安全側 interactive のまま
+# （read-only なので fail-loud はせず、batch と誤判定しない安全側に倒す）
+if [ -n "$session_id" ] && [ -f "$queue_file" ]; then
   q_active=$(jq -r '.active // false' "$queue_file" 2>/dev/null)   # active 欠落の旧形式は false（安全側 = interactive）
   q_cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null)
   q_total=$(jq -r '.issues | length' "$queue_file" 2>/dev/null)

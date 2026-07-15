@@ -404,7 +404,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## Phase 5.5: Active Batch 検出 → 継続（Issue #1820）
 
-Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、`run-queue.json` を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチの `run-queue.json` が単に残っている）を誤って継続しないよう、鮮度判定を必須とする。
+Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、Issue #1859）。
 
 ### 5.5.1 判定
 
@@ -412,10 +412,13 @@ Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-queue_file="$state_root/.rite/state/run-queue.json"
+session_id=$(basename "$(bash {plugin_root}/hooks/flow-state.sh path)" .flow-state)
+queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 source {plugin_root}/hooks/session-ownership.sh
 
-if [ ! -f "$queue_file" ]; then
+# session_id 解決不可（空）→ 自セッションのキューを特定できないため継続なし（read-only 安全側。
+# fail-loud はせず通常の recover 完了へ倒す）
+if [ -z "$session_id" ] || [ ! -f "$queue_file" ]; then
   echo "[CONTEXT] BATCH_CONTINUE=none; reason=no_queue_file"
 else
   q_active=$(jq -r '.active // false' "$queue_file")
@@ -430,7 +433,7 @@ else
   elif [ "$q_cursor_issue" != "{issue_arg}" ]; then
     echo "[CONTEXT] BATCH_CONTINUE=none; reason=cursor_mismatch; cursor_issue=$q_cursor_issue"
   elif [ -z "$q_updated_at" ]; then
-    # updated_at 欠落 (旧形式 run-queue.json) = 鮮度不明として安全側 stale 扱い (AC-6)
+    # updated_at 欠落 (旧形式 run-queue) = 鮮度不明として安全側 stale 扱い (AC-6)
     echo "[CONTEXT] BATCH_CONTINUE=none; reason=stale_no_timestamp"
   else
     state_epoch=$(parse_iso8601_to_epoch "$q_updated_at")
@@ -455,7 +458,7 @@ fi
 | `BATCH_CONTINUE` | アクション |
 |---|---|
 | `none; reason=no_queue_file` | 通常の recover として完了（Phase 6 へ）。追記なし（AC-3） |
-| `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「`run-queue.json` に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する（AC-2, AC-4, AC-6） |
+| `none`（その他の reason） | 通常の recover として完了（Phase 6 へ）。完了レポートに「自セッションの run-queue に残存キューがあります。`/rite:batch-run` で状況を確認/再開できます」の 1 行を追記する（AC-2, AC-4, AC-6） |
 | `eligible` | 「この Issue は `/rite:batch-run` 実行中の中断と判定したため、残り {remaining} 件のキュー処理を継続します」と通知した上で 5.5.3 へ進む（AC-1） |
 
 <!-- run orchestration: after emitting the eligible notification, do NOT stop — proceed directly to 5.5.3 (resolved_phase 分岐の invoke)。batch-run 側にこの継続を担う handoff/Stop-hook は無いため、recover 自身が flat 構造 + 本 HTML hint で継続を保証する（batch-run の「エラー時の方針」節・「設計判断: handoff 不使用」節と同じ理由）。 -->
@@ -476,11 +479,11 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 
 <!-- run orchestration: after invoking per the table above and observing the terminal sentinel, do NOT stop — proceed to the failed-record / stop-policy paragraph below (same routing as batch-run ステップ 3-8). -->
 
-**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）は batch-run [ステップ 6](../batch-run/SKILL.md) の failed 記録 bash と同じ操作で `run-queue.json` の `failed[]` に記録してからカーソル前進へ進む（即停止しない）。それ以外の失敗 sentinel（`[pr-create-failed]` / `[fix:error]` / `[ready:error]` / `[merge:error]` / `[merge:not-ready]` / sentinel 不在 等）は batch-run [ステップ 8](../batch-run/SKILL.md) と同じ「即停止して報告」方針に従う（AC-5）。停止時は `run-queue.json` の `active` を `false` にする（batch-run ステップ 8 と同一操作。キュー本体は削除しない）。
+**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）は batch-run [ステップ 6](../batch-run/SKILL.md) の failed 記録 bash と同じ操作で `run-queue-{session_id}.json` の `failed[]` に記録してからカーソル前進へ進む（即停止しない）。それ以外の失敗 sentinel（`[pr-create-failed]` / `[fix:error]` / `[ready:error]` / `[merge:error]` / `[merge:not-ready]` / sentinel 不在 等）は batch-run [ステップ 8](../batch-run/SKILL.md) と同じ「即停止して報告」方針に従う（AC-5）。停止時は `run-queue-{session_id}.json` の `active` を `false` にする（batch-run ステップ 8 と同一操作。キュー本体は削除しない）。
 
 <!-- run orchestration: 直前の paragraph の2分岐のうち「即停止して報告」側に分岐した場合は STOP — 以降の「active 維持」「カーソル前進とループ」paragraph には進まない（cursor advance を経由しない）。同 paragraph 内でカーソル前進に進むのはサーキットブレーカー分岐のみ（batch-run ステップ 6/8 と同じ非対称性）。当該 Issue が正常完了した場合は本 STOP の対象外で、下記「カーソル前進とループ」paragraph からカーソル前進に進む（通常経路）。 -->
 
-**active 維持**: 継続処理中は `run-queue.json` の `active=true` を維持する（`/rite:iterate` ステップ 6 の既存 batch 判定が `active` を参照するため — 変更禁止の非対象ファイル）。`active=false` にするのは上記の失敗停止時のみ。
+**active 維持**: 継続処理中は `run-queue-{session_id}.json` の `active=true` を維持する（`/rite:iterate` ステップ 6 の既存 batch 判定が `active` を参照するため — 変更禁止の非対象ファイル）。`active=false` にするのは上記の失敗停止時のみ。
 
 **カーソル前進とループ**: サーキットブレーカーで failed 記録した場合、または当該 Issue が正常に完了した場合、batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する（即停止経路はこの bash を経由しない）。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
 

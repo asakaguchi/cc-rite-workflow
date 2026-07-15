@@ -1707,6 +1707,26 @@ assert_subagent_deny_gitdir "ln -s into .git blocked" "ln -s /tmp/evil .git/hook
 echo "TC-125k: subagent mv into .git → deny"
 assert_subagent_deny_gitdir "mv into .git blocked" "mv /tmp/evil .git/hooks/pre-commit"
 
+# --- CRITICAL regression: repo under a `/git`-containing ancestor (Issue #1864 fix) ---
+# The `/git`→` git` invocation-normalization used to split these paths so `>` detached from the
+# `.git` token → silent allow (RCE). (H) now tokenizes from the pre-munge snapshot.
+echo "TC-125l: subagent redirect into .git under a /srv/git ancestor → deny (path not corrupted)"
+assert_subagent_deny_gitdir "redirect into /srv/git/.../.git blocked" "echo evil > /srv/git/proj/.git/config"
+
+echo "TC-125m: subagent append into .git under a ~/github ancestor → deny (path not corrupted)"
+assert_subagent_deny_gitdir "append into /home/u/github/.../.git blocked" "echo x >> /home/u/github/proj/.git/hooks/pre-commit"
+
+# --- fileverb absolute-path / backslash invocation (Issue #1864 fix) ---
+echo "TC-125n: subagent absolute-path tee into .git → deny"
+assert_subagent_deny_gitdir "/usr/bin/tee into .git blocked" "/usr/bin/tee .git/hooks/pre-commit"
+
+echo "TC-125o: subagent backslash-escaped cp into .git → deny"
+assert_subagent_deny_gitdir "\\cp into .git blocked" "\\cp /tmp/evil .git/hooks/pre-commit"
+
+# --- dd of=<gitpath> write vector (Issue #1864 fix) ---
+echo "TC-125p: subagent dd of=.git/hooks → deny"
+assert_subagent_deny_gitdir "dd of=.git blocked" "dd if=/tmp/evil of=.git/hooks/pre-commit"
+
 # --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"
@@ -1729,6 +1749,9 @@ assert_subagent_allow "redirect into /tmp/out.txt allowed" "echo x > /tmp/out.tx
 
 echo "TC-125-ALLOW-g: .git as INPUT-redirect source (read) → allow"
 assert_subagent_allow "tee reading FROM .git via < allowed" "tee /tmp/x < .git/config"
+
+echo "TC-125-ALLOW-i: dd READING .git via if= (of= writes elsewhere) → allow"
+assert_subagent_allow "dd if=.git/config of=/tmp/x allowed (read source)" "dd if=.git/config of=/tmp/x"
 
 echo "TC-125-ALLOW-h: MAIN session redirect into .git → allow (reviewer-only guard)"
 assert_main_allow "main-session .git write not blocked by (H)" "echo x > .git/hooks/pre-commit"

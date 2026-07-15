@@ -787,11 +787,15 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       if [ "$_gd_prev" = ">" ] && [ "$_gd_is_gitpath" = "1" ]; then
         BLOCKED_PATTERN="reviewer-gitdir-write"; BLOCKED_SUBKIND="gitdir-write"; break
       fi
-      # File-mutating-verb vector: a write verb seen earlier + a .git path arg now. Resolve the
-      # verb to its bare form (basename + leading-`\` strip) so absolute-path / `\`-escaped
-      # invocations (`/usr/bin/tee`, `\cp`) match — mirroring the /git invocation-normalization the
-      # (A)-(G) verb globs get. `command cp` / `exec cp` already reach here as a bare `cp` token.
-      _gd_verb="${_gd_tok##*/}"; _gd_verb="${_gd_verb#\\}"
+      # File-mutating-verb vector: a write verb seen earlier + a .git path arg now. Resolve the verb
+      # to its bare form the SAME way the shell does before executing it: strip quotes and
+      # backslashes (POSIX quote-removal, mirroring the path dequoting above), THEN take the
+      # basename. Dequoting the verb token is required for the same reason as the path token —
+      # otherwise an obfuscated verb (`'tee'`, `t\ee`, `t"e"e`) evades the latch while the shell
+      # still runs it, re-opening the fail-open on the VERB axis (Issue #1864 cycle-5 fix). The
+      # basename after dequote catches absolute-path invocations (`/usr/bin/tee`); `command cp` /
+      # `exec cp` already reach here as a bare `cp` token.
+      _gd_verb="${_gd_tok//[\"\']/}"; _gd_verb="${_gd_verb//\\/}"; _gd_verb="${_gd_verb##*/}"
       case "$_gd_verb" in
         tee|cp|mv|ln|install|rsync|truncate|dd) _gd_fileverb=1 ;;
       esac

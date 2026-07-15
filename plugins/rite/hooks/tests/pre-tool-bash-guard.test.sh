@@ -1767,6 +1767,24 @@ assert_subagent_deny_gitdir "tee .g\\it/… blocked" "echo x | tee .g\\it/hooks/
 echo "TC-125w5: subagent dd with backslash-escaped of= prefix → deny"
 assert_subagent_deny_gitdir "dd \\of=.git/… blocked" "dd if=/tmp/evil \\of=.git/hooks/pre-commit"
 
+# --- obfuscated file-verb NAME (Issue #1864 cycle-5 fix: dequote the verb token too) ---
+# The verb token is dequoted (quotes + backslashes) then basename'd, so a quoted/escaped verb name
+# still latches the file-verb vector — the shell runs `'tee'` / `t\ee` as `tee`.
+echo "TC-125x1: subagent backslash-in-verb tee into .git → deny"
+assert_subagent_deny_gitdir "t\\ee .git blocked" "t\\ee .git/hooks/pre-commit"
+
+echo "TC-125x2: subagent quoted verb 'tee' into .git → deny"
+assert_subagent_deny_gitdir "'tee' .git blocked" "'tee' .git/hooks/pre-commit"
+
+echo "TC-125x3: subagent interior-quoted verb t\"e\"e into .git → deny"
+assert_subagent_deny_gitdir "t\"e\"e .git blocked" "t\"e\"e .git/hooks/pre-commit"
+
+echo "TC-125x4: subagent backslash-in-verb cp into .git → deny"
+assert_subagent_deny_gitdir "c\\p into .git blocked" "c\\p /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125x5: subagent quoted verb 'dd' of=.git → deny"
+assert_subagent_deny_gitdir "'dd' of=.git blocked" "'dd' if=/tmp/evil of=.git/hooks/pre-commit"
+
 # --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"

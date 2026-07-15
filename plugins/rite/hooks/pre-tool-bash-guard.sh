@@ -763,6 +763,24 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     while [[ "$_gdw" == *"  "* ]]; do _gdw="${_gdw//  / }"; done
     _gd_prev=""
     _gd_fileverb=0
+    # noglob for the tokenizer: `for _gd_tok in $_gdw` is UNQUOTED, so without `set -f` a reviewer
+    # command's glob metachars (`*`/`?`/`[`, which survive the meta-char collapse above — only
+    # ;&|(){}`$ are collapsed) undergo pathname expansion against the hook's CWD. Two fail modes:
+    # (a) FALSE-POSITIVE / over-DENY — a `*` expands to CWD entries; if a file named like a write-verb
+    #     (cp/tee/…) sits in CWD it latches _gd_fileverb, so a legit `.git` READ carrying a bare glob
+    #     (`cat .git/config *`) is wrongly denied. Violates AC-1 "read-only git/test not mis-detected".
+    # (b) TIMEOUT→FAIL-OPEN (RCE) — glob expansion happens AFTER the 64KB length guard, so the token
+    #     count is NOT bounded by it. `touch f{1..1000000}` then `echo x /bigdir/* > .git/hooks/pre-commit`
+    #     makes this loop iterate ~1M times (~9s measured, +glob readdir/sort) → the PreToolUse hook
+    #     times out → fails OPEN → the very `.git` write this block exists to deny then lands. The
+    #     sibling git-flag loop (~line 440) is iteration-capped for exactly this reason; noglob bounds
+    #     THIS loop's token count to the length-guarded input instead. `case` / `[[ == ]]` pattern
+    #     matching is unaffected by noglob, so the detection logic below is unchanged (Issue #1864
+    #     follow-up). Save/restore the prior noglob state (drift-safe; this hook leaves it off today).
+    #     The sibling `for tok in $WT_ARGS` loop (~line 608) shares the unquoted pattern but is
+    #     pre-existing (out of this fix's scope).
+    case $- in *f*) _gd_noglob_was_set=1 ;; *) _gd_noglob_was_set=0 ;; esac
+    set -f
     for _gd_tok in $_gdw; do
       # Dequote the token the way the SHELL does before opening the path, THEN strip a leading `of=`
       # (dd's write-target argument), so `dd … of=.git/hooks/x` is detected while `dd if=.git/config
@@ -809,6 +827,8 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       fi
       _gd_prev="$_gd_tok"
     done
+    # Restore the prior noglob state (only re-enable globbing if this hook had it on before).
+    [ "$_gd_noglob_was_set" = "1" ] || set +f
   fi
 
   if [ -n "$BLOCKED_PATTERN" ]; then

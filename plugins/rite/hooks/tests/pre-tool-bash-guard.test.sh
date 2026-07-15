@@ -1834,6 +1834,27 @@ echo "TC-125-ALLOW-h: MAIN session redirect into .git → allow (reviewer-only g
 assert_main_allow "main-session .git write not blocked by (H)" "echo x > .git/hooks/pre-commit"
 echo ""
 
+# --- noglob regression: the (H) tokenizer runs under `set -f`, so a reviewer command's bare glob
+# (`*`/`?`/`[`) is NOT pathname-expanded against the hook CWD (Issue #1864 follow-up). Without noglob
+# a `*` sitting BEFORE a `.git` READ path expands to CWD entries; a file named like a write-verb
+# (cp/tee/…) then latches the file-verb vector and the legit `.git` READ is wrongly DENIED (AC-1
+# false-positive; unbounded expansion could also time the hook out → fail-open). This pins the fix:
+# with `set -f` the `*` stays literal → allow. Runs from a temp CWD holding verb-named files so the
+# pre-fix (globbing) behavior would over-DENY (fail-on-revert).
+tc125_noglob_dir=$(mktemp -d)
+: > "$tc125_noglob_dir/cp"    # a file named like a write-verb — would latch _gd_fileverb if globbed
+: > "$tc125_noglob_dir/tee"
+_tc125_noglob_prev=$(pwd)
+if cd "$tc125_noglob_dir"; then
+  echo "TC-125-ALLOW-noglob: bare glob before a .git READ not polluted by CWD verb-files → allow (set -f)"
+  assert_subagent_allow "grep with bare glob + .git READ allowed under noglob" "grep hooksPath * .git/config"
+  cd "$_tc125_noglob_prev" || true
+else
+  fail "TC-125-ALLOW-noglob setup: cd into temp dir failed"
+fi
+rm -rf "$tc125_noglob_dir"
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

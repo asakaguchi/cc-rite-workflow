@@ -4,7 +4,7 @@ title: "セキュリティ境界 hook の timeout は fail-open — 評価コス
 domain: "heuristics"
 description: "PreToolUse 等の hook timeout は fail-open (timeout→tool 許可) なので、hook の評価コストが入力サイズで発散すると timeout→fail-open bypass が成立する。反復回数上限では不十分で、全パターン検査の前に入力バイト長の O(1) ガードを置き O(n²) 経路を短絡する。"
 created: "2026-07-03T08:30:23+00:00"
-updated: "2026-07-16T06:07:53+09:00"
+updated: "2026-07-16T08:16:06+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260703T070536Z-pr-1736.md"
@@ -22,6 +22,8 @@ sources:
     ref: "raw/fixes/20260715T195606Z-pr-1865.md"
   - type: "reviews"
     ref: "raw/reviews/20260715T203920Z-pr-1865.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260715T230852Z-pr-1867.md"
 tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass", "noglob", "glob", "unquoted-loop"]
 confidence: high
 ---
@@ -62,6 +64,8 @@ PR #1736（`pre-tool-bash-guard.sh` の Pattern 4 = reviewer 状態変更 git gu
 - 加えて glob 展開は CWD 内容に依存した **非決定的な over-DENY 誤検出**も招く（CWD に検出対象 verb 名のファイルがあると正当な read が誤 deny される = 誤検出禁止 AC に反する）。
 - **塞ぎ方 = noglob**: 検出ループ区間を `set -f`/`set +f`（noglob）で囲うと、トークンが literal 保持され展開後トークン数が length-guard 済み入力に再 bound される。over-DENY 誤検出と timeout 無制限反復の**両方が同時に閉じ、反復キャップは不要になる**。`case` / `[[ == ]]` のパターンマッチは `set -f` の影響を受けない（パス名展開のみ無効化）ので検出ロジックは不変。直前の noglob 状態を `case $- in *f*)` で save/restore すると、enclosing の shell state を壊さず drift-safe。
 - この欠陥は「allowlist 列挙の穴」ではなく**検出機構そのものの構造欠陥**であり、列挙完全性の非 blocking 判断とは別クラスの blocking finding として扱う（[best-effort matcher の COMMON-SET 宣言](./best-effort-matcher-declare-common-set-to-stop-whackamole.md) 参照）。
+- **同一ファイル内の全 unquote for-loop に水平展開する（PR #1867）**: #1865 は (H) gitdir-write tokenizer の 1 ループのみ noglob 化し、兄弟の `for tok in $WT_ARGS`（`git worktree add` 引数走査）を「pre-existing・スコープ外」として残した。この残しは同一の unquote glob 欠陥（over-DENY 誤検出 + timeout 無制限反復）をそのまま抱えるため、follow-up PR #1867 で同型の noglob スコープ（`set -f`/`set +f` + `case $-` save/restore、変数名はブロック接頭辞 `_wt_` で衝突回避）を適用して閉じた。**塞ぐべきループは 1 つとは限らない** — レビューは対象ファイル全体の unquoted `for X in $...` を grep で列挙し、全て noglob 化済みか iteration-cap 済みかを確認する（この PR ではファイル全体の unquote word-split は :608 と :789 の 2 箇所のみと確認され、後者が最後の未対応ループだった）。sibling 対称化 PR は grep 照合で短時間・高確信にレビューできる（[極小対称化 PR は sibling site Grep 照合でレビュー](./small-symmetric-pr-sibling-site-grep-review.md) 参照）。
+- **over-DENY 回帰テストは fail-on-revert を実機で確認する**: noglob 修正の回帰テストは「未修正なら DENY・修正後は ALLOW」の discriminating 性を実機で確認しないと vacuous になる。CWD に new-branch フラグ名のファイル（例 `-b`）を full path で作成し、glob を含む正当な `git worktree add <path> <ref>` が over-DENY されないことを ALLOW 期待で固定する（姉妹 TC-125 と同型）。テストが緑になるだけでなく、修正を revert すると当該テストが赤に転じることを確認する（[invariant は logic ではなく empirical reproduction で verify](./empirical-reproduction-over-invariant-reasoning.md) 参照）。
 
 ### 併走する 2 つの副次教訓
 
@@ -84,3 +88,4 @@ PR #1736（`pre-tool-bash-guard.sh` の Pattern 4 = reviewer 状態変更 git gu
 - [PR #1865 review results (follow-up cycle1) — 未クォート `for x in $var` の glob 展開が length-guard 後にトークン数を膨らませ入力サイズ bound を破る HIGH（+ CWD 依存 over-DENY 誤検出）](../../raw/reviews/20260715T194532Z-pr-1865.md)
 - [PR #1865 fix results (follow-up cycle1) — 検出ループを `set -f`/`set +f` で noglob 化し over-DENY と timeout 無制限反復を同時封鎖、noglob 状態を save/restore](../../raw/fixes/20260715T195606Z-pr-1865.md)
 - [PR #1865 review results (follow-up cycle3) — noglob 修正を全 reviewer が実機検証（fail-on-revert / glob-target が Layer-1 落ちする net-positive）し mergeable 収束](../../raw/reviews/20260715T203920Z-pr-1865.md)
+- [PR #1867 review results — #1865 が残した兄弟 `for tok in $WT_ARGS`（:608 worktree-add 引数走査）を同型 noglob スコープで水平展開。全 4 reviewer（security/code-quality/error-handling/test）が sibling grep 照合 + fail-on-revert 実機検証で指摘ゼロ収束](../../raw/reviews/20260715T230852Z-pr-1867.md)

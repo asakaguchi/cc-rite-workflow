@@ -705,10 +705,15 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #
   # SCOPE (deliberate — this is best-effort hardening, per AC-1 "可能な範囲で", NOT full closure):
   # a static bash matcher cannot decide "does this command write to .git" in general. This block
-  # matches only STATICALLY-IDENTIFIABLE write targets: a redirect operand (`>`/`>>`), a file-verb
-  # argument (tee/cp/mv/ln/install/rsync/truncate), and `dd of=<path>`. The following are OUT OF
-  # SCOPE for a static matcher and are covered by Layer 1 (the reviewer prompt / _reviewer-base.md
-  # READ-ONLY contract) ONLY — NOT by this hook and NOT by Layer 3:
+  # matches only STATICALLY-IDENTIFIABLE write targets: a redirect operand (`>`/`>>`), a positional
+  # argument of a common file-writing verb (tee/cp/mv/ln/install/rsync/truncate/sponge/patch), and
+  # `dd of=<path>`. The file-verb list is a COMMON-SET, deliberately NOT exhaustive — any write
+  # tool outside it (in-place editors `sed -i`/`perl -pi`/`ed`/`ex`/`gawk -i inplace`, and other
+  # exotic writers) is Layer-1-only, exactly like the interpreter class below. Enumerating every
+  # write-capable program is impossible for a static matcher, so the guarantee for the tail is the
+  # reviewer prompt, not this hook. The following are OUT OF SCOPE for a static matcher and are
+  # covered by Layer 1 (the reviewer prompt / _reviewer-base.md READ-ONLY contract) ONLY — NOT by
+  # this hook and NOT by Layer 3:
   #   - Targets needing RUNTIME resolution or `$`-EXPANSION: `> $VAR`, `> $(cmd)`, and ANSI-C
   #     quoting `> $'\x2egit/hooks/x'` (`\x2e`→`.`) — the `$`/`(`/`)` are collapsed to spaces by the
   #     meta-char normalization, so the path is not visible statically (ANSI-C escape decoding is a
@@ -797,7 +802,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # `exec cp` already reach here as a bare `cp` token.
       _gd_verb="${_gd_tok//[\"\']/}"; _gd_verb="${_gd_verb//\\/}"; _gd_verb="${_gd_verb##*/}"
       case "$_gd_verb" in
-        tee|cp|mv|ln|install|rsync|truncate|dd) _gd_fileverb=1 ;;
+        tee|cp|mv|ln|install|rsync|truncate|dd|sponge|patch) _gd_fileverb=1 ;;
       esac
       if [ "$_gd_is_gitpath" = "1" ] && [ "$_gd_fileverb" = "1" ]; then
         BLOCKED_PATTERN="reviewer-gitdir-write"; BLOCKED_SUBKIND="gitdir-write"; break
@@ -830,7 +835,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     # REPLACE (not prepend) the generic git-verb message — this is not a git command, and the
     # generic "State-changing git commands …" text would mislabel a plain `echo > .git/hooks/x`.
     if [ "$BLOCKED_SUBKIND" = "gitdir-write" ]; then
-      BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of=). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap (Issue #1864)."
+      BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of= / sponge / patch). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap (Issue #1864)."
       BLOCKED_ALTERNATIVE="Reviewers are strictly read-only — never write into .git. To INSPECT it, read instead: 'cat .git/config', 'git config --list', 'git cat-file -p <obj>', 'git show <ref>:<file>', 'git rev-parse'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi

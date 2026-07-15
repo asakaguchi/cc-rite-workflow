@@ -1785,6 +1785,16 @@ assert_subagent_deny_gitdir "c\\p into .git blocked" "c\\p /tmp/evil .git/hooks/
 echo "TC-125x5: subagent quoted verb 'dd' of=.git → deny"
 assert_subagent_deny_gitdir "'dd' of=.git blocked" "'dd' if=/tmp/evil of=.git/hooks/pre-commit"
 
+# --- additional positional file-writers (Issue #1864 cycle-5: sponge/patch, tee twins) ---
+echo "TC-125y1: subagent sponge into .git/hooks → deny"
+assert_subagent_deny_gitdir "sponge .git/hooks blocked" "echo pwned | sponge .git/hooks/pre-commit"
+
+echo "TC-125y2: subagent patch into .git/config → deny"
+assert_subagent_deny_gitdir "patch .git/config blocked" "patch .git/config"
+
+echo "TC-125y3: subagent quoted verb 'sponge' into .git → deny (verb dequote)"
+assert_subagent_deny_gitdir "'sponge' .git blocked" "echo x | 'sponge' .git/hooks/pre-commit"
+
 # --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"

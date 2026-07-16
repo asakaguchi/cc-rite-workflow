@@ -1653,6 +1653,247 @@ rm -rf "$tc124_dir"
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-125: reviewer WRITE into a .git directory (Issue #1864 AC-1, sub-block (H))
+# The Bash-tool sibling of pre-tool-edit-guard's .git protection: a reviewer must not
+# `echo pwned > .git/hooks/pre-commit` (RCE via next git op). Reading .git stays allowed.
+# --------------------------------------------------------------------------
+# --- Helper: deny assertion for the reviewer-gitdir-write pattern ---
+assert_subagent_deny_gitdir() {
+  local label="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
+  local decision reason
+  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
+    pass "$label"
+  else
+    fail "$label — expected deny (reviewer-gitdir-write), got decision=$decision reason=$reason"
+  fi
+}
+
+echo "TC-125a: subagent redirect into .git/hooks → deny"
+assert_subagent_deny_gitdir "echo > .git/hooks/pre-commit blocked" "echo pwned > .git/hooks/pre-commit"
+
+echo "TC-125b: subagent append (>>) into .git/hooks → deny"
+assert_subagent_deny_gitdir "echo >> .git/hooks/pre-commit blocked" "echo pwned >> .git/hooks/pre-commit"
+
+echo "TC-125c: subagent redirect (no space) into .git/config → deny"
+assert_subagent_deny_gitdir "echo >.git/config blocked" "echo x >.git/config"
+
+echo "TC-125d: subagent redirect into ABSOLUTE .git path → deny"
+assert_subagent_deny_gitdir "abs .git redirect blocked" "echo x > /tmp/repo/.git/hooks/pre-commit"
+
+echo "TC-125e: subagent redirect into ./.git → deny (leading ./)"
+assert_subagent_deny_gitdir "./.git redirect blocked" "echo x > ./.git/config"
+
+echo "TC-125f: subagent redirect with QUOTED .git target → deny"
+assert_subagent_deny_gitdir "quoted .git target blocked" "echo x > \".git/hooks/pre-commit\""
+
+echo "TC-125g: subagent redirect into .git after a meta-boundary (&&) → deny"
+assert_subagent_deny_gitdir "compound redirect into .git blocked" "cat foo && echo x > .git/config"
+
+echo "TC-125h: subagent tee into .git/hooks → deny"
+assert_subagent_deny_gitdir "tee into .git blocked" "echo x | tee .git/hooks/pre-commit"
+
+echo "TC-125i: subagent cp into .git/hooks → deny"
+assert_subagent_deny_gitdir "cp into .git blocked" "cp /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125j: subagent ln -s into .git/hooks → deny"
+assert_subagent_deny_gitdir "ln -s into .git blocked" "ln -s /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125k: subagent mv into .git → deny"
+assert_subagent_deny_gitdir "mv into .git blocked" "mv /tmp/evil .git/hooks/pre-commit"
+
+# --- CRITICAL regression: repo under a `/git`-containing ancestor (Issue #1864 fix) ---
+# The `/git`→` git` invocation-normalization used to split these paths so `>` detached from the
+# `.git` token → silent allow (RCE). (H) now tokenizes from the pre-munge snapshot.
+echo "TC-125l: subagent redirect into .git under a /srv/git ancestor → deny (path not corrupted)"
+assert_subagent_deny_gitdir "redirect into /srv/git/.../.git blocked" "echo evil > /srv/git/proj/.git/config"
+
+echo "TC-125m: subagent append into .git under a ~/github ancestor → deny (path not corrupted)"
+assert_subagent_deny_gitdir "append into /home/u/github/.../.git blocked" "echo x >> /home/u/github/proj/.git/hooks/pre-commit"
+
+# --- fileverb absolute-path / backslash invocation (Issue #1864 fix) ---
+echo "TC-125n: subagent absolute-path tee into .git → deny"
+assert_subagent_deny_gitdir "/usr/bin/tee into .git blocked" "/usr/bin/tee .git/hooks/pre-commit"
+
+echo "TC-125o: subagent backslash-escaped cp into .git → deny"
+assert_subagent_deny_gitdir "\\cp into .git blocked" "\\cp /tmp/evil .git/hooks/pre-commit"
+
+# --- dd of=<gitpath> write vector (Issue #1864 fix) ---
+echo "TC-125p: subagent dd of=.git/hooks → deny"
+assert_subagent_deny_gitdir "dd of=.git blocked" "dd if=/tmp/evil of=.git/hooks/pre-commit"
+
+# --- value-quoted dd of= (Issue #1864 cycle-2 fix: quote-strip-after-of= ordering) ---
+echo "TC-125q: subagent dd of='.git/…' (single-quoted value) → deny"
+assert_subagent_deny_gitdir "dd of='.git' (single-quoted) blocked" "dd if=/tmp/evil of='.git/hooks/pre-commit'"
+
+echo "TC-125r: subagent dd of=\".git/…\" (double-quoted value) → deny"
+assert_subagent_deny_gitdir "dd of=\".git\" (double-quoted) blocked" "dd if=/tmp/evil of=\".git/hooks/pre-commit\""
+
+# --- interior / nested quotes (Issue #1864 cycle-3 fix: global quote removal) ---
+# A quote placed BETWEEN path components survives a fixed surrounding-strip but is removed by the
+# shell before opening the path — global `${tok//[\"\']/}` closes the whole class.
+echo "TC-125s: subagent dd of= with INTERIOR quote → deny"
+assert_subagent_deny_gitdir "dd of=.g'i't/… (interior quote) blocked" "dd if=/tmp/evil of=.g'i't/hooks/pre-commit"
+
+echo "TC-125t: subagent redirect into adjacent-quoted .git → deny"
+assert_subagent_deny_gitdir "echo > '.git'/… (adjacent quote) blocked" "echo x > '.git'/hooks/pre-commit"
+
+echo "TC-125u: subagent cp into interior-quoted .git → deny"
+assert_subagent_deny_gitdir "cp into .g'i't/… (interior quote) blocked" "cp /tmp/evil .g'i't/hooks/pre-commit"
+
+echo "TC-125v: subagent dd of= with NESTED quotes → deny"
+assert_subagent_deny_gitdir "dd of=''.git/…'' (nested quotes) blocked" "dd if=/tmp/evil of=''.git/hooks/pre-commit''"
+
+# --- backslash-escaped .git path components (Issue #1864 cycle-4 fix: backslash removal) ---
+# POSIX quote-removal strips `\` too; the shell resolves `.g\it`→`.git`, so the gitpath check must
+# strip backslashes as well as quotes to see the real target.
+echo "TC-125w1: subagent redirect into backslash-in-component .git → deny"
+assert_subagent_deny_gitdir "echo > .g\\it/… blocked" "echo pwned > .g\\it/hooks/pre-commit"
+
+echo "TC-125w2: subagent redirect into leading-backslash .git → deny"
+assert_subagent_deny_gitdir "echo > \\.git/… blocked" "echo pwned > \\.git/hooks/pre-commit"
+
+echo "TC-125w3: subagent dd of= with backslash component → deny"
+assert_subagent_deny_gitdir "dd of=.g\\it/… blocked" "dd if=/tmp/evil of=.g\\it/hooks/pre-commit"
+
+echo "TC-125w4: subagent tee with backslash component → deny"
+assert_subagent_deny_gitdir "tee .g\\it/… blocked" "echo x | tee .g\\it/hooks/pre-commit"
+
+echo "TC-125w5: subagent dd with backslash-escaped of= prefix → deny"
+assert_subagent_deny_gitdir "dd \\of=.git/… blocked" "dd if=/tmp/evil \\of=.git/hooks/pre-commit"
+
+# --- obfuscated file-verb NAME (Issue #1864 cycle-5 fix: dequote the verb token too) ---
+# The verb token is dequoted (quotes + backslashes) then basename'd, so a quoted/escaped verb name
+# still latches the file-verb vector — the shell runs `'tee'` / `t\ee` as `tee`.
+echo "TC-125x1: subagent backslash-in-verb tee into .git → deny"
+assert_subagent_deny_gitdir "t\\ee .git blocked" "t\\ee .git/hooks/pre-commit"
+
+echo "TC-125x2: subagent quoted verb 'tee' into .git → deny"
+assert_subagent_deny_gitdir "'tee' .git blocked" "'tee' .git/hooks/pre-commit"
+
+echo "TC-125x3: subagent interior-quoted verb t\"e\"e into .git → deny"
+assert_subagent_deny_gitdir "t\"e\"e .git blocked" "t\"e\"e .git/hooks/pre-commit"
+
+echo "TC-125x4: subagent backslash-in-verb cp into .git → deny"
+assert_subagent_deny_gitdir "c\\p into .git blocked" "c\\p /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125x5: subagent quoted verb 'dd' of=.git → deny"
+assert_subagent_deny_gitdir "'dd' of=.git blocked" "'dd' if=/tmp/evil of=.git/hooks/pre-commit"
+
+# --- additional positional file-writers (Issue #1864 cycle-5: sponge/patch, tee twins) ---
+echo "TC-125y1: subagent sponge into .git/hooks → deny"
+assert_subagent_deny_gitdir "sponge .git/hooks blocked" "echo pwned | sponge .git/hooks/pre-commit"
+
+echo "TC-125y2: subagent patch into .git/config → deny"
+assert_subagent_deny_gitdir "patch .git/config blocked" "patch .git/config"
+
+echo "TC-125y3: subagent quoted verb 'sponge' into .git → deny (verb dequote)"
+assert_subagent_deny_gitdir "'sponge' .git blocked" "echo x | 'sponge' .git/hooks/pre-commit"
+
+# --- file-verb blocklist completeness: install / rsync / truncate are IN the case list
+# (tee|cp|mv|ln|install|rsync|truncate|dd|sponge|patch) but lacked dedicated deny tests; pin them so
+# a future edit that drops one literal from the case is caught (Issue #1864 follow-up). ---
+echo "TC-125z1: subagent install into .git/hooks → deny"
+assert_subagent_deny_gitdir "install into .git blocked" "install -m755 /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125z2: subagent rsync into .git/hooks → deny"
+assert_subagent_deny_gitdir "rsync into .git blocked" "rsync /tmp/evil .git/hooks/pre-commit"
+
+echo "TC-125z3: subagent truncate .git/config → deny"
+assert_subagent_deny_gitdir "truncate .git/config blocked" "truncate -s 0 .git/config"
+
+# --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
+echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
+assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"
+
+echo "TC-125-ALLOW-b: subagent LISTS .git/hooks (ls) → allow"
+assert_subagent_allow "ls .git/hooks/ allowed" "ls .git/hooks/"
+
+echo "TC-125-ALLOW-c: subagent greps .git/config → allow"
+assert_subagent_allow "grep .git/config allowed" "grep hooksPath .git/config"
+
+echo "TC-125-ALLOW-d: subagent legit isolation worktree setup → allow"
+assert_subagent_allow "git worktree add --detach (isolation) allowed" \
+  "git worktree add --detach /tmp/rite-review-mutation-abc HEAD"
+
+echo "TC-125-ALLOW-e: boundary — dir literally named 'foo.git/' is NOT the .git component → allow"
+assert_subagent_allow "redirect into myrepo.git/description NOT blocked" "echo x > myrepo.git/description"
+
+echo "TC-125-ALLOW-f: redirect into a NON-.git path → allow"
+assert_subagent_allow "redirect into /tmp/out.txt allowed" "echo x > /tmp/out.txt"
+
+echo "TC-125-ALLOW-g: .git as INPUT-redirect source (read) → allow"
+assert_subagent_allow "tee reading FROM .git via < allowed" "tee /tmp/x < .git/config"
+
+echo "TC-125-ALLOW-i: dd READING .git via if= (of= writes elsewhere) → allow"
+assert_subagent_allow "dd if=.git/config of=/tmp/x allowed (read source)" "dd if=.git/config of=/tmp/x"
+
+# Over-broadening sentinel on /git-ancestor paths: a plain READ (cat/grep — no redirect, no file
+# verb) must stay allowed even when the path contains a `/git` segment. (The WRITE-side regression
+# guard for the _gd_src snapshot fix is TC-125l/m; these pin that reads never start being blocked.)
+echo "TC-125-ALLOW-j: read .git under /srv/git ancestor (cat) → allow"
+assert_subagent_allow "cat /srv/git/.../.git/config allowed" "cat /srv/git/proj/.git/config"
+
+echo "TC-125-ALLOW-k: read .git under ~/github ancestor (grep) → allow"
+assert_subagent_allow "grep /home/u/github/.../.git/config allowed" "grep hooksPath /home/u/github/proj/.git/config"
+
+echo "TC-125-ALLOW-h: MAIN session redirect into .git → allow (reviewer-only guard)"
+assert_main_allow "main-session .git write not blocked by (H)" "echo x > .git/hooks/pre-commit"
+echo ""
+
+# --- noglob regression: the (H) tokenizer runs under `set -f`, so a reviewer command's bare glob
+# (`*`/`?`/`[`) is NOT pathname-expanded against the hook CWD (Issue #1864 follow-up). Without noglob
+# a `*` sitting BEFORE a `.git` READ path expands to CWD entries; a file named like a write-verb
+# (cp/tee/…) then latches the file-verb vector and the legit `.git` READ is wrongly DENIED (AC-1
+# false-positive; unbounded expansion could also time the hook out → fail-open). This pins the fix:
+# with `set -f` the `*` stays literal → allow. Runs from a temp CWD holding verb-named files so the
+# pre-fix (globbing) behavior would over-DENY (fail-on-revert).
+tc125_noglob_dir=$(mktemp -d)
+: > "$tc125_noglob_dir/cp"    # a file named like a write-verb — would latch _gd_fileverb if globbed
+: > "$tc125_noglob_dir/tee"
+_tc125_noglob_prev=$(pwd)
+if cd "$tc125_noglob_dir"; then
+  echo "TC-125-ALLOW-noglob: bare glob before a .git READ not polluted by CWD verb-files → allow (set -f)"
+  assert_subagent_allow "grep with bare glob + .git READ allowed under noglob" "grep hooksPath * .git/config"
+  cd "$_tc125_noglob_prev" || true
+else
+  fail "TC-125-ALLOW-noglob setup: cd into temp dir failed"
+fi
+rm -rf "$tc125_noglob_dir"
+echo ""
+
+# --- noglob regression for the `git worktree add` arg loop (Issue #1866, sibling of TC-125) ---
+# The `for tok in $WT_ARGS` loop (~line 608) that counts positional args / detects new-branch
+# flags now runs under `set -f`, so a glob metachar surviving in the worktree-add args is NOT
+# pathname-expanded against the hook CWD. Without noglob, a bare `*` in the args expands to CWD
+# entries; a file named exactly `-b` (the new-branch flag token) then latches WT_NEW_BRANCH_FLAG
+# and a legit `git worktree add <path> <existing-ref>` is wrongly DENIED (AC-1 over-DENY false
+# positive; an unbounded glob could also time the hook out → fail-open, bypassing the branch-leak
+# check). This pins the fix: with `set -f` the `*` stays a literal positional token → allow.
+#   Command shape note: the trailing `*` is a deliberately adversarial 4th token (git itself would
+#   reject a 3rd positional) — its only job is to be a glob that expands against the crafted CWD.
+#   The assertion is about the GUARD not over-denying due to CWD pollution, not about git accepting
+#   the command. Runs from a temp CWD holding a `-b` file so the pre-fix (globbing) path over-DENYs
+#   (fail-on-revert): verified empirically that the un-fixed loop returns deny for this input.
+tc126_noglob_dir=$(mktemp -d)
+: > "$tc126_noglob_dir/-b"    # a file named like the new-branch flag token — would set WT_NEW_BRANCH_FLAG if globbed
+_tc126_noglob_prev=$(pwd)
+if cd "$tc126_noglob_dir"; then
+  echo "TC-126-ALLOW-noglob: worktree-add args with a bare glob not polluted by CWD flag-file → allow (set -f)"
+  assert_subagent_allow "worktree add with bare glob + existing ref allowed under noglob" "git worktree add /tmp/wt develop *"
+  cd "$_tc126_noglob_prev" || true
+else
+  fail "TC-126-ALLOW-noglob setup: cd into temp dir failed"
+fi
+rm -rf "$tc126_noglob_dir"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

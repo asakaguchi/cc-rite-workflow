@@ -43,10 +43,13 @@ bash 4.0+ 必須 (ステップ 1.2.7 の `mapfile -t changed_file_paths < "$gh_f
 
 ## E2E Output Minimization
 
-`/rite:iterate` E2E flow から呼ばれた時、ステップ 4 (sub-agent execution) は **full execution**、ステップ 5-7 の **人間向け出力** のみ minimize する。minimize されるのは出力のみで、sub-agent parallel execution / PR コメント投稿 / recommendations AskUserQuestion 等の処理本体は standalone と同等に実行する (時間・context を理由にした sub-agent 省略 / parallel 直列化 / AskUserQuestion 省略は identity 違反)。
+`/rite:iterate` E2E flow から呼ばれた時、ステップ 4 (sub-agent execution) は **full execution**、ステップ 5-7 の **人間向け出力** のみ minimize する。minimize されるのは出力のみで、sub-agent parallel execution / PR コメント投稿 / recommendations AskUserQuestion 等の処理本体は standalone と同等に実行する (時間・context を理由にした sub-agent 省略 / parallel 直列化 は identity 違反)。
+
+**AskUserQuestion の扱いは 2 種を区別する（#1861）**: ステップ 7 の recommendations トリアージ（結果整合性 = 未解決指摘・スコープ外指摘の握り潰し防止）は E2E でも **skip 禁止**（省略は identity 違反）。一方 ステップ 3.3 の pre-flight レビュアー構成確認は E2E で **skip 可**（iterate の自律ループ設計に合わせ flow-state ベース判定で機械的に skip する。詳細はステップ 3.3）。いずれの場合も `起動 reviewer {count} 名` サマリ行・省略された reviewer 表示・ステップ 4 のフルレビュー実行は省略しない。
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
+| ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
 | ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
@@ -1194,8 +1197,41 @@ After the Security Expert conditional and any co-reviewer / sole-reviewer-guard 
 
 ### 3.3 Confirm Reviewers
 
+**E2E flow detection（#1861）**: `/rite:iterate` の review⇄fix ループから駆動された E2E 呼び出しでは、本ステップの pre-flight レビュアー構成確認 `AskUserQuestion`（末尾「オプション」の選択）を skip する。iterate は「mergeable まで自律的に回す」設計のため、cycle ごとに構成確認で停止するのは設計意図と矛盾する。判定は `skills/ready/SKILL.md` Phase 2.1 の `in_e2e_flow` と同型の flow-state ベース機械判定を用いる（iterate はステップ 1 で pr-review 呼び出し前に `phase=review` を、ステップ 3 で fix 呼び出し前に `phase=fix` を書くため、E2E 実行中は `phase ∈ {review, fix}` + `active=true` が成立する）。helper 失敗時は standalone（確認を出す）に fail-safe する:
 
-Confirm the reviewer configuration with `AskUserQuestion` (fallback: see ステップ 1.4 note):
+```bash
+if phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field phase in pr-review ステップ 3.3 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_review_step_3_3_phase; rc=$rc" >&2
+  phase=""
+fi
+if active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field active in pr-review ステップ 3.3 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_review_step_3_3_active; rc=$rc" >&2
+  active=""
+fi
+# whitelist は ready Phase 2.1 と同一（legacy phase5_* を含む）+ pr-review の live 値 review/fix。
+# --default "" が false/missing を "" に潰すため AND check は安全（NOT-style check は禁止）。
+if { [ "$phase" = "phase5_post_review" ] || [ "$phase" = "phase5_post_fix" ] || [ "$phase" = "review" ] || [ "$phase" = "fix" ]; } && [ "$active" = "true" ]; then
+  in_e2e_flow=true
+else
+  in_e2e_flow=false
+fi
+echo "[CONTEXT] PR_REVIEW_IN_E2E=$in_e2e_flow"
+```
+
+| `PR_REVIEW_IN_E2E` | アクション |
+|---|---|
+| `true` | E2E（iterate 経由）。**`AskUserQuestion`（下記「オプション」の選択）を skip** し、下記表示ブロック（`起動 reviewer {count} 名` サマリ行・選定・省略された reviewer）はそのまま出力してからステップ 4 のレビュー実行へ直行する（サマリ行は every-path 必須、省略表示の silent capping 禁止は E2E でも維持） |
+| `false` | standalone。下記構成を `AskUserQuestion` で確認する（従来どおり。AC-4 回帰なし。fallback: see ステップ 1.4 note） |
+
+standalone（`PR_REVIEW_IN_E2E=false`）ではレビュアー構成を `AskUserQuestion` で確認する。E2E（`true`）では末尾「オプション」の選択のみ skip し、以下の表示ブロックは両経路で出力する:
 
 ```
 以下のレビュアー構成でレビューを実行します:
@@ -1300,9 +1336,11 @@ Reviewer subagent が READ-ONLY 契約を破って parent session の working tr
 一次防御は `plugins/rite/hooks/pre-tool-bash-guard.sh` Pattern 4 (subagent context で state-mutating git command を block する PreToolUse hook)。本 snapshot + ステップ 5.0.A verify は hook が edge case (transcript_path に `/subagents/` が含まれない subagent ルーティング等) で機能しなかった場合の **defense-in-depth post-condition gate**。
 
 ```bash
-# 3 変数 (ORIG_BR / ORIG_SC / ORIG_BLH) は ステップ 5.0.A の post-review-state-verify.sh 引数として
-# 再利用するため会話 context に保持する (Bash tool 間で shell 変数は引き継がれない)。
+# 4 変数 (ORIG_BR / ORIG_SC / ORIG_BLH / ORIG_WTH) は ステップ 5.0.A の post-review-state-verify.sh
+# 引数として再利用するため会話 context に保持する (Bash tool 間で shell 変数は引き継がれない)。
 # detached HEAD は `DETACHED:<short-hash>` sentinel に置換 (verifier 側で branch drift check を skip)。
+# ORIG_WTH は working tree / index の drift (Edit/Write in-place mutation や state-changing git) を
+# 捕捉する 4 軸目 (Issue #1860)。branch/stash/branch_list では見えない porcelain 差分を検出する。
 # rationale: references/design-rationale.md#state-snapshot-notes
 ORIG_BR=$(git branch --show-current 2>/dev/null || echo "")
 if [ -z "$ORIG_BR" ]; then
@@ -1311,15 +1349,18 @@ fi
 ORIG_SC=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
 if command -v md5sum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | md5sum | awk '{print $1}')
+ ORIG_WTH=$(git status --porcelain 2>/dev/null | md5sum | awk '{print $1}')
 elif command -v shasum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | shasum | awk '{print $1}')
+ ORIG_WTH=$(git status --porcelain 2>/dev/null | shasum | awk '{print $1}')
 else
  ORIG_BLH="" # hash 計算不可 — branch_list drift check は skip 扱い (verifier 側で空文字列を skip)
+ ORIG_WTH="" # hash 計算不可 — worktree drift check は skip 扱い (verifier 側で空文字列を skip)
 fi
-echo "review_pre_state: branch=$ORIG_BR stash_count=$ORIG_SC branch_list_hash=$ORIG_BLH"
+echo "review_pre_state: branch=$ORIG_BR stash_count=$ORIG_SC branch_list_hash=$ORIG_BLH worktree_hash=$ORIG_WTH"
 ```
 
-LLM は出力 3 値 (`ORIG_BR`, `ORIG_SC`, `ORIG_BLH`) を ステップ 5.0.A の `post-review-state-verify.sh` 引数に literal substitute する。**Mapping for ステップ 5.0.A**: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}` (大文字 shell 変数 → 小文字 placeholder)。
+LLM は出力 4 値 (`ORIG_BR`, `ORIG_SC`, `ORIG_BLH`, `ORIG_WTH`) を ステップ 5.0.A の `post-review-state-verify.sh` 引数に literal substitute する。**Mapping for ステップ 5.0.A**: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`, `$ORIG_WTH → {orig_wth}` (大文字 shell 変数 → 小文字 placeholder)。
 
 ### 4.0.W Wiki Query Injection (Conditional)
 
@@ -1599,12 +1640,12 @@ Verification モードのレビュー指示テンプレート本文は [referenc
 
 ### 5.0.A Post-Review State Verification
 
-ステップ 4 (parallel review execution) で起動した reviewer subagent が `pre-tool-bash-guard.sh` Pattern 4 を bypass し、parent session の working tree / branch / stash list を mutate しなかったことを post-condition で verify する。drift 検出時は WARNING を stderr に emit し、可能なら `git checkout` で automatic recovery を試みる。
+ステップ 4 (parallel review execution) で起動した reviewer subagent が `pre-tool-bash-guard.sh` Pattern 4 (state-changing git) / `pre-tool-edit-guard.sh` (Edit/Write/MultiEdit/NotebookEdit) を bypass し、parent session の working tree / branch / stash list を mutate しなかったことを post-condition で verify する。drift 検出時は WARNING を stderr に emit し、branch drift のみ `git checkout` で automatic recovery を試みる (worktree drift は auto-recover せず手動 triage を案内 — Issue #1860)。
 
-ステップ 4.0.A で記録した `ORIG_BR` / `ORIG_SC` / `ORIG_BLH` をリテラル substitute する (ステップ 4.0.A の大文字 shell 変数 → ステップ 5.0.A の小文字 placeholder への mapping: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`)。
+ステップ 4.0.A で記録した `ORIG_BR` / `ORIG_SC` / `ORIG_BLH` / `ORIG_WTH` をリテラル substitute する (ステップ 4.0.A の大文字 shell 変数 → ステップ 5.0.A の小文字 placeholder への mapping: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`, `$ORIG_WTH → {orig_wth}`)。
 
 ```bash
-# {plugin_root} と {orig_br} / {orig_sc} / {orig_blh} (ステップ 4.0.A の出力値) をリテラル substitute する。
+# {plugin_root} と {orig_br} / {orig_sc} / {orig_blh} / {orig_wth} (ステップ 4.0.A の出力値) をリテラル substitute する。
 # Placeholder 残留 fail-fast gate: `{...}` 形状のまま渡ると verifier が silent false-positive cascade を
 # 起こすため早期 reject する。detached HEAD は ステップ 4.0.A で sentinel 変換済みのため常に非空で到達する。
 case "{orig_br}" in
@@ -1628,6 +1669,13 @@ case "{orig_blh}" in
  exit 1
  ;;
 esac
+case "{orig_wth}" in
+ "{"*"}")
+ echo "ERROR: ステップ 5.0.A の {orig_wth} placeholder が literal substitute されていません (値: '{orig_wth}')." >&2
+ echo "[CONTEXT] POST_REVIEW_VERIFY_FAILED=1; reason=orig_wth_placeholder_residue" >&2
+ exit 1
+ ;;
+esac
 
 # stdout (JSON line) のみ result_json に収集し、stderr の WARNING は
 # Bash tool 経由で会話 context に直接届く (2>&1 で混合させると JSON line を機械的に取り出せない)。
@@ -1635,6 +1683,7 @@ result_json=$(bash {plugin_root}/hooks/scripts/post-review-state-verify.sh \
  --original-branch "{orig_br}" \
  --original-stash-count "{orig_sc}" \
  --original-branch-list-hash "{orig_blh}" \
+ --original-worktree-hash "{orig_wth}" \
  --auto-recover true) || true
 printf '%s\n' "$result_json"
 ```
@@ -1646,6 +1695,7 @@ printf '%s\n' "$result_json"
 | `orig_br_placeholder_residue` | ステップ 5.0.A の `{orig_br}` placeholder が literal substitute されず `{...}` 形状のまま到達 (ステップ 4.0.A 未実行 / Bash tool 間変数の引き継ぎ失敗) |
 | `orig_sc_placeholder_residue` | ステップ 5.0.A の `{orig_sc}` placeholder が未 substitute (同上) |
 | `orig_blh_placeholder_residue` | ステップ 5.0.A の `{orig_blh}` placeholder が未 substitute (同上) |
+| `orig_wth_placeholder_residue` | ステップ 5.0.A の `{orig_wth}` placeholder が未 substitute (同上) |
 
 スクリプトは stderr に WARNING を emit (Bash tool が transcript に取り込む)、stdout に `{"drift":..., "type":..., "recovered":...}` JSON line を出力する。drift 検出時の処理は **non-blocking** (review flow は継続)、drift 結果は ステップ 5.4 完了レポートに reflect される。drift は WARNING として surface され、ユーザーが必要に応じて手動 triage する。
 

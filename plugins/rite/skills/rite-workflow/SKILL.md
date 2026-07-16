@@ -154,7 +154,7 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 
 `/rite:issue-create` は引き続き flat single-file workflow を維持。マージ後の cleanup は `/rite:cleanup` (既存) を別途実行する。
 
-複数 Issue をまとめて回す場合は `/rite:batch-run <issue>...` が各 Issue に対し **デフォルトでは** `open → iterate` を順次・完全自律で実行して draft PR を残し (merge せずレビュー待ち)、`--merge` 指定時のみ `ready → merge → cleanup` まで完走する (meta-orchestrator。成功する限り無確認、失敗で即停止、残りキューとモードは `.rite/state/run-queue.json` に永続化)。flow-state の handoff は使わず、継続は flat step 構造に委ねる。
+複数 Issue をまとめて回す場合は `/rite:batch-run <issue>...` が各 Issue に対し **デフォルトでは** `open → iterate` を順次・完全自律で実行して draft PR を残し (merge せずレビュー待ち)、`--merge` 指定時のみ `ready → merge → cleanup` まで完走する (meta-orchestrator。成功する限り無確認、失敗で即停止、残りキューとモードは `.rite/state/run-queue-{session_id}.json` にセッションごとに永続化 = 並行 batch-run が相互破壊しない)。flow-state の handoff は使わず、継続は flat step 構造に委ねる。
 
 LLM が途中で停止した場合の正規復帰経路は `/rite:recover` で、`skills/recover/SKILL.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→新 4 コマンド routing 表に従う。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は撤去済み。
 

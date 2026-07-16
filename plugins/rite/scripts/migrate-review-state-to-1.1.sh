@@ -28,8 +28,8 @@
 #   1 — migration failed (atomic write or jq parse error on a file)
 
 # `-e` を意図的に省略する: 個別ファイルの jq parse 失敗で全体停止させず、
-# FAILED_FILES 配列に集約してから末尾で exit 1 する設計 (post-review-state-verify.sh:40
-# と同パターン)。pipefail は維持して pipeline 失敗を捕捉する。
+# FAILED_FILES 配列に集約してから末尾で exit 1 する設計 (post-review-state-verify.sh の
+# `set -uo pipefail` と同パターン)。pipefail は維持して pipeline 失敗を捕捉する。
 set -uo pipefail
 
 # --- Signal-specific trap setup ---

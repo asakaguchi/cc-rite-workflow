@@ -460,7 +460,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 - **session_id 解決不可は fail-loud**: 各 bash ブロックは `run-queue-{session_id}.json` を組む前に session_id を解決する。解決できない（`flow-state.sh path` が空を返す）場合は global 名 `run-queue.json` へフォールバックせず `exit 1` で停止する（フォールバックすると Issue #1859 の相互破壊バグを再導入するため）。停止した場合は環境の session_id 解決（`CLAUDE_CODE_SESSION_ID` env / `.rite-session-id`）を確認する
 - run-queue（`run-queue-{session_id}.json`）は停止時に残す。引数省略 `/rite:batch-run` で cursor から再開する（同一セッション内での再開を前提）
 - run は flow-state の `handoff` を使わないため、sub-skill 間（例: open 完了直後・iterate invoke 前）で turn が途切れた場合の構造ガードは持たない。これは `/rite:open` のステップ間遷移と同じ前提で、各 skill invoke 直前の continuation hint（HTML コメント）と flat step 構造で継続を促す
-- **前提**: 対象 Issue は事前に `/rite:open` 可能な状態（open かつ品質十分）であること。closed / 親 Issue / 品質 C-D の場合は open 内部の AskUserQuestion で自律フローが止まる（open 無変更の代償。完全な無人化は保証しない）
+- **前提**: 対象 Issue は事前に `/rite:open` 可能な状態（open かつ品質十分）であること。open ステップ 3.4 の実装計画承認は batch 実行中は run-queue 判定で自動承認され停止しない（#1861。宣言「完全自律（無確認）」と実挙動を一致させるための変更）。ただし closed / 親 Issue / 品質 C-D の入力品質ゲート（open 内部の AskUserQuestion）は batch でも従来どおり自律フローを止める（完全な無人化は保証しない）
 - `/rite:recover` が active batch 継続（設計判断節「recover.md からの active batch 継続」）を行う場合も、失敗時は即停止（サーキットブレーカーのみ例外）という本方針をそのまま適用する
 
 ---

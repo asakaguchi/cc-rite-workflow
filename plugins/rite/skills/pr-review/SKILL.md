@@ -43,10 +43,13 @@ bash 4.0+ 必須 (ステップ 1.2.7 の `mapfile -t changed_file_paths < "$gh_f
 
 ## E2E Output Minimization
 
-`/rite:iterate` E2E flow から呼ばれた時、ステップ 4 (sub-agent execution) は **full execution**、ステップ 5-7 の **人間向け出力** のみ minimize する。minimize されるのは出力のみで、sub-agent parallel execution / PR コメント投稿 / recommendations AskUserQuestion 等の処理本体は standalone と同等に実行する (時間・context を理由にした sub-agent 省略 / parallel 直列化 / AskUserQuestion 省略は identity 違反)。
+`/rite:iterate` E2E flow から呼ばれた時、ステップ 4 (sub-agent execution) は **full execution**、ステップ 5-7 の **人間向け出力** のみ minimize する。minimize されるのは出力のみで、sub-agent parallel execution / PR コメント投稿 / recommendations AskUserQuestion 等の処理本体は standalone と同等に実行する (時間・context を理由にした sub-agent 省略 / parallel 直列化 は identity 違反)。
+
+**AskUserQuestion の扱いは 2 種を区別する（#1861）**: ステップ 7 の recommendations トリアージ（結果整合性 = 未解決指摘・スコープ外指摘の握り潰し防止）は E2E でも **skip 禁止**（省略は identity 違反）。一方 ステップ 3.3 の pre-flight レビュアー構成確認は E2E で **skip 可**（iterate の自律ループ設計に合わせ flow-state ベース判定で機械的に skip する。詳細はステップ 3.3）。いずれの場合も `起動 reviewer {count} 名` サマリ行・省略された reviewer 表示・ステップ 4 のフルレビュー実行は省略しない。
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
+| ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
 | ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
@@ -1194,8 +1197,41 @@ After the Security Expert conditional and any co-reviewer / sole-reviewer-guard 
 
 ### 3.3 Confirm Reviewers
 
+**E2E flow detection（#1861）**: `/rite:iterate` の review⇄fix ループから駆動された E2E 呼び出しでは、本ステップの pre-flight レビュアー構成確認 `AskUserQuestion`（末尾「オプション」の選択）を skip する。iterate は「mergeable まで自律的に回す」設計のため、cycle ごとに構成確認で停止するのは設計意図と矛盾する。判定は `skills/ready/SKILL.md` Phase 2.1 の `in_e2e_flow` と同型の flow-state ベース機械判定を用いる（iterate はステップ 1 で pr-review 呼び出し前に `phase=review` を、ステップ 3 で fix 呼び出し前に `phase=fix` を書くため、E2E 実行中は `phase ∈ {review, fix}` + `active=true` が成立する）。helper 失敗時は standalone（確認を出す）に fail-safe する:
 
-Confirm the reviewer configuration with `AskUserQuestion` (fallback: see ステップ 1.4 note):
+```bash
+if phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field phase in pr-review ステップ 3.3 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_review_step_3_3_phase; rc=$rc" >&2
+  phase=""
+fi
+if active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field active in pr-review ステップ 3.3 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_review_step_3_3_active; rc=$rc" >&2
+  active=""
+fi
+# whitelist は ready Phase 2.1 と同一（legacy phase5_* を含む）+ pr-review の live 値 review/fix。
+# --default "" が false/missing を "" に潰すため AND check は安全（NOT-style check は禁止）。
+if { [ "$phase" = "phase5_post_review" ] || [ "$phase" = "phase5_post_fix" ] || [ "$phase" = "review" ] || [ "$phase" = "fix" ]; } && [ "$active" = "true" ]; then
+  in_e2e_flow=true
+else
+  in_e2e_flow=false
+fi
+echo "[CONTEXT] PR_REVIEW_IN_E2E=$in_e2e_flow"
+```
+
+| `PR_REVIEW_IN_E2E` | アクション |
+|---|---|
+| `true` | E2E（iterate 経由）。**`AskUserQuestion`（下記「オプション」の選択）を skip** し、下記表示ブロック（`起動 reviewer {count} 名` サマリ行・選定・省略された reviewer）はそのまま出力してからステップ 4 のレビュー実行へ直行する（サマリ行は every-path 必須、省略表示の silent capping 禁止は E2E でも維持） |
+| `false` | standalone。下記構成を `AskUserQuestion` で確認する（従来どおり。AC-4 回帰なし。fallback: see ステップ 1.4 note） |
+
+standalone（`PR_REVIEW_IN_E2E=false`）ではレビュアー構成を `AskUserQuestion` で確認する。E2E（`true`）では末尾「オプション」の選択のみ skip し、以下の表示ブロックは両経路で出力する:
 
 ```
 以下のレビュアー構成でレビューを実行します:

@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-16T09:37:48+09:00 | create | [条件付き確認 skip は既存 in-flow 判定と同型にし fail-safe を「確認を出す」側へ倒す](pages/heuristics/conditional-confirmation-skip-isomorphic-failsafe.md) | raw/reviews/20260716T002919Z-pr-1868.md を新規ページ化 — AskUserQuestion 条件付き skip の機械判定は既存 in_e2e_flow/batch 判定と同型に流用し fail-safe を確認を出す側へ倒す / WARNING 有無は失敗が正常系か想定外かで出し分ける経験則（PR #1868、3 reviewer マージ可） |
 | 2026-07-16T08:16:06+09:00 | lint:warning | — | contradictions=0, stale=2, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1867 ingest 後の auto-lint。stale 2 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-16T08:16:06+09:00 | update | [セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する](pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md) | raw/reviews/20260715T230852Z-pr-1867.md を統合 — #1865 が残した兄弟 `for tok in $WT_ARGS`（:608 worktree-add 引数走査）を同型 noglob スコープで水平展開。同一ファイル内の全 unquote for-loop への水平展開・sibling grep 照合レビュー・over-DENY 回帰テストの fail-on-revert 実機確認を追加 |
 | 2026-07-16T06:15:39+09:00 | lint:warning | — | contradictions=0, stale=2, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1865 ingest 後の auto-lint。stale 2 件は pre-existing で本 ingest 由来ではない) |

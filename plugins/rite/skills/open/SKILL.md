@@ -459,9 +459,36 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 
 **参考実装セクション**: `reference_discovery` 原則（[coding-principles.md](../rite-workflow/references/coding-principles.md)）のルール 4「発見した参照を実装計画に記録」に従い、ステップ 3.2 で発見した既存の参考実装（同ディレクトリの類似ファイル、命名パターンが一致するファイル等）を記録する。参考実装が見つからない場合（新規ディレクトリ、初めてのファイルパターン等）は、テーブルの代わりに `参考実装: なし（新規ディレクトリまたは初めてのファイルパターン）` の 1 行を出力する。
 
-### 3.4 ユーザー確認
+### 3.4 計画承認（batch 時は自動承認 / standalone は AskUserQuestion）
 
-AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択。
+`/rite:batch-run` から駆動された batch 実行中かを run-queue で機械判定し、計画承認の要否を分岐する。batch 実行中（run-queue `active=true` かつ cursor が本 Issue を指す）は計画を**自動承認**して停止しない。standalone（直接 `/rite:open`）は従来どおり AskUserQuestion で確認する。
+
+> **Why（#1861）**: 旧仕様は本ステップを無条件 AskUserQuestion にしていたため、`/rite:batch-run` が宣言する「完全自律（無確認）」に反して Issue ごとに必ず 1 回停止していた。batch 時の自動承認で宣言と実挙動を一致させる。安全側の担保は batch-run のデフォルトモードが draft PR をレビュー待ちで残すこと・`--merge` が明示 opt-in であることに置く（本ステップでは停止しない）。batch 判定は iterate ステップ 6 の run-queue batch 判定と同型（`state-path-resolve.sh` / `flow-state.sh path` で session_id を導出 → `active` + cursor 一致）で、read-only。helper 失敗 / session_id 解決不可 / キュー不在のときは interactive（確認を出す）に fail-safe する。
+
+```bash
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
+session_id=$(basename "$fs_path" .flow-state)
+queue_file="$state_root/.rite/state/run-queue-$session_id.json"
+plan_mode=interactive
+# session_id 解決不可（空）/ キュー不在 → 自セッションの batch キューを特定できないため
+# 安全側 interactive のまま（read-only なので fail-loud はせず確認を出す方に倒す）
+if [ -n "$session_id" ] && [ -f "$queue_file" ]; then
+  q_active=$(jq -r '.active // false' "$queue_file" 2>/dev/null)   # active 欠落の旧形式は false（安全側 = interactive）
+  q_cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null)
+  q_total=$(jq -r '.issues | length' "$queue_file" 2>/dev/null)
+  q_issue=$(jq -r ".issues[$q_cursor] // empty" "$queue_file" 2>/dev/null)
+  if [ "$q_active" = "true" ] && [ "$q_cursor" -lt "${q_total:-0}" ] 2>/dev/null && [ "$q_issue" = "{issue_number}" ]; then
+    plan_mode=batch
+  fi
+fi
+echo "[CONTEXT] OPEN_PLAN_MODE=$plan_mode; issue={issue_number}"
+```
+
+| `OPEN_PLAN_MODE` | アクション |
+|---|---|
+| `batch` | 計画を**自動承認**（AskUserQuestion を出さない）。3.3 の計画（要判断ポイント含む）は記録として表示済みのまま、ステップ 3.5 へ直行する |
+| `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |
 
 ### 3.5 Issue Body Checklist 更新
 

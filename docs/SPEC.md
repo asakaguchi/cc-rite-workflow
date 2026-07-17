@@ -1536,7 +1536,7 @@ Analyze PR changes and dynamically generate appropriate reviewers.
 | `.github/**`, `Dockerfile`, `*.yml` (CI) | DevOps Expert |
 | `**/*.md`, `docs/**` | Technical Writer |
 | `**/*.test.*`, `**/*.spec.*` | Test Expert |
-| `**/api/**`, `**/routes/**` | API Design Expert |
+| `**/api/**`, `**/routes/**` | Application Expert |
 
 #### Step 2: Content Analysis
 
@@ -1556,7 +1556,7 @@ LLM analyzes diff content to determine:
 ### Dynamically Generated Reviewer Profiles
 
 - **Security Expert**: Vulnerabilities, authentication, encryption
-- **Performance Expert**: Optimization, memory usage
+- **Application Expert**: Application code end-to-end (contracts, performance, data operations, UI safety)
 - **Accessibility Expert**: WCAG compliance, screen reader support
 - **Technical Writer**: Documentation quality, consistency
 - **Architect**: Design patterns, dependencies
@@ -1576,7 +1576,7 @@ LLM analyzes diff content to determine:
 - **Assessment**: Approve
 - **Comments**: No issues with authentication logic
 
-#### Performance Expert
+#### Application Expert
 - **Assessment**: Approve with conditions
 - **Comments**: Potential N+1 query (L45-52)
 

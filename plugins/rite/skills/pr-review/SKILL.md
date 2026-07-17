@@ -1593,7 +1593,7 @@ Generate instructions for each reviewer.
 
 **`{diff_content}` by scale:** Small: entire diff | Medium: files matching `{relevant_files}` | Large: `{change_summary}` + matching files + Read tool instruction
 
-**`{relevant_files}`:** Files matching reviewer's Activation pattern (ステップ 2.2). Security: `**/auth/**`, Frontend: `**/*.tsx`
+**`{relevant_files}`:** Files matching reviewer's Activation pattern (ステップ 2.2). Security: `**/auth/**`, Application: `**/*.tsx`
 
 > **Reference**: See [review-context-optimization.md](references/review-context-optimization.md) for change summary format and retrieval guidelines.
 

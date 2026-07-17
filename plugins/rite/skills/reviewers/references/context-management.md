@@ -19,7 +19,7 @@ When using long conversations or many reviewers, be aware of context window limi
 |-----------|-------------------|
 | Diff exceeds 500 lines | Include only relevant file diffs in each reviewer's prompt |
 | 20+ files changed | Split review execution (when reviewer count is high) |
-| 4+ reviewers | Execute in 2 batches (e.g., Security+API, then Test+Frontend) |
+| 4+ reviewers | Execute in 2 batches (e.g., Security+DevOps, then Test+Application) |
 | Single file with 1000+ line changes | Prioritize dedicated reviewer for that file |
 
 ## Split Execution Steps

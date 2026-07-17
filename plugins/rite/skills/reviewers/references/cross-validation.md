@@ -44,13 +44,13 @@ Please clarify which recommendation to follow.
 
 ### Contradiction Examples
 
-1. **Code Quality vs Performance**
+1. **Code Quality vs Application**
    - Code Quality: "This function should be split"
-   - Performance: "Inlining improves performance"
+   - Application: "Inlining improves performance"
 
 2. **Security vs Usability**
    - Security: "Input validation should be stricter"
-   - API Design: "Allow flexible input for usability"
+   - Application: "Allow flexible input for usability"
 
 3. **Test Coverage vs Development Speed**
    - Test: "Edge case tests should be added"

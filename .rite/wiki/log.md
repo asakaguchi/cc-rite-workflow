@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-17T15:51:00+09:00 | lint:warning | — | contradictions=0, stale=5, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1884/#1886/#1887 ingest 後の auto-lint。stale 5 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-17T15:50:00+09:00 | update | [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](pages/patterns/drift-check-anchor-semantic-name.md) | raw/reviews/20260717T062934Z-pr-1887.md ほか pr-1887 の 3 件を統合 — SoT ルールリストの再番号化で消費側の数値ルール引用 (「ルール N」) が dangling 化する事例を追加。semantic 参照への置換で解消、圧縮宣言は保持例外を明記すべきという教訓も付随 |
 | 2026-07-17T15:49:00+09:00 | update | [Flatten refactor の削除スコープは 3 軸 (歴史注釈 / 同期保守情報 / 機能 statement) で classification する](pages/heuristics/flatten-refactor-deletion-scope-classification.md) | raw/reviews/20260717T053018Z-pr-1886.md ほか pr-1886 の 3 件を統合 — 孤児ファイル丸ごと削除 PR で「CHANGELOG cross-check」を 4 番目の検証軸として追加。明示的に固有と分かる節だけでなく CHANGELOG 記録済みの意図的知見追加も突合対象にする |
 | 2026-07-17T15:48:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260717T035853Z-pr-1884.md ほか pr-1884 の 7 件を統合 — 節統合 refactor の cross-file stale 参照調査で拡張子限定 grep が sibling 拡張子を取りこぼす sub-pattern (累積 63 回目) と新規ディレクトリ追加時の SPEC.md 構造一覧同期漏れを追加 (4 cycle 収束 5→4→1→0) |

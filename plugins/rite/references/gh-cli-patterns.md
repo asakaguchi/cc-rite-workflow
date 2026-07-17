@@ -486,6 +486,28 @@ gh pr diff {pr_number} --stat
 
 Per-file の diff 抽出は上記「awk Negation Patterns」の reset ロジック（`^diff --git` ヘッダごとに `found=0`、対象パターンで `found=1`）を使う。
 
+## git branch --list Exit-Code Gotcha
+
+> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found. Check the **output** instead (non-empty = exists).
+
+```bash
+# Check local branch existence (check OUTPUT, not exit code)
+local_match=$(git branch --list "{branch_name}")
+if [ -n "$local_match" ]; then
+  echo "BRANCH_EXISTS"
+else
+  echo "BRANCH_NOT_FOUND"
+fi
+
+# Check remote branch existence (check OUTPUT, not exit code)
+remote_match=$(git branch -r --list "origin/{branch_name}")
+if [ -n "$remote_match" ]; then
+  echo "REMOTE_EXISTS"
+else
+  echo "REMOTE_NOT_FOUND"
+fi
+```
+
 ## Multi-line gh pr create (Canonical Form)
 
 `gh pr create` の複数行形式の正典はバックスラッシュ継続。`hooks/scripts/bash-heaviness-check.sh` の literal-title check は、この形式の継続行を跨いで論理行が終わるまで検査を維持する（インライン特殊文字 title による malformed tool-call の検出のため）:

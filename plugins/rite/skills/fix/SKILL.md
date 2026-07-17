@@ -818,11 +818,6 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 : > "/tmp/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
   echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
 
-# Block A outputs (後続 Block B/C が一時ファイル経由で読み出す):
-#   - raw_json:            gh api レスポンス全体 (Block B が .issue_url を再抽出、Block C は不使用)
-#   - intermediate_body:   jq .body の抽出結果 (Block C が final body_file にコピー)
-#   - intermediate_author: jq .user.login の抽出結果 (Block C が final author_file にコピー)
-#   - intermediate_skip:   target_author_mention_skip の計算結果 (Block C が final skip_file にコピー)
 raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
 intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
 intermediate_author="/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
@@ -832,10 +827,6 @@ gh_api_err=""
 jq_err=""
 
 # trap + cleanup パターンの canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
-# 2-state commit pattern (blockA_committed):
-# - blockA_committed=0 (初期値): 書き出し前/中の exit → raw_json + intermediate 3 ファイル全削除 (orphan 防止)
-# - blockA_committed=1 (全書き出し成功後): raw_json と intermediate は保護、err files のみ削除
-# 用語: 「intermediate」= body/author/skip の 3 ファイル。raw_json は別カテゴリ (合計 4 ファイル)。
 blockA_committed=0
 _rite_fix_blockA_cleanup() {
   rm -f "${gh_api_err:-}" "${jq_err:-}"
@@ -960,8 +951,6 @@ echo "[CONTEXT] BLOCK_A_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 # Block B: raw JSON 再読込 + .issue_url 抽出 + pr_number / URL suffix validate
 # .issue_url post-condition で「コメント ID が別 PR/Issue に属する」silent misclassification を検出する
 # (背景: references/design-rationale.md#fast-path-block-design)。
-# Block B は新規 output を持たないため commit flag を持たない。validation 失敗時は upstream
-# (raw_json + intermediate 3 ファイル) を _rite_fix_blockB_invalidate_upstream で明示的に rm する。
 
 raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
 intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
@@ -1058,10 +1047,6 @@ body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
 skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 
-# Block C scope の 2-state commit pattern (handoff_committed):
-# - handoff_committed=0 (初期値): 書き出し前/書き出し中の exit → handoff 3 ファイルも削除 (orphan 防止)
-# - handoff_committed=1 (全書き出し+post-condition pass 後): handoff 3 ファイルは保護される
-# raw_json + intermediate 3 ファイル (合計 4 ファイル) は成功/失敗問わず常に削除する (後続 phase では使わない)。
 handoff_committed=0
 _rite_fix_blockC_cleanup() {
   if [ "$handoff_committed" = "0" ]; then
@@ -2398,7 +2383,7 @@ EOF
   - **nit-only PR** (`acknowledged_nit_count == total_count` かつ non-nit findings 0 件): ステップ 3 (commit) を skip し ステップ 4.2 / 4.3 へ直行 (working tree への変更ゼロのため commit 不要)
   - **mixed PR** (nit-noted + non-nit findings 混在): non-nit findings は通常通り ステップ 2.2/2.3 経由で ステップ 3 (commit) へ進む。nit-noted reply は parallel に投稿済の状態で commit に embed される
 
-**Why no commit**: nit-noted は「修正不要の informational 指摘」のため code 変更 (Edit/Write) も commit も発生しない。 <!-- rationale: references/design-rationale.md#nit-noted-reply-notes -->
+**Why no commit**: [design-rationale.md#nit-noted-reply-notes](references/design-rationale.md#nit-noted-reply-notes)
 
 #### ステップ 2.4.N reasons (NIT_NOTED_REPLY_* retained flags)
 
@@ -3504,9 +3489,9 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 The `fix` flow-state write below records the v3 phase so a `/rite:recover` started after a fix iteration classifies the resume point correctly (`skills/recover/SKILL.md` Phase 5.3 の `fix` 行で `/rite:iterate {pr_number}` が invoke される):
 
-**Handoff マーカー**: 結果に応じて 3 種類に分岐する。
-- **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。`Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、LLM が re-review に進まず停止しても `/rite:pr-review` を再注入する (pr-review.md Step 8.0 の fix 方向版)。
-- **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。Stop hook が prefix `FINALIZE:` を検出し、「`/rite:iterate` ステップ5 の完了通知を出力してから終えよ」と **1 回だけ** 再注入する。one-shot consume のため完了通知出力後はクリーン終了する (無限 block しない)。
+**Handoff マーカー**: 結果に応じて 3 種類に分岐する (Stop hook による consume・再注入の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism))。
+- **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。
+- **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で AskUserQuestion (再試行/中止) に分岐するため、完了通知を強制してはならない。
 
 判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態・fatal フラグ・本 cycle 内の accept 発生有無は ステップ 4.6 / 4.5 / 2.4 / 2.1.A / 1.0.1 で既知): **(`プッシュ: 完了` または 本 cycle 内で accept 決定が発生) かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し かつ 本 cycle 内で accept 決定なし かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。「本 cycle 内で accept 決定が発生」の判定条件（具体的な context マーカー、および累計値を使ってはならない理由）は ステップ 5.1 Output Pattern テーブル row 4/5 の直後の注記を**唯一の真実の源**として参照すること（Issue #1811。重複記述はしない）。
@@ -3686,8 +3671,7 @@ comm -23 \
 ```bash
 # confidence_override + pr-comment tempfile の明示的 cleanup (E2E flow 経路)
 # fix ループ全体で append されてきたファイルを終了時に削除する。
-# 削除しないと次回実行時の truncate (`: >`) に依存するが、truncate 忘れの経路があった場合に
-# 前セッションの stale データが混入する silent regression のリスクがあるため defense-in-depth で削除する。
+# rationale: references/design-rationale.md#confidence-gate-notes
 # pr-comment tempfile も追加 (Broad Retrieval が書き出した
 # /tmp/rite-fix-pr-comment-{pr_number}.txt の正常時 cleanup)。Fast Path 経路では存在しないため
 # silent no-op となる。

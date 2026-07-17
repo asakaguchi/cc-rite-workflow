@@ -42,61 +42,31 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 - **Isolated worktree creation**: `git worktree add --detach <path> <ref>` または `git worktree add <path> <existing-branch>` (既存 ref のみを別ディレクトリに展開する形式に限定。`-b <newbranch>` および引数なし形式は新規 ref が leak する原因となるため禁止 — orchestrator 側の `hooks/scripts/pr-cycle-cleanup.sh` で残置回収するが、reviewer 側で named branch を作らないのが第一防御線)
 - **Workflow helpers**: `gh` CLI for reading PR/Issue metadata, plugin hook scripts, test runners (`bash <test>`, `pytest`, `npm test`, etc.)
 
-**Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead. 同様に、`git stash` は「undo すれば戻る」ように見えるが、stash entry の作成自体が parent session の working tree をクリアし、並列レビュアー間で race を起こす。`git add` / `git reset` も index を汚染し、後続の `/rite:fix` が diff を誤認する根本原因になる。`git fetch --prune` は remote-tracking branch を削除するため、後続の `git diff origin/<branch>` が「unknown revision」で壊れる silent regression を引き起こす。
+rationale: ../skills/reviewers/references/reviewer-base-rationale.md#read-only-is-a-state-level-guarantee
 
 ### Shell-command wrappers are blocked — even for read-only probes
 
-`hooks/pre-tool-bash-guard.sh` は reviewer subagent からの **shell-command wrapper** (`eval`, `bash -c`, `sh -c`, `zsh -c`, `ksh -c`, `dash -c`, `fish -c`) を**中身に関係なく一律 block** する。これは「中身が read-only な挙動プローブなら許可してほしい」という直感に反するように見えるが、意図的な設計である。
-
-- **理由**: guard は Bash 組み込みの word-boundary マッチで state-mutating git を検出するが、quote の中身 (`bash -c '...'` の `...`) はこのマッチから opaque で、`bash -c 'git reset --hard'` のような state-mutating git を隠して bypass できてしまう。quote 内を信頼できる形で解析するのは fragile で新たな bypass 面を生むため、wrapper 自体を一律 block する方が安全側に倒せる。
-- **read-only プローブの代替**: wrapper を外す。コマンドを直接実行する / 複数コマンドは subshell `( cmd1; cmd2 )` でまとめる / スクリプト化して `bash <script.sh>` で実行する (上記 "Allowed Bash/Git commands" の `bash <test>` と同じ経路)。これらは block されない。
-
-> 補足: read-only な挙動プローブのために `bash -c` を使うと block されるが、`( ... )` / 直接実行 / `bash <script.sh>` で検証強度を落とさず代替できる。block 時の deny メッセージにもこの代替が表示される。
+`hooks/pre-tool-bash-guard.sh` は reviewer subagent からの **shell-command wrapper** (`eval`, `bash -c`, `sh -c`, `zsh -c`, `ksh -c`, `dash -c`, `fish -c`) を**中身に関係なく一律 block** する。read-only プローブは wrapper を外して代替する: コマンドを直接実行する / 複数コマンドは subshell `( cmd1; cmd2 )` でまとめる / スクリプト化して `bash <script.sh>` で実行する (上記 "Allowed Bash/Git commands" の `bash <test>` と同じ経路)。これらは block されない。
+rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-wrappers-are-blocked-wholesale
 
 ### Mutation experiments and verification (worktree-only)
 
-Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」「helper を inline 展開したら sibling test が落ちるか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の **worktree-only mutation pattern** に限定される。
-
-**Rationale**: 過去に reviewer subagent が「mutation 検証」のために新規 named branch を作成し、`git checkout <test-branch>` → file 変更 → `git checkout develop` という遷移を行った結果、parent session の working tree が `develop` のクリーン状態に置き換わり、後続の `/rite:fix` が PR ブランチを見失う事故が起きた。さらに rite 0.8.2 の実運用では、reviewer が実装ファイルを `Edit`/`Write` ツールで **parent working tree 上で直接変更**してテストを走らせ手動復元する事故も観測された (Issue #1860)。prose レベルの「禁止」だけでは LLM agent は mutation 検証の必要性を過大評価して bypass する傾向があるため、**正規経路を明示**し、structural enforcement と組み合わせて多層防御する。structural 層は 2 hook で構成される: `hooks/pre-tool-bash-guard.sh` (Pattern 4 — Bash 経由の state-changing git を block) と `hooks/pre-tool-edit-guard.sh` (Edit/Write/MultiEdit/NotebookEdit が parent working tree 配下を書き換えるのを block。隔離 worktree = `rite-review-mutation-*` / `rite-revert-test-*` 配下は許可)。
-
-**正規パターン (detached HEAD / 既存 branch)**:
+Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の worktree-only pattern に限定される:
 
 ```bash
 # 1. detached HEAD でテンポラリ worktree を作成 (named branch を leak させない)
 mutation_dir=$(mktemp -d -t rite-review-mutation-XXXXXX)
 git worktree add --detach "$mutation_dir" HEAD  # または特定の ref
-
-# 2. mutation を適用 (parent repo は完全に無影響)
-cd "$mutation_dir"
-# ファイル編集 → test 実行 → 結果観測
-sed -i 's/return 1/exit 1/' some-file.sh
-bash hooks/tests/some.test.sh
-cd -  # parent repo に戻る (HEAD 変更なし、stash なし)
-
-# 3. cleanup (reviewer は `git worktree remove` を実行禁止のため、
-#    orchestrator 側の hooks/scripts/pr-cycle-cleanup.sh が回収する。
-#    worktree path は `/tmp/rite-review-mutation-*` 命名で識別可能)
+# 2. cd "$mutation_dir" して編集・テスト実行 (parent repo は完全に無影響)
+# 3. cleanup は orchestrator 側 (hooks/scripts/pr-cycle-cleanup.sh) が回収する
+#    (reviewer は `git worktree remove` を実行禁止)
 ```
 
-**禁止パターン (parent working tree を mutate する一切の経路)**:
+- checkout / stash / `cp file file.bak` バックアップ等、parent working tree を経由する mutation は全経路禁止。過去 ref の blob が必要なときは `git show <ref>:<file>` で取得し worktree 内で適用する
+- **`Edit` / `Write` / `MultiEdit` / `NotebookEdit` ツールも隔離 worktree (`/tmp/rite-review-mutation-*` / `rite-revert-test-*`) 配下のパスに対してのみ**発行してよい。parent working tree 配下への発行は `hooks/pre-tool-edit-guard.sh` (PreToolUse) が機械的に deny する
 
-| 禁止経路 | 代替 (worktree-only pattern) |
-|---------|-----------------------------|
-| `git checkout -b pr-N-test` → file 変更 → `git checkout <orig>` | `git worktree add --detach $(mktemp -d -t rite-review-mutation-XXXXXX) HEAD` |
-| `git stash` → file 変更 → test → `git stash pop` | 同上 (stash は禁止) |
-| `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
-| `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |
-
-**`Edit`/`Write` ツールも隔離 worktree 配下に限る (Issue #1860)**: 上表は Bash/git 経路を挙げているが、mutation 実験でファイルを書き換える際は **`Edit` / `Write` / `MultiEdit` / `NotebookEdit` ツールも同様に、隔離 detached worktree (`/tmp/rite-review-mutation-*` / `rite-revert-test-*`) 配下のパスに対してのみ**発行してよい。parent working tree 配下 (repo 内かつ隔離領域外) のファイルをこれらのツールで書き換えることは、Bash の state-changing git と同格の READ-ONLY 違反であり、`hooks/pre-tool-edit-guard.sh` (PreToolUse) が **機械的に deny** する。正規経路は上記の worktree-only pattern で `cd "$mutation_dir"` した後に隔離配下のファイルを編集することであり、これは許可される。
-
-**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること。各 invariant は `skills/pr-review/SKILL.md` ステップ 5.0.A 経由で `post-review-state-verify.sh` により automatic check される (state vector は branch / stash count / branch list / worktree の 4 軸。worktree 軸 = `git status --porcelain` hash は Issue #1860 で enforce に昇格 — Edit/Write in-place mutation や state-changing git が残す差分を検出する):
-
-1. `git branch --show-current` の値が reviewer 起動時と同一 (state vector axis 1: branch、`--original-branch` で check)
-2. `git stash list` の長さが reviewer 起動時と同一 (state vector axis 2: stash count、`--original-stash-count` で check)
-3. `git branch --list` の出力が reviewer 起動時と同一 (state vector axis 3: branch_list hash、`--original-branch-list-hash` で check — 新規 named branch leak 検出)
-4. `git status --porcelain` の hash が reviewer 起動時と同一 (state vector axis 4: worktree hash、`--original-worktree-hash` で check — Edit/Write in-place mutation / index 汚染の検出。Issue #1860)
-
-これらの invariant 違反は orchestrator 側 (`skills/pr-review/SKILL.md` ステップ 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list/worktree drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
+**Invariant**: Reviewer subagent が exit する時点で (1) `git branch --show-current` (2) `git stash list` の長さ (3) `git branch --list` の出力 (4) `git status --porcelain` の hash のすべてが起動時と同一であること。orchestrator が `post-review-state-verify.sh` で automatic check する。
+rationale: ../skills/reviewers/references/reviewer-base-rationale.md#mutation-worktree-rationale-and-incident-history
 
 ## Reviewer Mindset
 
@@ -335,9 +305,9 @@ Before recommending a fallback (`||` default, `try/catch` swallowing, null guard
 
 ### Why Fail-Fast is the default
 
-Fallbacks hide failures. A `catch (e) { return null }` recommendation that the reviewer treats as a "safety improvement" is, in fact, the same silent-failure pattern that error-handling reviewers flag as CRITICAL. Adding a fallback without justification turns the reviewer into a co-conspirator in silent failure.
+rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-fail-fast-is-the-default
 
-The default response to a missing error path is therefore:
+The default response to a missing error path is:
 
 1. Can the operation `throw` / `raise` and propagate to the caller? → **Yes: recommend throw, not fallback.**
 2. Does the project already have an error boundary that would catch this throw and report it? → **Yes: recommend throw + verify boundary logs the error.**
@@ -375,7 +345,8 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 
 Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
 
-This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see `skills/fix/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`). It exists because low-signal findings are the dominant root cause of non-converging review-fix loops: each low-signal finding triggers a defensive fix, which in turn attracts more low-signal findings in the defensive code.
+This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see `skills/fix/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`).
+rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
 
 ### Filter categories
 
@@ -389,7 +360,7 @@ This guardrail implements Quality Signal 4 of the four review-fix loop quality s
 
 ### Why these are filtered
 
-Each category represents a finding that the reviewer **cannot confidently defend** under adversarial questioning. If asked "how did you verify this would actually fail?" the reviewer would have no evidence. Presenting these as blocking findings poisons the review-fix loop: fix cycle N addresses the symptom, fix cycle N+1 generates new bikeshedding on the added code, and the loop cannot converge on 0 findings.
+rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
 
 Filtered findings are **NOT discarded** — reviewers SHOULD list them in a separate `監査ログ` section (optional, off by default) so a human can audit what was filtered. This preserves auditability without impacting the loop.
 

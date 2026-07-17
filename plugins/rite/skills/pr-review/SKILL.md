@@ -602,8 +602,7 @@ doc_files_count = count(files matching doc_file_patterns)
 total_files_count = changedFiles
 
 # Zero-division guards (inline — both divisors must be checked before division)
-# Defensive: skip condition (changedFiles == 0) は通常 total_files_count > 0 を保証するが、
-# skip section が将来変更された場合に備えて inline ガードも残す (二重防御)
+# rationale: references/design-rationale.md#doc-heavy-detection-notes
 # 重要: 全ての early-exit 経路で {doc_heavy_pr} / {doc_heavy_pr_value} / {doc_heavy_pr_decision_summary} の 3 つを必ず set する
 if total_diff_lines == 0:
  doc_heavy_pr = false # explicit set (silent undefined 防止)
@@ -1058,7 +1057,7 @@ Analyze the diff content to determine if additional expertise is needed:
 - After all keyword detection and code block detection rules above have been applied, if exactly **1 reviewer** has been selected (any reviewer type, not limited to Prompt Engineer), automatically add Code Quality reviewer as a **co-reviewer**
 - On detection: Add Code Quality reviewer as **co-reviewer** alongside the sole reviewer
 - **Condition**: The selected reviewer count is exactly 1 after all ステップ 2.3 detection rules have been applied. If 2 or more reviewers are already selected, this guard does NOT activate
-- **Rationale**: A single reviewer has blind spots that cross-file consistency checks can miss. Adding a second perspective (Code Quality as baseline reviewer) mitigates this risk, following the same pattern as `pr-review-toolkit`'s always-on `code-reviewer`
+- **Rationale**: [design-rationale.md#reviewer-selection-notes](references/design-rationale.md#reviewer-selection-notes) 参照。
 - **Note**: If Code Quality is already the sole reviewer (selected as fallback in ステップ 3.2), this guard does not add a duplicate. The guard only applies when a non-Code-Quality reviewer is the sole selection
 
 ### 2.4 Create Reviewer Candidate List
@@ -3100,7 +3099,7 @@ trap - EXIT INT TERM HUP
 | `commit_branch_missing` | `wiki-ingest-commit.sh` が exit 2 (wiki branch 不在 / 無効) で終了 (`WIKI_INGEST_SKIPPED` flag、非ブロッキング) |
 | `commit_rc_4` | `wiki-ingest-commit.sh` が exit 4 (commit はローカルに landed したが push 失敗) で終了 (`WIKI_INGEST_PUSH_FAILED` flag、非ブロッキング)。その他の非ゼロ exit は `commit_rc_$commit_rc` 動的 reason として `WIKI_INGEST_FAILED` flag で emit される |
 
-**Position rationale**: this block sits after the review-fix loop has exited (the caller `/rite:iterate` only enters ステップ 6.5.W on `[review:mergeable]` or standalone execution). Raw sources written mid-loop would reflect unsettled review state, so the placement is intentional.
+**Position rationale**: [design-rationale.md#wiki-raw-source-placement-notes](references/design-rationale.md#wiki-raw-source-placement-notes) 参照。
 
 **Responsibility boundary**: `wiki-ingest-trigger.sh` writes a raw source file into the dev branch working tree; `wiki-ingest-commit.sh` moves that file onto the `wiki` branch and commits it. Neither involves LLM work. The subsequent LLM-driven page integration is the exclusive responsibility of `/rite:wiki-ingest`, invoked at a later, independent time.
 
@@ -3565,7 +3564,7 @@ commands:
 
 Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`), update flow state to reflect the post-review phase (defense-in-depth). これはループ継続を支える **2 層構造のうち secondary (resume 用の網)** であり、フォークコンテキストが caller に戻った後に LLM が turn を終了しても、state file に正しい `next_action` が残るため `/rite:recover` で復帰できる。
 
-継続 (`[review:fix-needed:{n}]`) の場合はさらに `--handoff "/rite:fix {pr_number}"` で **自動継続マーカー (primary)** をセットする: `Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、停止を差し戻して `/rite:fix` を再注入する (旧 prose が前提にしていた "Stop hook" が本 Issue で実装された)。終了 (`[review:mergeable]`) の場合は `--handoff "FINALIZE:review:mergeable:{pr_number}"` で **終了通知マーカー (FINALIZE handoff)** をセットする: Stop hook が prefix `FINALIZE:` を検出し、停止を差し戻して「`/rite:iterate` ステップ5 の完了通知を出力してから終えよ」と **1 回だけ** 再注入する。これにより mergeable 到達直後に完了通知を出さず停止する早期終了を構造的に防ぐ。one-shot consume のため完了通知出力後はクリーン終了する (無限 block しない)。
+継続 (`[review:fix-needed:{n}]`) の場合はさらに `--handoff "/rite:fix {pr_number}"` で **自動継続マーカー (primary)** をセットし、終了 (`[review:mergeable]`) の場合は `--handoff "FINALIZE:review:mergeable:{pr_number}"` で **終了通知マーカー (FINALIZE handoff)** をセットする。Stop hook による consume・再注入・無限 block 防止の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism)
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 

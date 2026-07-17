@@ -24,6 +24,7 @@
 - **`doc_file_patterns` 疑似コード (`i18n/**/*.md, i18n/**/*.mdx`) と bash impl `case` (`i18n/*`) の意図的範囲差**: 前者は tech-writer Activation patterns との等価性を表現するため `.md` / `.mdx` 拡張子に限定する (2 ファイル等価性の系統 1 — internal-consistency.md の Cross-Reference 参照)。後者は rite plugin self-only 判定が目的のため、翻訳ファイル (`i18n/ja.yml` 等) も含めた全拡張子・任意階層を excluded に含める。両者は別の計算経路で使われており drift しない。
 - **空配列 guard の背景**: ステップ 1.1 と 1.2.7 の files 配列の不整合 race (PR 削除 / PR が空になる / files 配列 shrink) のエッジケースで、retained flag が undefined のまま Determination block へ流れると `doc_heavy_pr_decision_summary` が意味不明な値 (NaN / undefined) になる。3 flag を明示 set してから skip すればステップ 5.4 の表示で「inconsistency 発生」として可視化される。
 - **全経路で `[CONTEXT]` を対称 emit する理由**: skip 経路のみ emit する非対称設計だと、後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) が「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存し、Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路対称 emit なら grep は常に最新行を decisive に拾える。
+- **Zero-division guard を inline に残す理由 (二重防御)**: skip condition (`changedFiles == 0`) は通常 `total_files_count > 0` を保証するが、skip section が将来変更された場合に備えて疑似コード内 inline ガードも残す。
 - **計算例**:
   - 例 1: `docs/foo.md (+50)` と `commands/bar.md (+50)` の PR → `doc_lines` = 50 (commands/ は除外)、`total_diff_lines` = 100 (両方含む)、ratio = 0.5 (< 0.6) → `doc_heavy_pr = false`
   - 例 2: `docs/foo.md (+80)` のみの PR → `doc_lines` = 80、`total_diff_lines` = 80、ratio = 1.0 → `doc_heavy_pr = true`
@@ -82,3 +83,15 @@
 
 - **Defensive layering の全体像**: (a) ステップ 4.5 reviewer template が 3-classification を要求 → (b) ステップ 5.1 collection で classification を extract (default fallback あり) → (c) ステップ 7.1 で candidates を構築 → (d) ステップ 7.2 で sentinel emit → (e) ステップ 7.7 で grep verify → (f) ステップ 8.0.2 で end-to-end gate continuity 参照。各層は個別に失敗しうるが、ステップ 7.7 は result emit 前の last-line-of-defense mechanical gate。ステップ 5/6 が abort-relevant findings を生成しても、ステップ 7.1 candidate extraction (recommendation_items) は独立しており ステップ 7.2 で user confirm が必須。
 - **dual placement (7.7 + 8.0.2) の理由**: ステップ 7.7 はステップ 7.1 → 7.2 → 7.7 の sequence で 7.7 が呼ばれた場合に 7.2 sentinel emit を verify する (procedure 内部の integrity check)。ステップ 8.0.2 はステップ 7 entire procedure (7.1-7.7) が skip された場合の最終 fallback で、`candidate_count >= 1` という trigger 条件が満たされている時点で「ステップ 7 が走るはずだった」と判定できる (ステップ 7.7 自体が呼ばれていない silent skip 経路でも catch する)。ステップ 8.0.1 W Phase gate と完全に対称的で、result-emit boundary における defense-in-depth pattern を構成する。
+
+## reviewer-selection-notes
+
+ステップ 2.3 Sole reviewer guard の設計理由。
+
+- **Sole reviewer guard の根拠**: 単一 reviewer は cross-file consistency check が見落とす blind spot を持つ。second perspective (Code Quality を baseline reviewer として追加) でこのリスクを緩和する。`pr-review-toolkit` の always-on `code-reviewer` と同じパターン。
+
+## wiki-raw-source-placement-notes
+
+ステップ 6.5.W Wiki Raw Source 生成の配置理由。
+
+- **Position rationale**: 本 block は review-fix loop 終了後に配置される (caller `/rite:iterate` は `[review:mergeable]` または standalone 実行時のみ ステップ 6.5.W に入る)。loop 途中で書かれた Raw Source は未確定な review state を反映してしまうため、この配置は意図的。

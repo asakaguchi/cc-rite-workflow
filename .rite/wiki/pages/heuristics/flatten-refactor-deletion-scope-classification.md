@@ -2,13 +2,19 @@
 title: "Flatten refactor の削除スコープは 3 軸 (歴史注釈 / 同期保守情報 / 機能 statement) で classification する"
 domain: "heuristics"
 created: "2026-05-27T00:30:00Z"
-updated: "2026-05-27T00:30:00Z"
+updated: "2026-07-17T05:40:58Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260526T175307Z-pr-1155.md"
   - type: "fixes"
     ref: "raw/fixes/20260526T180309Z-pr-1155.md"
-tags: ["refactor", "flatten", "deletion-scope", "silent-regression", "declarative-defense"]
+  - type: "reviews"
+    ref: "raw/reviews/20260717T053018Z-pr-1886.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260717T054058Z-pr-1886.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260717T053143Z-pr-1886.md"
+tags: ["refactor", "flatten", "deletion-scope", "silent-regression", "declarative-defense", "orphan-file-removal", "changelog-cross-check"]
 confidence: high
 ---
 
@@ -54,6 +60,12 @@ flatten refactor PR では、削除前に以下の 3 ステップで分類する
 2. **grep evidence check**: 削除対象が現役の SoT / 分散実装一覧 / Pattern 規範への link を含むか (`grep -rn "Reference:" / "SoT" / 分散実装` で逆検索)
 3. **functional statement check**: 削除対象が `if ! ...; then echo "WARNING" >&2; fi` のような機能 emit を含むか (= Keep)
 
+### 孤児ファイル統合削除における CHANGELOG 突合検証 (PR #1886 cycle 1-2 での evidence)
+
+「フラット化 (blockquote/コメント削除)」ではなく **孤児スクリプト2本 + reference ファイルの丸ごと削除**という別形態の deletion refactor でも、本ページと同型の Keep/削除可 classification が必要になることが実測された。削除ファイルの吸収対象を「明示的に固有と分かる節」（machine-readable な手順・コード片）だけで判断すると、CHANGELOG に「意図的な知見追加」として明記された institutional knowledge（本 PR では `git branch --list` の exit-0 gotcha 節）を見落とす — cycle 1 で tech-writer reviewer が MEDIUM で検出。cycle 1 fix で verbatim 移設して解消、cycle 2 で 3 reviewer（tech-writer / performance / error-handling）全員 0 findings に収束。
+
+**検出手法の一般化**: 本ページ既存の削除前検証ルール（git blame check / grep evidence check / functional statement check）に加え、**4 番目の検証軸として「CHANGELOG cross-check」**を追加する — 削除ファイルの全節を CHANGELOG のエントリと突合し、「意図的に追加された知見」（CHANGELOG が明示的に記録した設計判断・gotcha・回避策）が移設先を持つかを確認する。これは「明示的に固有と分かる節」判定だけでは検出できない Keep 対象を CHANGELOG という独立した SoT との突合で機械的に補足する手法であり、削除の実行時安全性（呼び出し元ゼロ・テスト green・trap 規約整合）の検証とは別軸で必要。
+
 ### 一般化
 
 - **Keep カテゴリの canonical な扱い方**: 削除でなく SoT への移管 (= [[single-sot-on-references-extract]]) によって drift-free に集約する。inline での性質再宣言は削除し、SoT への forward-pointer に置き換えるのが drift-free 経路
@@ -69,3 +81,6 @@ flatten refactor PR では、削除前に以下の 3 ステップで分類する
 
 - [PR #1155 review cycle 1 (3 reviewer 独立検出の HIGH x 3 — 削除対象 3 軸 classification 違反の同時混入)](../../raw/reviews/20260526T175307Z-pr-1155.md)
 - [PR #1155 fix cycle 1 (フラット化 PR スコープの誤適用回収、削除前検証ルール確立)](../../raw/fixes/20260526T180309Z-pr-1155.md)
+- [PR #1886 review cycle 1 (孤児スクリプト統合削除で CHANGELOG 記録済み知見の吸収漏れ、MEDIUM 1件)](../../raw/reviews/20260717T053018Z-pr-1886.md)
+- [PR #1886 review cycle 2 (verbatim 移設で解消、3 reviewer 0 findings mergeable)](../../raw/reviews/20260717T054058Z-pr-1886.md)
+- [PR #1886 fix results (CHANGELOG 突合による吸収漏れ 1 件の verbatim 移設)](../../raw/fixes/20260717T053143Z-pr-1886.md)

@@ -373,7 +373,7 @@ fi
 # --- TC-12: aggregate log line contract (no --quiet) ---
 echo ""
 echo "=== TC-12: aggregate log line exact match without --quiet (skills/lint contract) ==="
-# skills/lint/SKILL.md ステップ 3.7.1 は "==> Total reviewer-registry-drift findings: N"
+# skills/lint/SKILL.md Phase 3.5 チェック表 (Count line 列) は "==> Total reviewer-registry-drift findings: N"
 # を抽出 regex で消費する cross-component 契約。他の全 TC は --quiet を付けて実行して
 # おり文言の drift を検出できないため、本 TC だけ --quiet なしで実行し完全一致で
 # assert する（TC-3 と同じ 1 finding 固定ミューテーションを再利用）。

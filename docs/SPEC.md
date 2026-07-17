@@ -252,7 +252,6 @@ rite-workflow/
 │ ├── check-no-direct-gh-issue-create.sh # 直接 `gh issue create` 禁止の static guard
 │ ├── decompose-issues.sh # 親 + Sub-Issues 一括作成
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
-│ ├── extract-verified-review-findings.sh / measure-review-findings.sh
 │ ├── projects-status-update.sh / projects-items-fetch.sh
 │ ├── review-findings-maps.sh # fix.md severity_map build 委譲
 │ ├── review-source-resolve.sh # fix.md 1.2.0 review source Priority chain 解決
@@ -260,7 +259,7 @@ rite-workflow/
 │ ├── watchdog-status-mismatch.sh # Projects Status 不整合 watchdog
 │ └── tests/ # Script-level test suite
 └── references/ # Cross-cutting references used by skills
-  ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
+  ├── gh-cli-patterns.md / gh-cli-error-catalog.md
   ├── graphql-helpers.md / projects-integration.md
   ├── severity-levels.md / epic-detection.md
   ├── review-result-schema.md / investigation-protocol.md

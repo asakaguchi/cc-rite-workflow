@@ -8,10 +8,13 @@
 #   2. gh pr diff -- <path>  (unsupported file filter)
 #   3. != null in jq/awk  (history expansion breaks !)
 #   4. Reviewer subagent .git-write gate — enforced only in subagent contexts.
-#      Three sub-checks serving one guarantee (no writes into a .git directory):
+#      Four sub-checks serving one guarantee (no writes into a .git directory):
 #        (L) oversized command → deny (timeout-based bypass prevention)
 #        (Z) shell-command wrapper (eval / sh -c / ...) → deny (opaque quoting
 #            can hide a .git write)
+#        (N) native .git-writing git subcommand (config write forms / mutating
+#            remote / update-ref / symbolic-ref) → deny (writes .git/config or
+#            .git refs with no redirect or file verb for (H) to see)
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
 #
 # Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
@@ -242,8 +245,8 @@ fi
 # Scope: only when IS_SUBAGENT=1. Main-session operations are never affected.
 # This block does NOT enumerate working-tree-mutating git verbs (Issue #1879) —
 # see the header. It holds one machine guarantee (no writes into .git) via the
-# (Z) wrapper check and the (H) write detection below, inside a fail-CLOSED
-# trap region.
+# (Z) wrapper check, the (N) native-subcommand gate, and the (H) write
+# detection below, inside a fail-CLOSED trap region.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   trap '_rite_btg_pattern4_fail_closed' ERR
   # Test-only fault injection for the fail-CLOSED region (no effect in
@@ -302,6 +305,104 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       BLOCKED_ALTERNATIVE="For a read-only probe, drop the wrapper: run the command directly, group multiple commands in a subshell '( cmd1; cmd2 )', or put them in a file and run 'bash <script.sh>'. If this block fires on a main session (not a reviewer subagent), check whether CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE env vars are accidentally set; recover with: unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE"
       ;;
   esac
+
+  # --- (N) Native .git-writing git subcommands ---
+  # `git config <key> <value>` / mutating `git remote` / `git update-ref` /
+  # `git symbolic-ref` write .git/config or .git refs directly — no shell
+  # redirect and no file-mutating verb, so (H) cannot see them. `git config
+  # core.hooksPath / core.fsmonitor / alias.*=!cmd` (and the inline `git -c
+  # core.hooksPath=… <cmd>` form, which needs NO config subcommand) is the exact
+  # RCE vector the header invariant names, so the write forms keep a machine
+  # gate. This is a FIXED closed set whose only write target is .git itself — a
+  # .git-write gate, NOT a revival of the working-tree verb enumeration
+  # (Issue #1879 removed working-tree verbs; these were never in that class:
+  # .git/config writes are invisible to `git status` and Layer 3 has no
+  # config/ref axis, so Layer 1 would be the sole backstop without this gate).
+  #
+  # Global-flag normalization is REQUIRED, not optional: `git -C x config …` /
+  # `git --git-dir=x config …` place the subcommand after a flag, and `git -c
+  # key=val <cmd>` injects config with no subcommand at all — both bypass a naive
+  # "subcommand right after git" match. The removed (A)-(G) code normalized
+  # global flags for exactly this reason; dropping it would ship a WEAKER gate
+  # than pre-PR. The token loop below strips leading git global flags so the
+  # subcommand surfaces, and denies any inline `-c` / `--config-env` (a reviewer
+  # never needs to SET config — "値を設定する git config は一律 deny").
+  #
+  # `git config` read forms stay allowed via a small allow-list (--list / -l /
+  # --get / --get-all / --get-regexp); every other form denies — no strict
+  # option parsing (an exotic mis-denied read form is rare and recoverable via
+  # the deny message; strict parsing would re-open the static-parse churn this
+  # hook just removed).
+  #
+  # RESIDUAL (out of scope for a static matcher — Layer 1 backstop ONLY, same
+  # class as the (H) SCOPE limitations): env-var config indirection
+  # (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, `GIT_DIR`),
+  # `--config-env=<key>=<envvar>` chained through an env var, aliases already
+  # persisted in .git/config, and rare space-separated plumbing flags
+  # (`--super-prefix x`) that consume the following token.
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    # noglob for the unquoted `for … in $CMD_NORMALIZED` tokenizer (same reason
+    # as the (H) loop: an un-noglobbed `*` token would pathname-expand against
+    # the hook CWD → over-DENY / timeout). Save/restore the prior state.
+    case $- in *f*) _gn_noglob_was_set=1 ;; *) _gn_noglob_was_set=0 ;; esac
+    set -f
+    _gn_norm=""           # command rebuilt with git global flags stripped
+    _gn_after_git=0       # 1 = inside a `git …`, still scanning leading global flags
+    _gn_skip_arg=0        # 1 = drop this token (an arg-taking global flag's value)
+    _gn_inline_config=0   # 1 = saw `git -c …` / `--config-env` (inline config write)
+    for _gn_tok in $CMD_NORMALIZED; do
+      # dequote the way the shell does before the flag/subcommand is interpreted.
+      _gn_t="${_gn_tok//[\"\']/}"; _gn_t="${_gn_t//\\/}"
+      if [ "$_gn_skip_arg" = "1" ]; then _gn_skip_arg=0; continue; fi
+      if [ "$_gn_after_git" = "1" ]; then
+        case "$_gn_t" in
+          -c|-c*|--config-env|--config-env=*)
+            _gn_inline_config=1; _gn_after_git=0; continue ;;
+          -C|--git-dir|--work-tree|--namespace)
+            _gn_skip_arg=1; continue ;;   # arg-taking global flag: also drop its value
+          -*)
+            continue ;;                    # self-contained / =-form / boolean global flag
+          *)
+            _gn_after_git=0; _gn_norm="$_gn_norm $_gn_t" ;;  # subcommand surfaced
+        esac
+        continue
+      fi
+      _gn_norm="$_gn_norm $_gn_tok"
+      if [ "$_gn_t" = "git" ]; then _gn_after_git=1; fi
+    done
+    [ "$_gn_noglob_was_set" = "1" ] || set +f
+    _gn_padded=" $_gn_norm "
+
+    _gn_hit=""
+    if [ "$_gn_inline_config" = "1" ]; then
+      _gn_hit="git inline config (-c / --config-env)"
+    else
+      case "$_gn_padded" in
+        *" git update-ref "*) _gn_hit="git update-ref" ;;
+        *" git symbolic-ref "*) _gn_hit="git symbolic-ref" ;;
+        *" git remote add "*|*" git remote remove "*|*" git remote rm "*|\
+        *" git remote set-url "*|*" git remote rename "*|*" git remote set-head "*|\
+        *" git remote set-branches "*|*" git remote prune "*)
+          _gn_hit="git remote (mutating sub-action)" ;;
+      esac
+      if [ -z "$_gn_hit" ]; then
+        case "$_gn_padded" in
+          *" git config "*)
+            case "$_gn_padded" in
+              *" git config --list "*|*" git config -l "*|*" git config --get "*|\
+              *" git config --get-all "*|*" git config --get-regexp "*) : ;;
+              *) _gn_hit="git config (non-read form)" ;;
+            esac
+            ;;
+        esac
+      fi
+    fi
+    if [ -n "$_gn_hit" ]; then
+      BLOCKED_PATTERN="reviewer-gitdir-write"
+      BLOCKED_REASON="Reviewer subagents must not WRITE into Git internals via native git subcommands. This command uses ${_gn_hit}, which writes .git/config or .git refs directly (or injects config inline) — no redirect or file-mutating verb involved, so the redirect/file-verb write detection cannot see it. Planting 'git config core.hooksPath / core.fsmonitor / alias.*=!cmd' (or 'git -c core.hooksPath=… <cmd>') executes arbitrary code in the non-sandboxed main session on the next git operation, and .git/config is invisible to 'git status' (no Layer 3 axis covers it). This is a fixed .git-write gate (config write forms incl. inline -c / mutating remote / update-ref / symbolic-ref, global-flag-normalized), not a working-tree verb denylist (Issue #1879)."
+      BLOCKED_ALTERNATIVE="Read-only inspection stays allowed: 'git config --list', 'git config --get <key>', 'cat .git/config', 'git rev-parse --symbolic-full-name HEAD', 'git remote -v', 'git ls-remote'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
+    fi
+  fi
 
   # --- (H) reviewer WRITE into a .git directory (redirect / file-mutating verb) ---
   # pre-tool-edit-guard.sh blocks the Edit/Write path into a parent .git; this

@@ -463,10 +463,13 @@ for verb_cmd in \
   "git fetch --prune origin" \
   "git tag -a v1.0 -m 'release'" \
   "git reflog expire --all --expire=now" \
-  "git update-ref refs/heads/foo abc1234" \
   ; do
   assert_subagent_allow "subagent '$verb_cmd' allowed (verb denylist removed)" "$verb_cmd"
 done
+# NOTE: git update-ref / symbolic-ref / config-write / mutating-remote are NOT in
+# this allow set — they write .git directly and are denied by sub-block (N),
+# pinned in TC-127 below. They were never working-tree verbs (Issue #1879 removed
+# working-tree verbs; .git-write is the retained gate).
 echo ""
 
 # --------------------------------------------------------------------------
@@ -1370,6 +1373,83 @@ else
   fail "TC-125-ALLOW-noglob setup: cd into temp dir failed"
 fi
 rm -rf "$tc125_noglob_dir"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-127: reviewer native .git-writing git subcommands (sub-block (N), #1879)
+# `git config <key> <value>` / mutating `git remote` / `git update-ref` /
+# `git symbolic-ref` write .git/config or .git refs directly — no redirect and
+# no file verb, so (H) cannot see them. `git config core.hooksPath` is the exact
+# RCE vector the header invariant names. These four subcommands were folded into
+# the removed (A) always-deny block; sub-block (N) restores a machine gate for
+# just their .git-write forms. Read forms of `git config` stay allowed.
+# --------------------------------------------------------------------------
+echo "TC-127a: subagent git config core.hooksPath (RCE vector) → deny"
+assert_subagent_deny_gitdir "git config core.hooksPath blocked" "git config core.hooksPath /tmp/evil-hooks"
+
+echo "TC-127b: subagent git config core.fsmonitor → deny"
+assert_subagent_deny_gitdir "git config core.fsmonitor blocked" "git config core.fsmonitor /tmp/evil.sh"
+
+echo "TC-127c: subagent git config alias.*=!cmd → deny"
+assert_subagent_deny_gitdir "git config alias write blocked" "git config alias.x '!sh -c evil'"
+
+echo "TC-127d: subagent git update-ref → deny"
+assert_subagent_deny_gitdir "git update-ref blocked" "git update-ref refs/heads/foo abc1234"
+
+echo "TC-127e: subagent git symbolic-ref → deny"
+assert_subagent_deny_gitdir "git symbolic-ref blocked" "git symbolic-ref HEAD refs/heads/foo"
+
+echo "TC-127f: subagent git remote set-url → deny"
+assert_subagent_deny_gitdir "git remote set-url blocked" "git remote set-url origin https://evil.example/x"
+
+echo "TC-127g: subagent git remote add → deny"
+assert_subagent_deny_gitdir "git remote add blocked" "git remote add evil https://evil.example/x"
+
+# Global-flag-prefix bypass: the subcommand does not sit right after `git`. These
+# would slip a naive substring match (the removed (A)-(G) code normalized global
+# flags for exactly this). (N) strips leading global flags so the subcommand
+# surfaces, and denies inline `-c` config injection (no subcommand needed).
+echo "TC-127h: subagent git -C . config core.hooksPath (flag prefix) → deny"
+assert_subagent_deny_gitdir "git -C . config core.hooksPath blocked" "git -C . config core.hooksPath /tmp/evil"
+
+echo "TC-127i: subagent git --git-dir=./.git config core.hooksPath → deny"
+assert_subagent_deny_gitdir "git --git-dir config write blocked" "git --git-dir=./.git config core.hooksPath /tmp/evil"
+
+echo "TC-127j: subagent git -c core.hooksPath=… <cmd> (inline config, no subcommand) → deny"
+assert_subagent_deny_gitdir "git -c core.hooksPath inline blocked" "git -c core.hooksPath=/tmp/evil status"
+
+echo "TC-127k: subagent git -c alias.x=!cmd log (inline alias) → deny"
+assert_subagent_deny_gitdir "git -c alias inline blocked" "git -c alias.x='!sh -c evil' log"
+
+echo "TC-127l: subagent git --work-tree=/x update-ref (flag prefix) → deny"
+assert_subagent_deny_gitdir "git --work-tree update-ref blocked" "git --work-tree=/tmp update-ref refs/heads/foo abc1234"
+
+echo "TC-127m: subagent git -C. config core.hooksPath (glued -C, self-contained) → deny"
+assert_subagent_deny_gitdir "git -C. config core.hooksPath blocked" "git -C. config core.hooksPath /tmp/evil"
+
+echo "TC-127-ALLOW-a: subagent git config --list (read) → allow"
+assert_subagent_allow "git config --list allowed" "git config --list"
+
+echo "TC-127-ALLOW-b: subagent git config --get (read) → allow"
+assert_subagent_allow "git config --get allowed" "git config --get core.editor"
+
+echo "TC-127-ALLOW-c: subagent git config --get-regexp (read) → allow"
+assert_subagent_allow "git config --get-regexp allowed" "git config --get-regexp '^alias'"
+
+echo "TC-127-ALLOW-d: subagent git remote -v (read) → allow"
+assert_subagent_allow "git remote -v allowed" "git remote -v"
+
+echo "TC-127-ALLOW-e: subagent git symbolic-ref read form → allow"
+assert_subagent_allow "git rev-parse symbolic-ref read allowed" "git rev-parse --symbolic-full-name HEAD"
+
+echo "TC-127-ALLOW-e2: subagent git -C . config --list (flag prefix + read) → allow (normalization keeps reads)"
+assert_subagent_allow "git -C . config --list allowed" "git -C . config --list"
+
+echo "TC-127-ALLOW-e3: subagent git -C . status (flag prefix, non-dangerous subcommand) → allow"
+assert_subagent_allow "git -C . status allowed" "git -C . status"
+
+echo "TC-127-ALLOW-f: MAIN session git config core.hooksPath → allow (reviewer-only gate)"
+assert_main_allow "main-session git config write not blocked by (N)" "git config core.hooksPath /tmp/x"
 echo ""
 
 # --------------------------------------------------------------------------

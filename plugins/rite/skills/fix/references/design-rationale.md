@@ -99,6 +99,7 @@ caller の `exit 1` 直前に emit が必要になる。
 **2-state commit pattern (`blockA_committed` / `handoff_committed`)**: Block A/C は同型の 2-state commit フラグで trap cleanup 対象を切り替える (trap + cleanup パターンの canonical 説明は [bash-trap-patterns.md#signal-specific-trap-template](../../../references/bash-trap-patterns.md#signal-specific-trap-template))。
 
 - **Block A (`blockA_committed`)**: `0` (初期値) = 書き出し前/中の exit で raw_json + intermediate 3 ファイルを全削除 (orphan 防止)。`1` (全書き出し成功後) = raw_json と intermediate を保護し、err files のみ削除。
+- **Block B**: 新規 output を持たないため commit flag を持たない。validation 失敗時は upstream (raw_json + intermediate 3 ファイル) を `_rite_fix_blockB_invalidate_upstream` で明示的に rm する。
 - **Block C (`handoff_committed`)**: `0` (初期値) = 書き出し前/中の exit で handoff 3 ファイルも削除 (orphan 防止)。`1` (全書き出し + post-condition pass 後) = handoff 3 ファイルを保護。raw_json + intermediate 3 ファイル (合計 4) は成功/失敗問わず常に削除する (後続 phase では使わない)。
 
 ## interpretation-priority

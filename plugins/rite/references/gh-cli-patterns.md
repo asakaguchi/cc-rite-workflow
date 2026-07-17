@@ -463,6 +463,52 @@ gh pr diff {pr_number} | awk '
 
 ---
 
+## gh pr diff Constraints
+
+`gh pr diff` が対応していないフラグ（silent failure / error になる）と、その安全な代替:
+
+```bash
+# Full diff
+gh pr diff {pr_number}
+
+# File list only
+gh pr diff {pr_number} --name-only
+
+# 🚫 PROHIBITED: gh pr diff does NOT support -- <files> for per-file filtering
+gh pr diff {pr_number} -- path/to/file.md
+# → Silently fails or returns unexpected results
+
+# 🚫 PROHIBITED: gh pr diff does NOT support --stat
+gh pr diff {pr_number} --stat
+# → Error: unknown flag: --stat
+# → Use gh pr view --json files to get per-file additions/deletions instead
+```
+
+Per-file の diff 抽出は上記「awk Negation Patterns」の reset ロジック（`^diff --git` ヘッダごとに `found=0`、対象パターンで `found=1`）を使う。
+
+## Multi-line gh pr create (Canonical Form)
+
+`gh pr create` の複数行形式の正典はバックスラッシュ継続。`hooks/scripts/bash-heaviness-check.sh` の literal-title check は、この形式の継続行を跨いで論理行が終わるまで検査を維持する（インライン特殊文字 title による malformed tool-call の検出のため）:
+
+```bash
+# ✅ SAFE: --body-file + backslash continuation
+# Note: Fixed string HEREDOC guarantees non-empty content at write time, so empty check (defense layer 2) is omitted. Always add empty check for dynamic generation.
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+cat <<'BODY_EOF' > "$tmpfile"
+初期実装
+BODY_EOF
+
+gh pr create \
+  --title "{title}" \
+  --body-file "$tmpfile" \
+  --base "{base_branch}" \
+  --draft
+```
+
+---
+
 ## Work Memory Update Safety Patterns
 
 > **🚫 MANDATORY RULE**: 作業メモリ（`📜 rite 作業メモリ`）の更新時は、以下の安全パターンを必ず適用すること。
@@ -566,8 +612,6 @@ jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
 ---
 
 ## Extended References
-
-For detailed command reference, see: [`gh-cli-commands.md`](./gh-cli-commands.md)
 
 For error pattern catalog, see: [`gh-cli-error-catalog.md`](./gh-cli-error-catalog.md)
 

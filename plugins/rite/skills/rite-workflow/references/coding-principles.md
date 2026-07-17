@@ -173,7 +173,7 @@ OK patterns:
 **Where to Apply**:
 - `plugins/rite/skills/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
 
-**Mechanical enforcement**: 上記 Rules は `/rite:lint` Phase 3.5 (`hooks/scripts/bash-heaviness-check.sh`) が `plugins/rite/skills/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
+**Mechanical enforcement**: 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `plugins/rite/skills/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
 
 | シグナル | 判定 | 対応 Rule |
 |---------|------|----------|

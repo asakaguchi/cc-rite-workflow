@@ -273,6 +273,7 @@ rite-workflow/
   ├── box-display-width.md # 罫線 box の表示幅ルール (SoT)
   ├── session-id-validation-contract.md # Session ID validation contract (SoT)
   ├── state-read-evolution.md # state-read.sh の変遷史 (rationale 保存)
+  ├── stop-loop-continuation-contract.md # Stop hook handoff 機構の解説 SoT (iterate/pr-review/fix/cleanup/ready から参照)
   └── bottleneck-detection.md
   # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
   # en.yml, and the ja/ + en/ split files) were deleted entirely —

@@ -87,6 +87,21 @@ caller の `exit 1` 直前に emit が必要になる。
 - **Block C の raw_json 存在 check**: Block B validation 失敗経路で invalidate される対象のため、Block C 進入時に存在していれば Block A/B 正常完了の defense-in-depth な確認になる (Block B EXIT trap 非 0 exit 経路との二重防御)。
 - **Fast Path 一時ファイルの多段 cleanup (ステップ 1.4 cancel / 1.5 / Cancel-Rerun 経路) が重複している理由**: Block C の trap が常に削除するが、Block A/B 成功後に orchestrator が異常終了して Block C 未到達の経路でも orphan を残さないための defense-in-depth。`rm -f` は idempotent なので二重削除でも副作用なし。
 
+**Fast Path の一時ファイル構成 (Block A outputs)**: Block A は 4 ファイルを書き出し、後続 Block B/C が一時ファイル経由で読み出す:
+
+- `raw_json`: gh api レスポンス全体 (Block B が `.issue_url` を再抽出、Block C は不使用)
+- `intermediate_body`: `jq .body` の抽出結果 (Block C が final `body_file` にコピー)
+- `intermediate_author`: `jq .user.login` の抽出結果 (Block C が final `author_file` にコピー)
+- `intermediate_skip`: `target_author_mention_skip` の計算結果 (Block C が final `skip_file` にコピー)
+
+**用語「intermediate」**: body/author/skip の 3 ファイルを指す。`raw_json` は別カテゴリ (intermediate 3 + raw_json = 合計 4 ファイル)。
+
+**2-state commit pattern (`blockA_committed` / `handoff_committed`)**: Block A/C は同型の 2-state commit フラグで trap cleanup 対象を切り替える (trap + cleanup パターンの canonical 説明は [bash-trap-patterns.md#signal-specific-trap-template](../../../references/bash-trap-patterns.md#signal-specific-trap-template))。
+
+- **Block A (`blockA_committed`)**: `0` (初期値) = 書き出し前/中の exit で raw_json + intermediate 3 ファイルを全削除 (orphan 防止)。`1` (全書き出し成功後) = raw_json と intermediate を保護し、err files のみ削除。
+- **Block B**: 新規 output を持たないため commit flag を持たない。validation 失敗時は upstream (raw_json + intermediate 3 ファイル) を `_rite_fix_blockB_invalidate_upstream` で明示的に rm する。
+- **Block C (`handoff_committed`)**: `0` (初期値) = 書き出し前/中の exit で handoff 3 ファイルも削除 (orphan 防止)。`1` (全書き出し + post-condition pass 後) = handoff 3 ファイルを保護。raw_json + intermediate 3 ファイル (合計 4) は成功/失敗問わず常に削除する (後続 phase では使わない)。
+
 ## interpretation-priority
 
 ステップ 1.2 best-effort parse の応答解釈 (Step A/B/C) の設計理由。
@@ -99,6 +114,7 @@ caller の `exit 1` 直前に emit が必要になる。
 
 - **`touch` ではなく `: > {path}` で truncate する理由**: `touch` は POSIX 仕様上既存ファイルを truncate しない ([POSIX touch(1p)](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/touch.html) — 既存ファイルには `utimensat()` のみで content は変更されない) ため、前セッションの stale データに追記してしまう silent regression の原因になる。
 - **`wc -l` の stderr を独立退避する理由**: `2>/dev/null` だと read permission 拒否 / inode 破損 / ファイル内容破壊などの IO エラーで silent に空文字列 → count=0 に落ちて、policy override の監査トレースが完成報告から silent drop する。
+- **exit 時に confidence_override / pr-comment tempfile を明示的に rm する理由 (defense-in-depth)**: ステップ 1.2 進入時の無条件 truncate (`: >`) に削除を委ねると、何らかの経路で truncate 呼び出しが skip された場合に前セッションの stale データが混入する silent regression が起きる。ステップ 5.1 (E2E) / ステップ 5.2 (Standalone) の終了経路で specific path による明示 rm を行い、次回実行時の混入を決定論的に防ぐ。
 
 ## impact-scan-rationale
 

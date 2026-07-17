@@ -1427,6 +1427,46 @@ assert_subagent_deny_gitdir "git --work-tree update-ref blocked" "git --work-tre
 echo "TC-127m: subagent git -C. config core.hooksPath (glued -C, self-contained) → deny"
 assert_subagent_deny_gitdir "git -C. config core.hooksPath blocked" "git -C. config core.hooksPath /tmp/evil"
 
+# Path / quoted / backslashed git-binary invocation: (N) must normalize the
+# invocation token to bare `git` so the subcommand surfaces. Without this,
+# `/usr/bin/git config core.hooksPath` slips the gate (bare-`git`-only check),
+# and `\git` / `"git"` keep their decoration on the config-match path.
+echo "TC-127n: subagent /usr/bin/git config core.hooksPath (abspath invocation) → deny"
+assert_subagent_deny_gitdir "abspath git config write blocked" "/usr/bin/git config core.hooksPath /tmp/evil"
+
+echo "TC-127o: subagent ./git config core.hooksPath (relative-path invocation) → deny"
+assert_subagent_deny_gitdir "relpath git config write blocked" "./git config core.hooksPath /tmp/evil"
+
+echo "TC-127p: subagent \\git config core.hooksPath (leading-backslash invocation) → deny"
+assert_subagent_deny_gitdir "backslash git config write blocked" "\\git config core.hooksPath /tmp/evil"
+
+echo "TC-127q: subagent /usr/bin/git update-ref (abspath) → deny"
+assert_subagent_deny_gitdir "abspath git update-ref blocked" "/usr/bin/git update-ref refs/heads/foo abc1234"
+
+# Quoted / backslashed git remote sub-action: the sub-action token must be
+# dequoted before the ` git remote <action> ` match, else `git remote "add"`
+# writes .git/config unblocked.
+echo "TC-127r: subagent git remote \"add\" (quoted sub-action) → deny"
+assert_subagent_deny_gitdir "quoted remote add blocked" "git remote \"add\" evil https://evil.example/x"
+
+echo "TC-127s: subagent git remote se\"t-url\" (interior-quoted sub-action) → deny"
+assert_subagent_deny_gitdir "interior-quoted remote set-url blocked" "git remote se\"t-url\" origin https://evil.example/x"
+
+echo "TC-127t: subagent git remote a\\dd (backslash sub-action) → deny"
+assert_subagent_deny_gitdir "backslash remote add blocked" "git remote a\\dd evil https://evil.example/x"
+
+# Inline config injection via --config-env (sibling of -c; deny message names both).
+echo "TC-127u: subagent git --config-env=core.hooksPath=EV (inline, =form) → deny"
+assert_subagent_deny_gitdir "--config-env= inline blocked" "git --config-env=core.hooksPath=EVILVAR status"
+
+echo "TC-127v: subagent git --config-env core.hooksPath=EV (inline, space form) → deny"
+assert_subagent_deny_gitdir "--config-env space inline blocked" "git --config-env core.hooksPath=EVILVAR status"
+
+# --attr-source consumes a following token (space form); it must not let the
+# subcommand escape detection.
+echo "TC-127w: subagent git --attr-source tree config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--attr-source space + config write blocked" "git --attr-source tree config core.hooksPath /tmp/evil"
+
 echo "TC-127-ALLOW-a: subagent git config --list (read) → allow"
 assert_subagent_allow "git config --list allowed" "git config --list"
 
@@ -1439,14 +1479,26 @@ assert_subagent_allow "git config --get-regexp allowed" "git config --get-regexp
 echo "TC-127-ALLOW-d: subagent git remote -v (read) → allow"
 assert_subagent_allow "git remote -v allowed" "git remote -v"
 
-echo "TC-127-ALLOW-e: subagent git symbolic-ref read form → allow"
-assert_subagent_allow "git rev-parse symbolic-ref read allowed" "git rev-parse --symbolic-full-name HEAD"
+# NOTE: `git symbolic-ref HEAD` (a READ) is over-blocked by (N) — symbolic-ref
+# has no read allow-list carve-out (unlike `git config`). That over-block is
+# pre-existing (the removed (A) block also denied `symbolic-ref`) and accepted
+# (recoverable via the deny message); the read alternative (rev-parse) is what
+# stays allowed. Do NOT add a symbolic-ref read carve-out — that would change
+# pre-existing behavior. TC-127x below pins the accepted read-side over-block.
+echo "TC-127x: subagent git symbolic-ref HEAD (READ, over-blocked — accepted tradeoff) → deny"
+assert_subagent_deny_gitdir "git symbolic-ref read over-blocked (accepted)" "git symbolic-ref HEAD"
+
+echo "TC-127-ALLOW-e: subagent git rev-parse --symbolic-full-name (symbolic-ref read alternative) → allow"
+assert_subagent_allow "git rev-parse --symbolic-full-name read allowed" "git rev-parse --symbolic-full-name HEAD"
 
 echo "TC-127-ALLOW-e2: subagent git -C . config --list (flag prefix + read) → allow (normalization keeps reads)"
 assert_subagent_allow "git -C . config --list allowed" "git -C . config --list"
 
 echo "TC-127-ALLOW-e3: subagent git -C . status (flag prefix, non-dangerous subcommand) → allow"
 assert_subagent_allow "git -C . status allowed" "git -C . status"
+
+echo "TC-127-ALLOW-e4: subagent /usr/bin/git status (abspath invocation, non-dangerous) → allow (normalization keeps reads)"
+assert_subagent_allow "/usr/bin/git status allowed" "/usr/bin/git status"
 
 echo "TC-127-ALLOW-f: MAIN session git config core.hooksPath → allow (reviewer-only gate)"
 assert_main_allow "main-session git config write not blocked by (N)" "git config core.hooksPath /tmp/x"

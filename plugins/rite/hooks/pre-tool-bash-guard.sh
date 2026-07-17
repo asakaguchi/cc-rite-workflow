@@ -334,12 +334,15 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # the deny message; strict parsing would re-open the static-parse churn this
   # hook just removed).
   #
-  # RESIDUAL (out of scope for a static matcher — Layer 1 backstop ONLY, same
-  # class as the (H) SCOPE limitations): env-var config indirection
+  # RESIDUAL (genuinely un-catchable by a static matcher — Layer 1 backstop
+  # ONLY, same class as the (H) SCOPE limitations): env-var config indirection
   # (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, `GIT_DIR`),
-  # `--config-env=<key>=<envvar>` chained through an env var, aliases already
-  # persisted in .git/config, and rare space-separated plumbing flags
-  # (`--super-prefix x`) that consume the following token.
+  # `--config-env=<key>=<envvar>` chained through an env var (the flag itself is
+  # denied above, but the value it names lives in the environment), and aliases
+  # already persisted in .git/config. Runtime-resolved subcommand/flag tokens
+  # (`$VAR`/`$(cmd)`) are already collapsed to spaces upstream. NOT residual —
+  # handled above: path/quoted/backslashed git invocations and all known
+  # separate-arg global flags.
   if [ -z "$BLOCKED_PATTERN" ]; then
     # noglob for the unquoted `for … in $CMD_NORMALIZED` tokenizer (same reason
     # as the (H) loop: an un-noglobbed `*` token would pathname-expand against
@@ -358,8 +361,14 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
         case "$_gn_t" in
           -c|-c*|--config-env|--config-env=*)
             _gn_inline_config=1; _gn_after_git=0; continue ;;
-          -C|--git-dir|--work-tree|--namespace)
-            _gn_skip_arg=1; continue ;;   # arg-taking global flag: also drop its value
+          -C|--git-dir|--work-tree|--namespace|--attr-source|--super-prefix)
+            _gn_skip_arg=1; continue ;;   # arg-taking global flag: also drop its
+                                          # space-separated value so the value
+                                          # cannot absorb the subcommand slot.
+                                          # Complete set of separate-arg global
+                                          # flags (with -c handled by the inline
+                                          # branch above, and =-forms caught by
+                                          # -*) below).
           -*)
             continue ;;                    # self-contained / =-form / boolean global flag
           *)
@@ -367,8 +376,23 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
         esac
         continue
       fi
-      _gn_norm="$_gn_norm $_gn_tok"
-      if [ "$_gn_t" = "git" ]; then _gn_after_git=1; fi
+      # Append the DEQUOTED token, and normalize any git-binary invocation
+      # (bare / path / quoted / backslashed) to a bare `git` so the subcommand
+      # surfaces after ` git `. Appending raw `$_gn_tok` here (the pre-fix bug)
+      # left quotes/backslashes on the git token and on quoted `git remote
+      # <sub-action>` args, and a bare-`git`-only invocation check let
+      # `/usr/bin/git` / `./git` slip the gate entirely — the removed (A)-(G)
+      # code normalized these for exactly this reason.
+      # `*/git` matches any token ending in `/git` (`/usr/bin/git`, `./git`), so
+      # a non-invocation token like `cp /x/git config` also normalizes and can
+      # over-DENY a later `config` READ. Fail-closed and rare — same accepted
+      # tradeoff as the (H) quoted-string false-matches documented above.
+      case "$_gn_t" in
+        git|*/git)
+          _gn_norm="$_gn_norm git"; _gn_after_git=1 ;;
+        *)
+          _gn_norm="$_gn_norm $_gn_t" ;;
+      esac
     done
     [ "$_gn_noglob_was_set" = "1" ] || set +f
     _gn_padded=" $_gn_norm "

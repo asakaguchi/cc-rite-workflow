@@ -306,6 +306,13 @@ ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {prin
 [ -n "$ms_base" ] || ms_base=".rite/worktrees"
 flow_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || flow_wt=""
 cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
+# main checkout の絶対パスを削除前に確保する（Issue #1885）。worktree 自己削除後は
+# harness の cwd 追跡のみが main へ移り、この Bash 永続シェルの cwd は削除済み
+# worktree に残るため、ステップ 4 の base 更新はこの main_root へ明示的に cd して
+# 実行する必要がある。`git worktree list --porcelain` の先頭 worktree entry は
+# 常に main checkout（git の仕様上保証）なので、削除がまだ起きていないこの時点で
+# 取得すれば cwd の状態に関わらず正しい値が取れる。
+main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}') || main_root=""
 # 検出は helper に委譲する（#1622）。flow-state 未記録（flow_wt 空）でも、物理 cwd が当該
 # Issue の rite セッション worktree（<worktree_base leaf>/issue-{issue_number}）なら
 # in_worktree_unrecorded を返し worktree= に cur_top を導出する。これにより「物理的に
@@ -319,10 +326,10 @@ flow_wt=${detect##*worktree=}
 case "$cleanup_wt" in
   in_worktree|in_worktree_unrecorded)
     dirty=$(git status --porcelain 2>/dev/null)
-    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no)"
+    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no); main_root=$main_root"
     ;;
   *)
-    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt"
+    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; main_root=$main_root"
     ;;
 esac
 ```
@@ -361,14 +368,29 @@ esac
 
 main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#main-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
 
+main_root への cd は worktree 自己削除後の cwd 破損対策（Issue #1885）。この Bash 永続シェルの cwd が
+4-W の worktree 削除で無効化されていても、4-W が削除前に確保した main checkout の絶対パスへ明示的に
+cd することで本ステップ以降を正しい場所で実行する（`{main_root}` は 4-W の `[CONTEXT] ... main_root=`
+marker の値）。cd はこの Bash 呼び出しの永続シェル cwd を変更するため、ステップ 5 以降も同じ main_root
+上で実行される（順序契約 4-W→5 自体は変更しない）:
+
 ```bash
+main_root="{main_root}"
+if [ -z "$main_root" ] || ! cd "$main_root" 2>/dev/null; then
+  echo "WARNING: main checkout ルート（${main_root:-<未解決>}）が解決できないか、そこへ cd できませんでした。base 更新を skip します。" >&2
+  echo "[CONTEXT] BASE_UPDATE=main_root_unresolved"
+else
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
 if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
   n=0; until git fetch origin {base_branch} 2>/dev/null && git merge --ff-only origin/{base_branch} 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && { echo "WARNING: base 更新 (git fetch + git merge --ff-only origin/{base_branch}) が失敗しました (index.lock 競合 / fast-forward 不可 / コンフリクトの可能性)。git status で確認してください。" >&2; break; }; sleep 1; done
-  # retry break 後の成否検証 (Issue #1832): 失敗を silent に放置せず復旧分岐へ routing する。
-  # 典型例は「PR マージ済み内容と同じファイルの未コミット変更が残存し ff-only が上書き拒否する」ケース
-  if [ "$(git rev-parse HEAD 2>/dev/null)" = "$(git rev-parse origin/{base_branch} 2>/dev/null)" ]; then
+  # retry break 後の成否検証 (Issue #1832 / #1885): 失敗を silent に放置せず復旧分岐へ routing する。
+  # rev-parse の exit code と非空性を明示チェックする — cwd 破損下では両辺が揃って空文字列を返し
+  # 得るため、文字列の等値比較だけでは偽陽性 ok を防げない (#1885)。main_root への cd 済みなのでこの
+  # 経路では通常発生しないが、cd 後に main checkout 自体が壊れる等の想定外ケースへの防御線として残す。
+  _head_rev=$(git rev-parse HEAD 2>/dev/null); _head_rc=$?
+  _base_rev=$(git rev-parse "origin/{base_branch}" 2>/dev/null); _base_rc=$?
+  if [ "$_head_rc" -eq 0 ] && [ "$_base_rc" -eq 0 ] && [ -n "$_head_rev" ] && [ "$_head_rev" = "$_base_rev" ]; then
     echo "[CONTEXT] BASE_UPDATE=ok"
   else
     _bu_dirty=$(git status --porcelain 2>/dev/null) || _bu_dirty=""
@@ -412,13 +434,15 @@ else
   echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
   echo "[CONTEXT] BASE_UPDATE=skipped_not_on_base"
 fi
+fi
 ```
 
-`BASE_UPDATE` marker で分岐する（Issue #1832。破棄・stash は必ずユーザー確認を挟み、無確認の破壊的操作をしない。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
+`BASE_UPDATE` marker で分岐する（Issue #1832 / #1885。破棄・stash は必ずユーザー確認を挟み、無確認の破壊的操作をしない。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
 
 | `BASE_UPDATE` | アクション |
 |---|---|
 | `ok` / `skipped_not_on_base` | 従来どおり後続へ（`skipped_not_on_base` は既存 WARNING の可視化のみ） |
+| `main_root_unresolved` | main checkout の絶対パスが未解決、またはそこへの `cd` に失敗（Issue #1885。worktree 自己削除後の cwd 破損等）。既存 WARNING どおり非ブロッキングで後続へ進む。`ok` は出力しない |
 | `ff_failed_clean` | 未コミット変更なしの ff 失敗（履歴 diverge / index.lock 恒常化等）。既存 WARNING どおり `git status` 確認を案内し、非ブロッキングで後続へ |
 | `ff_failed_discardable` | **unstaged の tracked 変更のみ**の dirty で、その全パスが **origin/{base_branch} と diff 同一**（マージ済み内容の残存）。AskUserQuestion「dirty パス限定の diff 同一を確認済み。未コミット変更を破棄して base 更新を再実行 / そのまま続行（手動対応）」を表示。**承認後のみ** `git checkout -- :/`（cwd 非依存に repo 全体を index 内容へ復元。discardable は staged なしを判定済みのため index == HEAD であり、HEAD 内容への復元と等価）で破棄し、上記 retry ループを 1 回再実行する。再実行後も `BASE_UPDATE=ok` にならない場合は `ff_failed_divergent` と同等に stash 案内で terminate する（2 回目の破棄承認は求めない） |
 | `ff_failed_divergent` | 未コミット変更がマージ済み内容と**異なる**か、diff 同一性を機械判定できない dirty（untracked は git diff が比較できず、staged 変更は working tree 比較で内容を検証できないため、いずれもここに倒す）。stash 案内を表示して terminate（データ喪失なし）: `git stash push -u -m "rite-cleanup: manual-stash before base update (issue-{issue_number})"` を提示し、ユーザー実行後の `/rite:recover` 再開を案内する。自動 stash はしない |

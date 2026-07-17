@@ -4,10 +4,12 @@
 # Reviewer subagent が READ-ONLY 契約を破って parent repo の working tree / branch /
 # stash list を変更した場合に検出し、可能な範囲で recovery する defense-in-depth layer。
 #
-# 一次防御: `plugins/rite/hooks/pre-tool-bash-guard.sh` Pattern 4 (subagent context で
-# state-mutating git command を block する PreToolUse hook)。
-# 本スクリプトは hook が edge case (subagent detection が transcript_path で失敗する場合等)
-# で機能しなかった事故の検出と recovery を担う post-condition gate。
+# 一次防御: reviewer prompt の READ-ONLY 契約 (`plugins/rite/agents/_reviewer-base.md`,
+# Layer 1)。working-tree 変更 verb の機械ゲートは Issue #1879 で撤去され、
+# `pre-tool-bash-guard.sh` Pattern 4 が機械遮断するのは .git 書き込み経路のみになった。
+# 本スクリプト (Layer 3) は prompt 契約が破られた事故の検出と recovery を担う
+# post-condition gate であり、working-tree / branch / stash / branch-list drift の
+# 検出保証はここが正となる。
 #
 # 想定する事故シナリオ: reviewer subagent が `pr-<N>-test` のようなブランチを作成して
 # `git checkout` した結果、parent session の working tree が develop に切り替わって
@@ -198,13 +200,15 @@ fi
 echo "WARNING: Reviewer subagent caused parent session state drift" >&2
 echo "  type: $drift_type" >&2
 echo "  detail: $drift_detail" >&2
-# 一次防御 hook の名指しは drift 軸で出し分ける: worktree drift は Edit/Write または
-# state-changing git のどちらでも起こりうるため両 hook を、それ以外の軸は git 経路の
-# pre-tool-bash-guard.sh を指す (Issue #1860)。
+# 破られた防御層の案内は drift 軸で出し分ける: worktree drift は Edit/Write 経路なら
+# pre-tool-edit-guard が block したはずだが、Bash 経由の state-changing git は機械ゲート
+# されない (Issue #1879 で verb 列挙撤去 — 本スクリプトが検出の正)。それ以外の軸
+# (branch / stash / branch_list) も同様に prompt 契約 (Layer 1) violation であり、
+# 本スクリプトによる検出が想定どおりの動作となる。
 if [ "$drift_type" = "worktree" ]; then
-  echo "  context: pre-tool-edit-guard hook (Edit/Write/MultiEdit/NotebookEdit) and/or pre-tool-bash-guard hook (Pattern 4, state-changing git) did not block this mutation — investigate subagent detection (transcript_path) or hook registration" >&2
+  echo "  context: the reviewer prompt READ-ONLY contract (_reviewer-base.md) was violated via Edit/Write (pre-tool-edit-guard should have blocked — investigate subagent detection / hook registration) or via a state-changing git command (not machine-gated since Issue #1879; this detection is the designed guarantee)" >&2
 else
-  echo "  context: pre-tool-bash-guard hook (Pattern 4) did not block this mutation — investigate transcript_path detection or hook registration" >&2
+  echo "  context: the reviewer prompt READ-ONLY contract (_reviewer-base.md) was violated via a state-changing git command — not machine-gated since Issue #1879; this post-condition detection is the designed guarantee (Layer 3)" >&2
 fi
 
 recovered="false"

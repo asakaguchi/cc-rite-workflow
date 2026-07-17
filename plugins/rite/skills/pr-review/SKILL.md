@@ -1332,7 +1332,7 @@ The behavior depends on the Security Expert's selection type:
 
 Reviewer subagent が READ-ONLY 契約を破って parent session の working tree / branch を mutate した場合に ステップ 5.0.A で検出するため、ステップ 4 (parallel review execution) 開始**前**に現在の state を snapshot する。
 
-一次防御は `plugins/rite/hooks/pre-tool-bash-guard.sh` Pattern 4 (subagent context で state-mutating git command を block する PreToolUse hook)。本 snapshot + ステップ 5.0.A verify は hook が edge case (transcript_path に `/subagents/` が含まれない subagent ルーティング等) で機能しなかった場合の **defense-in-depth post-condition gate**。
+一次防御は reviewer prompt の READ-ONLY 契約 (`plugins/rite/agents/_reviewer-base.md`, Layer 1)。working-tree 変更 verb の機械ゲートは Issue #1879 で撤去され、`pre-tool-bash-guard.sh` Pattern 4 が機械遮断するのは .git 書き込み経路のみ。本 snapshot + ステップ 5.0.A verify (Layer 3) が working-tree / branch / stash / branch-list mutate の**検出保証の正**となる post-condition gate。
 
 ```bash
 # 4 変数 (ORIG_BR / ORIG_SC / ORIG_BLH / ORIG_WTH) は ステップ 5.0.A の post-review-state-verify.sh
@@ -1633,7 +1633,7 @@ Verification モードのレビュー指示テンプレート本文は [referenc
 
 ### 5.0.A Post-Review State Verification
 
-ステップ 4 (parallel review execution) で起動した reviewer subagent が `pre-tool-bash-guard.sh` Pattern 4 (state-changing git) / `pre-tool-edit-guard.sh` (Edit/Write/MultiEdit/NotebookEdit) を bypass し、parent session の working tree / branch / stash list を mutate しなかったことを post-condition で verify する。drift 検出時は WARNING を stderr に emit し、branch drift のみ `git checkout` で automatic recovery を試みる (worktree drift は auto-recover せず手動 triage を案内 — Issue #1860)。
+ステップ 4 (parallel review execution) で起動した reviewer subagent が READ-ONLY 契約 (`_reviewer-base.md`, Layer 1) を守り、parent session の working tree / branch / stash list を mutate しなかったことを post-condition で verify する。working-tree 変更 verb の機械ゲートは Issue #1879 で撤去されたため (Edit/Write 経路の `pre-tool-edit-guard.sh` と `pre-tool-bash-guard.sh` の .git 書き込みゲートは存続)、本 verify が Bash 経由 mutate の検出保証の正。drift 検出時は WARNING を stderr に emit し、branch drift のみ `git checkout` で automatic recovery を試みる (worktree drift は auto-recover せず手動 triage を案内 — Issue #1860)。
 
 ステップ 4.0.A で記録した `ORIG_BR` / `ORIG_SC` / `ORIG_BLH` / `ORIG_WTH` をリテラル substitute する (ステップ 4.0.A の大文字 shell 変数 → ステップ 5.0.A の小文字 placeholder への mapping: `$ORIG_BR → {orig_br}`, `$ORIG_SC → {orig_sc}`, `$ORIG_BLH → {orig_blh}`, `$ORIG_WTH → {orig_wth}`)。
 

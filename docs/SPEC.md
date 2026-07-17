@@ -1182,6 +1182,11 @@ Registered as a PreToolUse hook. Blocks known incorrect Bash command patterns th
 | `gh pr diff --stat` | `--stat` flag is unsupported | `gh pr view {n} --json files --jq '.files[]'` |
 | `gh pr diff -- <path>` | File filter is unsupported | `gh pr diff {n} \| awk` for filtering |
 | 「!= null」 (in jq/awk) | Bash history expansion interprets 「!」 | `select(.field)` or `select(.field == null \| not)` |
+| Reviewer subagent: write into a `.git` dir (`> .git/…`, `tee`/`cp`/`dd of=` etc.) | Invisible to `git status`, irreversible, RCE via `.git/hooks` / `.git/config` | Read-only inspection (`cat .git/config`, `git config --list`) |
+| Reviewer subagent: shell wrapper (`eval` / `sh -c` / `bash -c` …) | Opaque quoting can hide a `.git` write | Direct execution, subshell `( … )`, or `bash <script.sh>` |
+| Reviewer subagent: oversized command (>64KB) | Parsing could exceed the hook timeout, which fails open | Simplify the command |
+
+Reviewer working-tree git verbs (`checkout` / `reset` / `commit` / `branch` / …) are **not** machine-gated (Issue #1879): they are visible and recoverable via `git status`, so their guarantee is the reviewer prompt READ-ONLY contract (`_reviewer-base.md`, Layer 1) plus `post-review-state-verify.sh` drift detection (Layer 3).
 
 **Heredoc Safety:**
 

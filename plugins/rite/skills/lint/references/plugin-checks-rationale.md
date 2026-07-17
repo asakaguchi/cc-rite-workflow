@@ -57,7 +57,7 @@ Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` mark
 
 ## Comment line-ref check (comment-line-ref-check.sh)
 
-Detects hardcoded `<file>.<ext>:<NN>` references inside shell comments under `plugins/rite/**/*.sh`. Complements the hardcoded line-number check (which targets prose in markdown) by closing the same drift gap inside shell-script comments. Detected pattern (in shell comments only): `[A-Za-z][A-Za-z0-9_.-]*\.(sh|md|ts|py|js|tsx):[0-9]+`. Exclusions: shebang 「#!」, fenced code blocks, range form `:N-M`, backtick-quoted spans, whitelist markers (`# example:` / `<!-- example: -->` / `// example:`), self. Structural references (e.g., `lint.md Phase 3.11`) survive content insertions/deletions; raw `lint.md:742` references decay the moment a line is added above.
+Detects hardcoded `<file>.<ext>:<NN>` references inside shell comments under `plugins/rite/**/*.sh`. Complements the hardcoded line-number check (which targets prose in markdown) by closing the same drift gap inside shell-script comments. Detected pattern (in shell comments only): `[A-Za-z][A-Za-z0-9_.-]*\.(sh|md|ts|py|js|tsx):[0-9]+`. Exclusions: shebang 「#!」, fenced code blocks, range form `:N-M`, backtick-quoted spans, whitelist markers (`# example:` / `<!-- example: -->` / `// example:`), self. Structural references (e.g., `lint.md Phase 3.5`) survive content insertions/deletions; raw `lint.md:742` references decay the moment a line is added above.
 
 ## Direct gh issue create check (check-no-direct-gh-issue-create.sh)
 

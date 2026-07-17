@@ -658,7 +658,7 @@ echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
-> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.12（`comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。本ステップは `/rite:wiki-lint` 単体実行時にも Wiki ページの番号参照を可視化するための Wiki レイヤ固有のチェックである。
+> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.5（generic loop の `comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。本ステップは `/rite:wiki-lint` 単体実行時にも Wiki ページの番号参照を可視化するための Wiki レイヤ固有のチェックである。
 
 ---
 

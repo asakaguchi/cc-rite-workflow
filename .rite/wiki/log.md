@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-17T21:05:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260717T114250Z-pr-1891.md, raw/fixes/20260717T114425Z-pr-1891.md を統合 — 同一リスト内の兄弟行を個別 relabel して 1 行取り残す最小 breadth 軸の変種（PR #1891 cycle 2-3）を追加 |
+| 2026-07-17T21:05:00+09:00 | create | [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語・新規エントリは number-free に保つ](pages/patterns/bilingual-changelog-sync-conventions.md) | raw/reviews/20260717T114250Z-pr-1891.md ほか pr-1891 の 3 件を新規ページ化 — en/ja 同時更新・見出し英語維持・number-free の 3 慣習 |
+| 2026-07-17T21:05:00+09:00 | create | [統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる](pages/heuristics/consolidation-refactor-layered-follow-up.md) | raw/reviews/20260717T110218Z-pr-1891.md ほか pr-1891 の 4 件を新規ページ化 — 4 cycle 収束の層構造と除外リスト引き継ぎ・凍結コピーの follow-up 分離 |
 | 2026-07-17T18:53:00+09:00 | lint:warning | — | contradictions=0, stale=6, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1888 ingest 後の auto-lint。stale 6 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-17T18:52:00+09:00 | create | [cwd破損下の成否検証は非空性とexit codeの両方をチェックする（文字列等値比較だけでは偽陽性を防げない）](pages/patterns/cwd-corruption-success-check-exit-code-and-nonempty.md) | raw/reviews/20260717T094246Z-pr-1888.md を新規ページ化 — worktree自己削除後のcwd破損下でgit rev-parseが空文字列を返しても等値比較がtrueになり偽のBASE_UPDATE=okを報告していたCRITICAL欠陥（PR #1888）から、exit code + 非空性チェックによる成否検証パターンを抽出 |
 | 2026-07-17T15:51:00+09:00 | lint:warning | — | contradictions=0, stale=5, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1884/#1886/#1887 ingest 後の auto-lint。stale 5 件は pre-existing で本 ingest 由来ではない) |

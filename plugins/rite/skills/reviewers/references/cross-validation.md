@@ -44,13 +44,13 @@ Please clarify which recommendation to follow.
 
 ### Contradiction Examples
 
-1. **Code Quality vs Performance**
+1. **Code Quality vs Application**
    - Code Quality: "This function should be split"
-   - Performance: "Inlining improves performance"
+   - Application: "Inlining improves performance"
 
 2. **Security vs Usability**
    - Security: "Input validation should be stricter"
-   - API Design: "Allow flexible input for usability"
+   - Application: "Allow flexible input for usability"
 
 3. **Test Coverage vs Development Speed**
    - Test: "Edge case tests should be added"
@@ -58,7 +58,7 @@ Please clarify which recommendation to follow.
 
 4. **Readability vs Brevity**
    - Code Quality: "Variable names should be more descriptive"
-   - Performance: "Shorter variable names reduce bundle size"
+   - Application: "Shorter variable names reduce bundle size"
 
 ## Debate Protocol (Evaluator-Optimizer Pattern)
 

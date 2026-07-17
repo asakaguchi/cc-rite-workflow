@@ -1020,7 +1020,7 @@ Possible `code_quality_coreviewer_add_reason` values: (`fenced_block_detected` /
 つまり「ステップ 2.2.1 で先取り追加が発生する」か「ステップ 2.3 の sole reviewer guard が後段で fallback 追加する」かのいずれかの経路で必ず ≥2 reviewers が保たれる。ステップ 2.3 の既存ロジックは破壊されず、Override は加算経路を 1 つ追加するだけである。
 
 
-**Override の累積効果**: 本 Override は reviewer 候補リストに対する**加算のみ**を行い、既存候補を削除しない。ステップ 2.2 で候補に選定された他 reviewer (security, api, frontend, etc.) はそのまま保持される。
+**Override の累積効果**: 本 Override は reviewer 候補リストに対する**加算のみ**を行い、既存候補を削除しない。ステップ 2.2 で候補に選定された他 reviewer (security, application, etc.) はそのまま保持される。
 
 ### 2.3 Content Analysis (Supplementary Determination)
 
@@ -1032,11 +1032,11 @@ Analyze the diff content to determine if additional expertise is needed:
 
 **Performance keyword detection:**
 - `cache`, `async`, `await`, `promise`, `worker`, `batch`, `optimize`
-- On detection: Raise the priority of the domain expert selected based on the relevant file type (e.g., performance keywords in API files -> raise API Design Expert priority)
+- On detection: Raise the priority of the domain expert selected based on the relevant file type (e.g., performance keywords in application code -> raise Application Expert priority)
 
 **Database keyword detection:**
 - `query`, `migration`, `schema`, `index`, `transaction`, `rollback`
-- On detection: Add Database Expert
+- On detection: Add Application Expert
 
 **Error handling keyword detection:**
 - JS/TS: `try`, `catch`, `throw`, `Error`, `reject`, `fallback`, `finally`
@@ -1045,7 +1045,7 @@ Analyze the diff content to determine if additional expertise is needed:
 
 **Type design keyword detection:**
 - `interface`, `type`, `enum`, `class`, `struct`, `readonly`, `generic`
-- On detection: Add Type Design Expert
+- On detection: Add Application Expert
 
 **Code block detection in `.md` files:**
 - When changed files include `.md` files matching Prompt Engineer patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`), scan the diff for fenced code blocks (` ```bash `, ` ```sh `, ` ```yaml `, ` ```python `, ` ```json `, ` ```javascript `, ` ```typescript `, or untyped ` ``` `)
@@ -1433,18 +1433,14 @@ Execute parallel reviews using sub-agents (defined in the `agents/` directory) c
 | Agent | File | Specialty |
 |-------------|---------|---------|
 | Security Expert | `security-reviewer.md` | Authentication/authorization, vulnerabilities, encryption |
-| Performance Expert | `performance-reviewer.md` | N+1 queries, memory leaks, algorithm efficiency |
+| Application Expert | `application-reviewer.md` | API/type contract compatibility, N+1 queries, missing indexes, XSS, accessibility, migration safety |
 | Code Quality Expert | `code-quality-reviewer.md` | Duplication, naming, error handling |
-| API Design Expert | `api-reviewer.md` | REST conventions, interface design |
-| Database Expert | `database-reviewer.md` | Schema design, query optimization |
 | DevOps Expert | `devops-reviewer.md` | CI/CD, infrastructure configuration |
-| Frontend Expert | `frontend-reviewer.md` | UI components, accessibility |
 | Test Expert | `test-reviewer.md` | Test quality, coverage |
 | Dependencies Expert | `dependencies-reviewer.md` | Package management, vulnerabilities |
 | Prompt Engineer | `prompt-engineer-reviewer.md` | Skill/command/agent definition quality |
 | Technical Writer | `tech-writer-reviewer.md` | Document clarity, accuracy |
 | Error Handling Expert | `error-handling-reviewer.md` | Silent failures, error propagation, catch quality |
-| Type Design Expert | `type-design-reviewer.md` | Type encapsulation, invariant expression, enforcement |
 
 **Loading sub-agent definition files:**
 
@@ -1512,20 +1508,18 @@ If the following issues occur with the sub-agent approach:
 | **`reviewer_type`** (selected in ステップ 2) | `subagent_type` (used in Task call) |
 |---------------------------------------|-------------------------------------|
 | **`security`** | `rite:security-reviewer` |
-| **`performance`** | `rite:performance-reviewer` |
+| **`application`** | `rite:application-reviewer` |
 | `code-quality` | `rite:code-quality-reviewer` |
-| **`api`** | `rite:api-reviewer` |
-| **`database`** | `rite:database-reviewer` |
 | **`devops`** | `rite:devops-reviewer` |
-| **`frontend`** | `rite:frontend-reviewer` |
 | **`test`** | `rite:test-reviewer` |
 | **`dependencies`** | `rite:dependencies-reviewer` |
 | `prompt-engineer` | `rite:prompt-engineer-reviewer` |
 | `tech-writer` | `rite:tech-writer-reviewer` |
 | `error-handling` | `rite:error-handling-reviewer` |
-| `type-design` | `rite:type-design-reviewer` |
 
 **Formula**: `subagent_type = "rite:" + reviewer_type + "-reviewer"` (the `rite:` prefix is mandatory in plugin distribution; bare `{reviewer_type}-reviewer` fails agent resolution).
+
+**Legacy type fallback**: 旧 reviewer_type（`api` / `frontend` / `performance` / `database` / `type-design`）が入力に現れた場合は、WARNING を表示して `application` で代替 spawn する（silent skip 禁止。対応表: `skills/reviewers/SKILL.md` Legacy Reviewer Type Aliases）。
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 
@@ -1599,7 +1593,7 @@ Generate instructions for each reviewer.
 
 **`{diff_content}` by scale:** Small: entire diff | Medium: files matching `{relevant_files}` | Large: `{change_summary}` + matching files + Read tool instruction
 
-**`{relevant_files}`:** Files matching reviewer's Activation pattern (ステップ 2.2). Security: `**/auth/**`, Frontend: `**/*.tsx`
+**`{relevant_files}`:** Files matching reviewer's Activation pattern (ステップ 2.2). Security: `**/auth/**`, Application: `**/*.tsx`
 
 > **Reference**: See [review-context-optimization.md](references/review-context-optimization.md) for change summary format and retrieval guidelines.
 
@@ -1729,7 +1723,7 @@ For **every** item in the "### 推奨事項" section (regardless of `別 Issue` 
 
 **Investigation suggestion collection**: Extract items from each reviewer's "### 調査推奨" section. Retain these as `investigation_suggestions` in the conversation context (reviewer_type, file, concern_description, notes). These are NOT findings and NOT Issue candidates — they do not affect the assessment, finding counts, or merge decision, and are never auto-Issue-ified by ステップ 7. They are collected solely for ステップ 5.4 "調査推奨" section rendering so the user may optionally run `/rite:investigate {file}` afterwards. A reviewer writing nothing in this section is the common case (blocking-worthy issues should go into findings, out-of-scope recommendations with Issue keywords into 推奨事項).
 
-**Demoted findings collection (ステップ 5.3.0 safety net)**: After collecting findings, scan each finding's `内容` column for the `Likelihood-Evidence:` anchor defined in [`_reviewer-base.md`](../../agents/_reviewer-base.md#demonstrable-proof-of-burden). Findings lacking the anchor AND whose `reviewer_type` is NOT in the Hypothetical Exception Categories (security/database/devops/dependencies) are candidates for ステップ 5.3.0 mechanical demotion. Retain these as `demoted_findings` in the conversation context (reviewer_type, severity, file_line, description, demotion_destination) for ステップ 5.3.0 processing and ステップ 5.4 "Observed Likelihood 降格結果" section rendering. The `demotion_destination` is `推奨事項` (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM) or `（削除）` (LOW).
+**Demoted findings collection (ステップ 5.3.0 safety net)**: After collecting findings, scan each finding's `内容` column for the `Likelihood-Evidence:` anchor defined in [`_reviewer-base.md`](../../agents/_reviewer-base.md#demonstrable-proof-of-burden). Findings lacking the anchor AND whose `reviewer_type` is NOT in the Hypothetical Exception Categories (security/devops/dependencies; `application` は migration 関連 finding — `Likelihood: Hypothetical (例外カテゴリ: database migration)` 表記を伴うもの — に限り Database migration 例外カテゴリを継承する) are candidates for ステップ 5.3.0 mechanical demotion. Retain these as `demoted_findings` in the conversation context (reviewer_type, severity, file_line, description, demotion_destination) for ステップ 5.3.0 processing and ステップ 5.4 "Observed Likelihood 降格結果" section rendering. The `demotion_destination` is `推奨事項` (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM) or `（削除）` (LOW).
 
 #### 5.1.1 Verification Mode Findings Collection
 

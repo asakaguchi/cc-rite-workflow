@@ -197,8 +197,10 @@ log "agents/ profiles           : ${agents_count} reviewers"
 log "Available Reviewers table  : ${available_count} reviewers"
 log "Type Identifiers table     : ${identifiers_count} reviewers"
 
-# Each sync point is expected to hold at least 10 reviewers (the registry has
-# 12-13 as of this writing). An empty or undersized set almost always means
+# Each sync point is expected to hold at least 6 reviewers (the registry has
+# 8-9 as of this writing — 9 agents / Type Identifiers rows, 8 Available
+# Reviewers rows after the #1877 consolidation). An empty or undersized set
+# almost always means
 # extraction fell through, so fail fast with an invocation error rather than
 # silently reporting a large drift. The likely cause differs by source: the
 # agents/ directory is a find + glob over the filesystem (unrelated to
@@ -210,8 +212,8 @@ for kv in "${AGENTS_DIR}:${agents_count}" \
           "Type-Identifiers-table:${identifiers_count}"; do
   src="${kv%:*}"
   count="${kv##*:}"
-  if [ "$count" -lt 10 ]; then
-    echo "ERROR: $src extracted only $count reviewers (expected >= 10)" >&2
+  if [ "$count" -lt 6 ]; then
+    echo "ERROR: $src extracted only $count reviewers (expected >= 6)" >&2
     case "$src" in
       "$AGENTS_DIR")
         echo "  Likely cause: directory renamed/moved, agent filenames no longer match *-reviewer.md, or the directory is unreadable" >&2
@@ -264,7 +266,7 @@ report_diff "$WORK_DIR/available.set"   "Available Reviewers table" \
 # inserted before Agent) shifts the agent token away from $4 — every row would
 # fail the regex filter, get skipped, and the check would false-pass with
 # exit 0. Count the rows that pass the filter and fail fast when the count
-# collapses, symmetric with the >= 10 set-extraction guard above.
+# collapses, symmetric with the >= 6 set-extraction guard above.
 # Reuses identifiers.rows (cached above) instead of re-invoking
 # extract_section_rows, which would re-parse SKILL_FILE with awk a second time.
 i3_out=$(awk -F'|' -v re="^${AGENT_RE}$" '
@@ -282,8 +284,8 @@ i3_out=$(awk -F'|' -v re="^${AGENT_RE}$" '
 ' "$WORK_DIR/identifiers.rows")
 i3_checked=$(printf '%s\n' "$i3_out" | sed -n 's/^I3_CHECKED=//p')
 slug_findings=$(printf '%s\n' "$i3_out" | grep -v '^I3_CHECKED=' || true)
-if [ "${i3_checked:-0}" -lt 10 ]; then
-  echo "ERROR: I3 slug check evaluated only ${i3_checked:-0} rows (expected >= 10)" >&2
+if [ "${i3_checked:-0}" -lt 6 ]; then
+  echo "ERROR: I3 slug check evaluated only ${i3_checked:-0} rows (expected >= 6)" >&2
   echo "  Likely cause: Type Identifiers table format changed (Agent cell no longer in column 4)" >&2
   echo "  Recovery: inspect the I3 column positions in reviewer-registry-drift-check.sh" >&2
   exit 2

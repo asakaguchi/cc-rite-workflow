@@ -98,7 +98,7 @@ For diffs exceeding 2000 lines, pass the following information to each reviewer:
 
 `{relevant_files}` is a different file list for each reviewer depending on their area of expertise. Only files matching the reviewer's Activation pattern are included.
 
-**Example:** Security Expert receives files matching `**/auth/**`, Frontend Expert receives files matching `**/*.tsx`.
+**Example:** Security Expert receives files matching `**/auth/**`, Application Expert receives files matching `**/*.tsx`.
 
 ## Retrieval Guidelines for Large Diffs
 

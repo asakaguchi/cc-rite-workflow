@@ -22,7 +22,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Why this is a good finding:** Concrete evidence (specific file/line), investigation with tool usage, comparison with existing patterns, actionable recommendation.
 
-### Example 2: Performance — N+1 Query in Loop
+### Example 2: Application — N+1 Query in Loop
 
 **Investigation process:**
 
@@ -75,7 +75,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Why this is a good finding:** The duplication is real and worth tracking (3 sibling sites, identical logic), but the scope of a proper fix exceeds the current PR's diff and would create coordination overhead with two other open PRs. Reporting as `follow-up` honors the Severity × Scope Matrix rule that MEDIUM-class refactor opportunities outside the current diff belong in a separate Issue rather than being deferred silently. The investigation explicitly verifies the duplication is pre-existing and that the current PR does NOT add a 4th copy — this rules out the alternative reading that the PR introduced the problem (which would have made it `current-pr`).
 
-### Example 5: Frontend — Localized Style Inconsistency (nit-noted)
+### Example 5: Application — Localized Style Inconsistency (nit-noted)
 
 **Investigation process:**
 
@@ -91,7 +91,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 |----------|-------|-----------|-------|----------------|
 | LOW | nit-noted | `src/components/dashboard/Card.tsx:18`, `src/components/dashboard/Panel.tsx:22` | Style prop unit inconsistency within the same PR: `Card.tsx` uses `padding: 12` (numeric) while `Panel.tsx` uses `padding: '12px'` (string). Both produce identical output. The codebase has no linting rule on this and shows mixed usage (28 numeric vs 19 string across 47 sites).<br>Likelihood-Evidence: new_call_site src/components/dashboard/Card.tsx:18, src/components/dashboard/Panel.tsx:22 (本 PR で追加) | No action required for this PR. If a future refactor adopts a project-wide convention (e.g., always-numeric for px values), unify both sites at that time. |
 
-**Why this is a good finding:** The inconsistency is real and localized to two sibling files in the same PR, but the blast radius is bounded (no runtime / accessibility / maintainability cost) and the codebase already has long-standing mixed usage with no project convention. Reporting as `nit-noted` honors the Severity × Scope Matrix rule that LOW-class style preferences with bounded blast radius are information sharing only, not actionable for this PR. The investigation rules out a stronger classification: there is no project-wide convention to enforce (would make it `current-pr`), the fix doesn't unlock a useful follow-up Issue (LOW × `follow-up` is a prohibited cell), and the impact is not zero (so it earns a mention rather than being dropped silently). The frontend reviewer is used deliberately — the four Hypothetical Exception reviewers (`security` / `database` / `devops` / `dependencies`) are prohibited from emitting `scope=nit-noted` at any severity.
+**Why this is a good finding:** The inconsistency is real and localized to two sibling files in the same PR, but the blast radius is bounded (no runtime / accessibility / maintainability cost) and the codebase already has long-standing mixed usage with no project convention. Reporting as `nit-noted` honors the Severity × Scope Matrix rule that LOW-class style preferences with bounded blast radius are information sharing only, not actionable for this PR. The investigation rules out a stronger classification: there is no project-wide convention to enforce (would make it `current-pr`), the fix doesn't unlock a useful follow-up Issue (LOW × `follow-up` is a prohibited cell), and the impact is not zero (so it earns a mention rather than being dropped silently). The application reviewer is used deliberately — the Hypothetical Exception reviewers (`security` / `devops` / `dependencies`, plus `application` **for migration-related findings only**) are prohibited from emitting `scope=nit-noted`; a non-migration application finding like this style inconsistency is outside that prohibition and may legitimately be `nit-noted`.
 
 ## Weak Findings (Improve Before Reporting)
 
@@ -194,8 +194,8 @@ These examples illustrate how the internal confidence scoring system (defined in
 | Domain | Score | Finding | Why High Confidence |
 |--------|-------|---------|---------------------|
 | Error Handling | 95 | `catch(e) {}` in payment processing with no logging or propagation | Verified by `Read` — empty catch in critical path. `order.ts:40` logs and re-throws in adjacent code |
-| Type Design | 95 | `status: string` with `Grep` showing 12 runtime comparisons against 3 specific values | Verified evidence of missing union type. Compiler could prevent invalid values |
-| Database | 90 | N+1 query in loop with pagination default of 100 items | Verified by `Grep` showing `findMany` used for the same entity elsewhere |
+| Application | 95 | `status: string` with `Grep` showing 12 runtime comparisons against 3 specific values | Verified evidence of missing union type. Compiler could prevent invalid values |
+| Application | 90 | N+1 query in loop with pagination default of 100 items | Verified by `Grep` showing `findMany` used for the same entity elsewhere |
 | Security | 90 | API key hardcoded as string literal | Verified by `Grep` — no env var fallback, other keys use `process.env` |
 
 ### Medium Confidence (60-79): Report in Recommendations Only
@@ -203,8 +203,8 @@ These examples illustrate how the internal confidence scoring system (defined in
 | Domain | Score | Finding | Why Medium Confidence |
 |--------|-------|---------|----------------------|
 | Error Handling | 70 | Broad `catch(Error)` where specific `catch(NetworkError)` would be better | No `NetworkError` class exists in project — the fix would require new infrastructure |
-| Type Design | 70 | Generic parameter could be more constrained | Current usage is correct — the constraint would improve safety but isn't critical |
-| Performance | 65 | Missing `useMemo` on a filter operation | Component renders infrequently and the array is small — impact is theoretical |
+| Application | 70 | Generic parameter could be more constrained | Current usage is correct — the constraint would improve safety but isn't critical |
+| Application | 65 | Missing `useMemo` on a filter operation | Component renders infrequently and the array is small — impact is theoretical |
 | Dependencies | 65 | Package has no updates in 2 years | No known CVEs, API is stable — abandonment is possible but not confirmed |
 
 ### Low Confidence (<60): Do NOT Report
@@ -212,9 +212,9 @@ These examples illustrate how the internal confidence scoring system (defined in
 | Domain | Score | Finding | Why Not Reported |
 |--------|-------|---------|------------------|
 | Error Handling | 50 | "Should use custom error classes" | Project doesn't use custom error classes anywhere — style preference |
-| Type Design | 45 | "Should use branded types for IDs" | Project has no branded type pattern. Introducing one for a single type adds complexity |
-| Frontend | 40 | "Should use a different CSS framework" | No evidence the current approach causes issues |
-| API | 30 | "Should implement HATEOAS" | Project doesn't follow HATEOAS. Hypothetical improvement with no immediate value |
+| Application | 45 | "Should use branded types for IDs" | Project has no branded type pattern. Introducing one for a single type adds complexity |
+| Application | 40 | "Should use a different CSS framework" | No evidence the current approach causes issues |
+| Application | 30 | "Should implement HATEOAS" | Project doesn't follow HATEOAS. Hypothetical improvement with no immediate value |
 
 ### Key Takeaway
 

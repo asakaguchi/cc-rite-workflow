@@ -446,24 +446,22 @@ The following specialized reviewers are automatically selected based on the chan
 | Reviewer | Focus Area |
 |----------|------------|
 | `security-reviewer` | Security vulnerabilities, authentication, data handling |
-| `performance-reviewer` | N+1 queries, memory leaks, algorithm efficiency |
+| `application-reviewer` | Application code end-to-end: API/type contracts, performance (N+1, indexes), data operations/migrations, UI safety (XSS, accessibility) |
 | `code-quality-reviewer` | Duplication, naming, error handling, structure |
-| `api-reviewer` | API design, REST conventions, interface contracts |
-| `database-reviewer` | Schema design, queries, migrations, data operations |
 | `devops-reviewer` | Infrastructure, CI/CD pipelines, deployment configurations |
-| `frontend-reviewer` | UI components, styling, accessibility, client-side code |
 | `test-reviewer` | Test quality, coverage, testing strategies |
 | `dependencies-reviewer` | Package dependencies, versions, supply chain security |
 | `prompt-engineer-reviewer` | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | Documentation clarity, accuracy, completeness |
 | `error-handling-reviewer` | Silent failures, error propagation, catch block quality |
-| `type-design-reviewer` | Type encapsulation, invariant expression, enforcement |
+
+> **v0.x consolidation**: the former `api` / `frontend` / `performance` / `database` / `type-design` reviewers were consolidated into `application-reviewer`. Legacy type names appearing as input are substituted with `application` after a WARNING (see CHANGELOG for the migration table).
 
 **Reviewer selection:**
 
 Reviewers are automatically selected based on:
 1. File patterns (e.g., `*.test.*` triggers `test-reviewer`)
-2. Content analysis (e.g., SQL queries trigger `database-reviewer`)
+2. Content analysis (e.g., SQL queries trigger `application-reviewer`)
 3. Change complexity and scope
 
 **Fallback behavior:**

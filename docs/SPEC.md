@@ -180,7 +180,7 @@ rite-workflow/
 │ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html)
 │ ├── investigate/ # /rite:investigate (構造化コード調査)
 │ ├── learn/ # /rite:learn (Socratic 理解度チェック)
-│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用)
+│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md)
 │ ├── recover/ # /rite:recover (中断した作業の再開)
 │ ├── skill-suggest/ # /rite:skill-suggest
 │ ├── template-reset/ # /rite:template-reset

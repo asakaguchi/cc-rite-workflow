@@ -1318,3 +1318,4 @@
 | 2026-07-17T02:44:35Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/reviews/20260717T014643Z-pr-1882.md (PR #1882, Issue #1874 — rationale 退避 PR の verbatim 移動で受け皿側 carry 漏れ変種を追記。削除文の文単位突合 (実行パス残存 or 受け皿移動) を検証手法として追加) |
 | 2026-07-17T02:44:35Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/fixes/20260717T015624Z-pr-1882.md (PR #1882 fix 側 — 欠落 1 bullet 追加のみで cycle 2 収束、過剰反応なしの修正例として同変種に統合) |
 | 2026-07-17T02:44:35Z | ingest:create | pages/heuristics/rationale-pointer-format-unification.md | raw/reviews/20260717T021655Z-pr-1882.md (PR #1882 cycle 2 — rationale ポインタ 3 形式混在 (bare / markdown link / hybrid) の informational 指摘を経験則化。bare 形式への統一規約を提案) |
+| 2026-07-17T02:50:00Z | lint:warning | — | contradictions=0, stale=5, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (stale 5 件は 2026-04 作成ページの 91 日経過。pr-1882 ingest 由来の新規問題なし) |

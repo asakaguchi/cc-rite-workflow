@@ -22,7 +22,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Why this is a good finding:** Concrete evidence (specific file/line), investigation with tool usage, comparison with existing patterns, actionable recommendation.
 
-### Example 2: Performance — N+1 Query in Loop
+### Example 2: Application — N+1 Query in Loop
 
 **Investigation process:**
 

@@ -58,7 +58,7 @@ Please clarify which recommendation to follow.
 
 4. **Readability vs Brevity**
    - Code Quality: "Variable names should be more descriptive"
-   - Performance: "Shorter variable names reduce bundle size"
+   - Application: "Shorter variable names reduce bundle size"
 
 ## Debate Protocol (Evaluator-Optimizer Pattern)
 

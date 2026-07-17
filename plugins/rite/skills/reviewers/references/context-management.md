@@ -28,7 +28,7 @@ When 4+ reviewers are needed:
 
 1. **Group reviewers by relevance**
    - Group 1: Security-related (Security + DevOps)
-   - Group 2: Code quality (Test + API)
+   - Group 2: Code quality (Test + Application)
    - Group 3: Documentation (Prompt Engineer + Tech Writer)
 
 2. **Manually run independent `/rite:pr-review` sessions per group**

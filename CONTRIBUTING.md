@@ -58,7 +58,7 @@ plugins/rite/
 │   ├── (meta/top)      # setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
 │   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
-├── agents/           # Sub-agent definitions for PR review (13 reviewers + _reviewer-base)
+├── agents/           # Sub-agent definitions for PR review (9 reviewers + _reviewer-base)
 ├── hooks/            # Event handler scripts (Bash)
 │   ├── scripts/      #   Internal helper scripts (drift-check, bang-backtick-check, lint scanners, etc.)
 │   └── tests/        #   Shell script tests

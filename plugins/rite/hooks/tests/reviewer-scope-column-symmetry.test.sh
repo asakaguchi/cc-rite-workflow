@@ -3,8 +3,8 @@
 #
 # Verification:
 #   - agents/_reviewer-base.md (Japanese 列名: 重要度|スコープ|ファイル:行|内容|推奨対応)
-#   - 13 reviewer agent (api/code-quality/database/dependencies/devops/error-handling/frontend/
-#     performance/prompt-engineer/security/tech-writer/test/type-design) すべての example 表
+#   - 9 reviewer agent (application/code-quality/dependencies/devops/error-handling/
+#     prompt-engineer/security/tech-writer/test) すべての example 表
 #     (Japanese 列名)
 #   - skills/reviewers/{SKILL.md, references/output-format.md, references/finding-examples.md}
 #     (English 列名: Severity|Scope|File:Line|Issue|Recommendation)
@@ -28,21 +28,17 @@ assert_not_grep "_reviewer-base.md: 4-column header drift (must not exist)" \
   "$base_file" \
   '\| 重要度 \| ファイル:行 \| 内容 \| 推奨対応 \|'
 
-# 3. 13 reviewer agent の example 表が 5 列か
+# 3. 9 reviewer agent の example 表が 5 列か
 reviewers=(
-  api-reviewer
+  application-reviewer
   code-quality-reviewer
-  database-reviewer
   dependencies-reviewer
   devops-reviewer
   error-handling-reviewer
-  frontend-reviewer
-  performance-reviewer
   prompt-engineer-reviewer
   security-reviewer
   tech-writer-reviewer
   test-reviewer
-  type-design-reviewer
 )
 
 for r in "${reviewers[@]}"; do

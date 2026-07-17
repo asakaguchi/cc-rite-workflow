@@ -138,18 +138,14 @@ rite-workflow/
 ├── agents/ # Subagent definitions for /rite:pr-review
 │ ├── _reviewer-base.md # Shared reviewer principles (not a subagent)
 │ ├── security-reviewer.md
-│ ├── performance-reviewer.md
+│ ├── application-reviewer.md
 │ ├── code-quality-reviewer.md
-│ ├── api-reviewer.md
-│ ├── database-reviewer.md
 │ ├── devops-reviewer.md
-│ ├── frontend-reviewer.md
 │ ├── test-reviewer.md
 │ ├── dependencies-reviewer.md
 │ ├── prompt-engineer-reviewer.md
 │ ├── tech-writer-reviewer.md
-│ ├── error-handling-reviewer.md
-│ └── type-design-reviewer.md
+│ └── error-handling-reviewer.md
 ├── skills/ # Claude Code auto-discovered skills (各スキル = 薄い SKILL.md + co-located references/)
 │ # --- PR lifecycle ---
 │ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end)
@@ -371,25 +367,21 @@ Agent documentation...
 | `model` | No | Model selection (default: inherit from parent session) |
 | `tools` | No | List of available tools (default: inherit all tools from parent; omit to enable all tools) |
 
-**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. 9 of the 13 reviewers are pinned to `model: opus`; users can override per-agent frontmatter to opt out.
+**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. 7 of the 9 reviewers are pinned to `model: opus`; users can override per-agent frontmatter to opt out.
 
 **Current Agents:**
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | `security-reviewer` | opus | Security vulnerabilities, authentication, data handling |
-| `performance-reviewer` | inherit | N+1 queries, memory leaks, algorithm efficiency |
+| `application-reviewer` | opus | Application code end-to-end: API/type contracts, performance (N+1, indexes), data operations/migrations, UI safety (XSS, accessibility) |
 | `code-quality-reviewer` | inherit | Duplication, naming, error handling, structure |
-| `api-reviewer` | opus | API design, REST conventions, interface contracts |
-| `database-reviewer` | opus | Schema design, queries, migrations, data operations |
 | `devops-reviewer` | opus | Infrastructure, CI/CD pipelines, deployment configurations |
-| `frontend-reviewer` | opus | UI components, styling, accessibility, client-side code |
 | `test-reviewer` | opus | Test quality, coverage, testing strategies |
 | `dependencies-reviewer` | opus | Package dependencies, versions, supply chain security |
 | `prompt-engineer-reviewer` | opus | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | opus | Documentation clarity, accuracy, completeness |
 | `error-handling-reviewer` | inherit | Error handling patterns, silent failures, recovery logic |
-| `type-design-reviewer` | inherit | Type design, encapsulation, invariant expression |
 
 ---
 
@@ -936,18 +928,14 @@ Analyze files and select appropriate reviewers
  ↓
 Spawn subagents in parallel (Task tool)
  ├─ security-reviewer: Security perspective
- ├─ performance-reviewer: Performance perspective
+ ├─ application-reviewer: Application code perspective (API/type contracts, performance, data operations, UI safety)
  ├─ code-quality-reviewer: Code quality perspective
- ├─ api-reviewer: API design perspective
- ├─ database-reviewer: Database perspective
  ├─ devops-reviewer: DevOps perspective
- ├─ frontend-reviewer: Frontend perspective
  ├─ test-reviewer: Test quality perspective
  ├─ dependencies-reviewer: Dependencies perspective
  ├─ prompt-engineer-reviewer: Prompt quality perspective
  ├─ tech-writer-reviewer: Documentation perspective
- ├─ error-handling-reviewer: Error handling perspective
- └─ type-design-reviewer: Type design perspective
+ └─ error-handling-reviewer: Error handling perspective
  ↓
 Collect results from each subagent
  ↓

@@ -2,8 +2,8 @@
 name: reviewers
 description: |
   rite workflow のレビュアー選定コーディネータ: 変更ファイルパターンから起動すべき専門 reviewer
-  agent（Security / API / Database / DevOps / Frontend / Test / Dependencies / Prompt Engineer /
-  Tech Writer / Code Quality / Error Handling / Type Design）の選定テーブルと横断ルールを提供する。
+  agent（Security / Application / DevOps / Test / Dependencies / Prompt Engineer /
+  Tech Writer / Code Quality / Error Handling）の選定テーブルと横断ルールを提供する。
   /rite:pr-review から Read でのみ参照される（ユーザー直接起動も Skill ツール invoke もされない）。
   汎用の「コードレビュー」ヘルパーではなく、その語では auto-activate しない。
 user-invocable: false
@@ -29,17 +29,13 @@ This table is the **source of truth** for reviewer file patterns (used by `skill
 | Reviewer | Agent | File Patterns (Primary) |
 |----------|------------|-------------------------|
 | Security Expert | `security-reviewer.md` | `**/security/**`, `**/auth/**`, `auth*`, `crypto*`, `**/middleware/auth*` |
-| Performance Expert | `performance-reviewer.md` | `**/*.sh`, `**/hooks/**`, `**/api/**`, `**/services/**` |
+| Application Expert | `application-reviewer.md` | `**/api/**`, `**/routes/**`, `**/handlers/**`, `**/controllers/**`, `**/services/**`, `openapi.*`, `swagger.*`, `**/*.css`, `**/*.scss`, `**/styles/**`, `**/components/**`, `*.jsx`, `*.tsx`, `*.vue`, `**/*.sh`, `**/hooks/**`, `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**`; `**/*.ts`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 | DevOps Expert | `devops-reviewer.md` | `.github/**`, `Dockerfile*`, `docker-compose*`, `*.yml` (CI), `Makefile` |
 | Test Expert | `test-reviewer.md` | `**/*.test.*`, `**/*.spec.*`, `**/test/**`, `**/__tests__/**`, `jest.config.*`, `vitest.config.*`, `cypress/**`, `playwright/**` |
-| API Design Expert | `api-reviewer.md` | `**/api/**`, `**/routes/**`, `**/handlers/**`, `**/controllers/**`, `openapi.*`, `swagger.*` |
-| Frontend Expert | `frontend-reviewer.md` | `**/*.css`, `**/*.scss`, `**/styles/**`, `**/components/**`, `*.jsx`, `*.tsx`, `*.vue` |
-| Database Expert | `database-reviewer.md` | `**/db/**`, `**/models/**`, `**/migrations/**`, `**/*.sql`, `prisma/**`, `drizzle/**` |
 | Dependencies Expert | `dependencies-reviewer.md` | `package.json`, `*lock*`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml` |
 | Prompt Engineer | `prompt-engineer-reviewer.md` | `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, and corresponding `.mdx` (`commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`) |
 | Technical Writer | `tech-writer-reviewer.md` | `**/*.md` (excluding `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`), `**/*.mdx` (excluding `commands/**/*.mdx`, `skills/**/*.mdx`, `agents/**/*.mdx`), `docs/**`, `documentation/**`, `**/README*`, `CHANGELOG*`, `CONTRIBUTING*`, `*.rst`, `*.adoc`, `i18n/**/*.md`, `i18n/**/*.mdx` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts) |
 | Error Handling Expert | `error-handling-reviewer.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords (Bash); `**/*.sh` |
-| Type Design Expert | `type-design-reviewer.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
 **Note**: The Technical Writer row is kept in sync with `plugins/rite/skills/pr-review/SKILL.md` ステップ 1.2.7 `doc_file_patterns`; see [`plugins/rite/skills/pr-review/references/internal-consistency.md`](../../skills/pr-review/references/internal-consistency.md#cross-reference) Cross-Reference section for the drift-prevention invariant. Automated drift detection is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (invoked from `/rite:lint` Phase 3.5 as a warning/non-blocking check). The row uses **set semantics** (file matching equivalence), not pattern syntax equality — the order of patterns and exact glob syntax may differ between this row and `skills/pr-review/SKILL.md` as long as the matched file set is identical.
 
@@ -68,20 +64,30 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | reviewer_type | 日本語表示名 | Agent |
 |---------------|-------------|------------|
 | security | セキュリティ専門家 | `security-reviewer.md` |
-| performance | パフォーマンス専門家 | `performance-reviewer.md` |
+| application | アプリケーション専門家 | `application-reviewer.md` |
 | devops | DevOps 専門家 | `devops-reviewer.md` |
 | test | テスト専門家 | `test-reviewer.md` |
-| api | API 設計専門家 | `api-reviewer.md` |
-| frontend | フロントエンド専門家 | `frontend-reviewer.md` |
-| database | データベース専門家 | `database-reviewer.md` |
 | dependencies | 依存関係専門家 | `dependencies-reviewer.md` |
 | prompt-engineer | プロンプトエンジニア | `prompt-engineer-reviewer.md` |
 | tech-writer | テクニカルライター | `tech-writer-reviewer.md` |
 | code-quality | コード品質専門家 | `code-quality-reviewer.md` |
 | error-handling | エラーハンドリング専門家 | `error-handling-reviewer.md` |
-| type-design | 型設計専門家 | `type-design-reviewer.md` |
 
 **Note**: This table is the source of truth. `skills/pr-review/SKILL.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `skills/pr-review/SKILL.md` ステップ 3.2), as a co-reviewer for Prompt Engineer files containing fenced code blocks, and as a sole reviewer guard co-reviewer (see "Code Quality co-reviewer rule" above).
+
+## Legacy Reviewer Type Aliases
+
+api / frontend / performance / database / type-design の 5 reviewer は `application` に統合された（Issue #1877）。旧 reviewer_type が入力として現れた場合（rite-config.yml の設定値、過去のレビュー結果 JSON の `reviewer` フィールド、ユーザーの手動指定など）は、**silent skip せず** WARNING を表示して統合先 type で代替実行する:
+
+| Legacy reviewer_type | 統合先 |
+|---------------------|--------|
+| `api` | `application` |
+| `frontend` | `application` |
+| `performance` | `application` |
+| `database` | `application` |
+| `type-design` | `application` |
+
+表示形式: `WARNING: reviewer type '{legacy_type}' は 'application' に統合されました。application-reviewer で代替実行します`（対応表は CHANGELOG の移行表を参照）。
 
 ## Reviewer Selection Algorithm
 

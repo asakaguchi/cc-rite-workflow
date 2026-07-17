@@ -585,7 +585,7 @@ YAML パーサーの仕様により `count_ratio_threshold: "0.7"` (quoted strin
 # `skills/pr-review/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
 # (2 ファイル等価性)」に集約されている。drift 検出 lint は
 # `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として実装済み
-# drift-check 系統 1; /rite:lint Phase 3.7 から呼び出される。
+# drift-check 系統 1; /rite:lint Phase 3.5 から呼び出される。
 # Do not duplicate the invariant rules here — update internal-consistency.md instead.
 doc_file_patterns = [
  **/*.md (excluding commands/**/*.md, skills/**/*.md, agents/**/*.md),

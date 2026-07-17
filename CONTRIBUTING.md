@@ -69,7 +69,7 @@ plugins/rite/
 
 ## Adding a New Reviewer
 
-A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3) is machine-checked by `reviewer-registry-drift-check.sh` (run from `/rite:lint` ステップ 3.7.1) with one deliberate gap: a missing **Available Reviewers** row in (2) is indistinguishable from a logic-selected reviewer and is NOT machine-checked (invariant I2 is one-way) — verify edit location 2 against this checklist; (4) is free-form prose covered only by this checklist.
+A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3) is machine-checked by `reviewer-registry-drift-check.sh` (run from `/rite:lint` Phase 3.5) with one deliberate gap: a missing **Available Reviewers** row in (2) is indistinguishable from a logic-selected reviewer and is NOT machine-checked (invariant I2 is one-way) — verify edit location 2 against this checklist; (4) is free-form prose covered only by this checklist.
 
 **Edit locations:**
 

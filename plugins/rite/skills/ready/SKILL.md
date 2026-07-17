@@ -95,7 +95,7 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 >
 > **DRIFT-CHECK ANCHOR (MUST)**: This bash block is intentionally synchronized between `skills/pr-create/SKILL.md` §1.0 and `skills/ready/SKILL.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
 >
-> **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
+> **Independent of the `/rite:lint` Phase 3.5 bang-backtick check**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
 
 Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
 

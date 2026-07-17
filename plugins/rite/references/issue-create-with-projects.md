@@ -237,7 +237,7 @@ bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
 
 # Mode 2: --all auto-expansion
 # Scans every plugins/rite/skills/**/*.md file under the resolved repository root.
-# Used by /rite:lint Phase 3.14 to enforce the guard across every skill / sub-skill.
+# Used by /rite:lint Phase 3.5 (generic loop) to enforce the guard across every skill / sub-skill.
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh --all
 ```
 

@@ -291,4 +291,4 @@ pr-review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記
 - [`../../fix/references/assessment-rules.md`](../../fix/references/assessment-rules.md) — ALL findings are blocking ルール
 - [`../../../agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) — Confidence Scoring 80+ ゲートの定義
 
-drift 監視は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (`/rite:lint` Phase 3.7) で自動検出する (warning/non-blocking)。
+drift 監視は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (`/rite:lint` Phase 3.5) で自動検出する (warning/non-blocking)。

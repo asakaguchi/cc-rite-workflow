@@ -180,7 +180,7 @@ rite-workflow/
 │ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html)
 │ ├── investigate/ # /rite:investigate (構造化コード調査)
 │ ├── learn/ # /rite:learn (Socratic 理解度チェック)
-│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用)
+│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md)
 │ ├── recover/ # /rite:recover (中断した作業の再開)
 │ ├── skill-suggest/ # /rite:skill-suggest
 │ ├── template-reset/ # /rite:template-reset
@@ -224,10 +224,10 @@ rite-workflow/
 │ │ ├── review-schema-version-check.sh # review-result schema drift 検出
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
 │ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
-│ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.7.1 reviewer registry 3-way 同期検証
+│ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.5 reviewer registry 3-way 同期検証
 │ │ ├── gitignore-health-check.sh
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
-│ │ ├── number-reference-check.sh # lint Phase 3.19 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
+│ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
 │ │ ├── lib/ # 共有ライブラリ (wiki-config.sh / worktree-git.sh)
 │ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # Hook-level test suite (shell-based)
@@ -1310,10 +1310,10 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
 | `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
 | `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | — |
-| `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.7.1 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
+| `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.5 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
 | `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | — |
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
-| `number-reference-check.sh` | `/rite:lint` Phase 3.19 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
+| `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
 | `wiki-branch-init.sh` | `/rite:wiki-init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | — |
 | `wiki-lint-skipped-refs.sh` | `/rite:wiki-lint` ステップ 6.0 — raw frontmatter (`ingest_status: skipped`) を走査して skipped_refs 集合を marker block + `log_read_ok` 4 値 enum で構築 (Issue #1520 で skip SoT が log.md から raw frontmatter へ移行。6.2 `wiki-lint-source-refs.sh` と対称) | — |
 | `wiki-lint-source-refs.sh` | `/rite:wiki-lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | — |

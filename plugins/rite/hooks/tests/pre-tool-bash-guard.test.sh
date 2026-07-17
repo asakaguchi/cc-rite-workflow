@@ -1467,6 +1467,27 @@ assert_subagent_deny_gitdir "--config-env space inline blocked" "git --config-en
 echo "TC-127w: subagent git --attr-source tree config core.hooksPath (space arg flag) → deny"
 assert_subagent_deny_gitdir "--attr-source space + config write blocked" "git --attr-source tree config core.hooksPath /tmp/evil"
 
+# Each separate-arg global flag independently pinned so a future skip_arg-list
+# regression on any one of them is caught (they share the branch, but the branch
+# is only exercised per-flag). --shallow-file was a real gap found in review.
+echo "TC-127w2: subagent git --super-prefix x config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--super-prefix space + config write blocked" "git --super-prefix x config core.hooksPath /tmp/evil"
+
+echo "TC-127w3: subagent git --shallow-file /dev/null config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--shallow-file space + config write blocked" "git --shallow-file /dev/null config core.hooksPath /tmp/evil"
+
+echo "TC-127w4: subagent git --shallow-file /dev/null update-ref (space arg flag) → deny"
+assert_subagent_deny_gitdir "--shallow-file space + update-ref blocked" "git --shallow-file /dev/null update-ref refs/heads/foo abc1234"
+
+# --exec-path space form: covered by the removed (A)-(G) normalization, so (N)
+# must deny it too (superset-of-develop, no regression) even though bare
+# `git --exec-path` is a harmless print-and-exit (pinned as allow below).
+echo "TC-127w5: subagent git --exec-path /x config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--exec-path space + config write blocked" "git --exec-path /x config core.hooksPath /tmp/evil"
+
+echo "TC-127-ALLOW-e5: subagent git --exec-path (bare, print-and-exit read) → allow"
+assert_subagent_allow "git --exec-path bare allowed" "git --exec-path"
+
 echo "TC-127-ALLOW-a: subagent git config --list (read) → allow"
 assert_subagent_allow "git config --list allowed" "git config --list"
 

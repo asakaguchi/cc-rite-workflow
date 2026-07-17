@@ -323,10 +323,11 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # `git --git-dir=x config …` place the subcommand after a flag, and `git -c
   # key=val <cmd>` injects config with no subcommand at all — both bypass a naive
   # "subcommand right after git" match. The removed (A)-(G) code normalized
-  # global flags for exactly this reason; dropping it would ship a WEAKER gate
-  # than pre-PR. The token loop below strips leading git global flags so the
-  # subcommand surfaces, and denies any inline `-c` / `--config-env` (a reviewer
-  # never needs to SET config — "値を設定する git config は一律 deny").
+  # global flags for exactly this reason; dropping it entirely would ship a
+  # WEAKER gate than pre-PR — this block re-scopes that normalization to the
+  # four .git-write subcommands. The token loop below strips leading git global
+  # flags so the subcommand surfaces, and denies any inline `-c` / `--config-env`
+  # (a reviewer never needs to SET config — "値を設定する git config は一律 deny").
   #
   # `git config` read forms stay allowed via a small allow-list (--list / -l /
   # --get / --get-all / --get-regexp); every other form denies — no strict
@@ -334,15 +335,22 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # the deny message; strict parsing would re-open the static-parse churn this
   # hook just removed).
   #
-  # RESIDUAL (genuinely un-catchable by a static matcher — Layer 1 backstop
-  # ONLY, same class as the (H) SCOPE limitations): env-var config indirection
-  # (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, `GIT_DIR`),
-  # `--config-env=<key>=<envvar>` chained through an env var (the flag itself is
-  # denied above, but the value it names lives in the environment), and aliases
-  # already persisted in .git/config. Runtime-resolved subcommand/flag tokens
-  # (`$VAR`/`$(cmd)`) are already collapsed to spaces upstream. NOT residual —
-  # handled above: path/quoted/backslashed git invocations and all known
-  # separate-arg global flags.
+  # RESIDUAL (Layer 1 backstop ONLY — same class as the (H) SCOPE limitations):
+  #   - env-var config indirection (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/
+  #     `GIT_CONFIG_VALUE_n`, `GIT_DIR`) and `--config-env=<key>=<envvar>`
+  #     chained through an env var (the flag itself is denied above, but the
+  #     value it names lives in the environment);
+  #   - aliases already persisted in .git/config;
+  #   - an UNKNOWN separate-arg global flag (one not in the skip_arg list above)
+  #     whose value absorbs the subcommand slot. The skip_arg list is
+  #     git-version-dependent, not provably exhaustive: git can add flags, and
+  #     older gits accept flags 2.43 rejects. This is NOT a regression (develop's
+  #     enumeration could not catch unknown flags either), so it does not lower
+  #     the gate strength vs pre-PR — it is an inherent static-matcher limit
+  #     backstopped by Layer 1. Re-audit the list on a git upgrade.
+  # Runtime-resolved subcommand/flag tokens (`$VAR`/`$(cmd)`) are already
+  # collapsed to spaces upstream. Handled above (NOT residual):
+  # path/quoted/backslashed git invocations and every KNOWN separate-arg flag.
   if [ -z "$BLOCKED_PATTERN" ]; then
     # noglob for the unquoted `for … in $CMD_NORMALIZED` tokenizer (same reason
     # as the (H) loop: an un-noglobbed `*` token would pathname-expand against
@@ -361,14 +369,27 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
         case "$_gn_t" in
           -c|-c*|--config-env|--config-env=*)
             _gn_inline_config=1; _gn_after_git=0; continue ;;
-          -C|--git-dir|--work-tree|--namespace|--attr-source|--super-prefix)
+          -C|--git-dir|--work-tree|--namespace|--exec-path|--attr-source|--super-prefix|--shallow-file)
             _gn_skip_arg=1; continue ;;   # arg-taking global flag: also drop its
                                           # space-separated value so the value
                                           # cannot absorb the subcommand slot.
-                                          # Complete set of separate-arg global
-                                          # flags (with -c handled by the inline
-                                          # branch above, and =-forms caught by
-                                          # -*) below).
+                                          # This is a SUPERSET of the flags the
+                                          # removed (A)-(G) normalization covered
+                                          # (`-C`/`--git-dir`/`--work-tree`/
+                                          # `--exec-path`/`--namespace`/`-c`/
+                                          # `--config-env`), so (N) never allows a
+                                          # carrier form develop denied — not a
+                                          # regression by construction. Extends it
+                                          # with the git-2.43 plumbing flags
+                                          # `--attr-source`/`--super-prefix`/
+                                          # `--shallow-file`. `-c`/`--config-env`
+                                          # are handled by the inline branch above,
+                                          # `=`-forms by -*) below. The list is
+                                          # git-version-dependent — an UNKNOWN
+                                          # separate-arg flag whose value absorbs
+                                          # the subcommand is the Layer-1-backstop
+                                          # residual below, not a claimed-complete
+                                          # gate.
           -*)
             continue ;;                    # self-contained / =-form / boolean global flag
           *)
@@ -383,10 +404,16 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # <sub-action>` args, and a bare-`git`-only invocation check let
       # `/usr/bin/git` / `./git` slip the gate entirely — the removed (A)-(G)
       # code normalized these for exactly this reason.
-      # `*/git` matches any token ending in `/git` (`/usr/bin/git`, `./git`), so
-      # a non-invocation token like `cp /x/git config` also normalizes and can
-      # over-DENY a later `config` READ. Fail-closed and rare — same accepted
-      # tradeoff as the (H) quoted-string false-matches documented above.
+      # `*/git` matches any token ending in `/git` (`/usr/bin/git`, `./git`), and
+      # dequoting collapses a quoted `git` token to bare `git`. So a search over
+      # git's own source — `grep -rn 'git config' plugins/`, `rg 'git remote
+      # add' .`, or `cp /x/git config` — normalizes its literal `git <write-verb>`
+      # substring to ` git config ` / ` git remote add ` and over-DENYs (the deny
+      # message will misdescribe the grep as a config write). NOT rare in a repo
+      # that reviews git tooling; accepted as fail-closed — the same tradeoff
+      # class as the (H) quoted-string false-matches. Narrowing it precisely
+      # would need the separator tracking #1879 deliberately removed. Workaround
+      # in the deny path: break the adjacency (`grep -rn git plugins/ | grep config`).
       case "$_gn_t" in
         git|*/git)
           _gn_norm="$_gn_norm git"; _gn_after_git=1 ;;

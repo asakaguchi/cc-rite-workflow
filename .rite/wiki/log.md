@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-17T18:53:00+09:00 | lint:warning | — | contradictions=0, stale=6, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1888 ingest 後の auto-lint。stale 6 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-17T18:52:00+09:00 | create | [cwd破損下の成否検証は非空性とexit codeの両方をチェックする（文字列等値比較だけでは偽陽性を防げない）](pages/patterns/cwd-corruption-success-check-exit-code-and-nonempty.md) | raw/reviews/20260717T094246Z-pr-1888.md を新規ページ化 — worktree自己削除後のcwd破損下でgit rev-parseが空文字列を返しても等値比較がtrueになり偽のBASE_UPDATE=okを報告していたCRITICAL欠陥（PR #1888）から、exit code + 非空性チェックによる成否検証パターンを抽出 |
 | 2026-07-17T15:51:00+09:00 | lint:warning | — | contradictions=0, stale=5, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1884/#1886/#1887 ingest 後の auto-lint。stale 5 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-17T15:50:00+09:00 | update | [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](pages/patterns/drift-check-anchor-semantic-name.md) | raw/reviews/20260717T062934Z-pr-1887.md ほか pr-1887 の 3 件を統合 — SoT ルールリストの再番号化で消費側の数値ルール引用 (「ルール N」) が dangling 化する事例を追加。semantic 参照への置換で解消、圧縮宣言は保持例外を明記すべきという教訓も付随 |

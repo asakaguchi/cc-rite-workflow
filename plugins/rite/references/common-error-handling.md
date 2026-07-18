@@ -93,7 +93,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 ### 系統 A: retained-flag / 引数解析系 emit（stderr）
 
 **用途**:
-- sub-phase の失敗を示す retained flag: `[CONTEXT] {SCOPE}_FAILED=1; reason={reason}`。exit code により 2 パターンに分かれる — **(a) soft failure** (致命的だが loop を kill せず caller に通知): `exit 1` の直前で emit し、`distributed-fix-drift-check.sh` Pattern 1 (`exit 1` の直前 5 行以内に `[CONTEXT] *_FAILED=1` emit があるか) で機械検証される。**(b) [Non-blocking Contract](#non-blocking-contract-canonical-定義)** (本来非致命的な処理の失敗): `exit 0` の直前で emit し、Pattern 1 は `exit 1` サイトのみを検査するため対象外。いずれのパターンも retained flag 自体は stderr に emit される
+- sub-phase の失敗を示す retained flag: `[CONTEXT] {SCOPE}_FAILED=1; reason={reason}`。exit code により 2 パターンに分かれる — **(a) soft failure** (致命的だが loop を kill せず caller に通知): `exit 1` の直前で emit する。**(b) [Non-blocking Contract](#non-blocking-contract-canonical-定義)** (本来非致命的な処理の失敗): `exit 0` の直前で emit する。いずれのパターンも retained flag 自体は stderr に emit される
 - 同一 bash block が失敗パスでユーザー向け `エラー:` / `WARNING:` メッセージも stderr に出力する引数解析ルーチンで、その解析結果 (成功パスの値も含む) を emit する場合
 
 **なぜ成功パスの値も stderr に乗るのか**: 引数解析ルーチンは失敗パスで `エラー: ...` を stderr に出力する。同一ルーチン内の `[CONTEXT]` emit を全て stderr に統一することで、診断出力とデータ受け渡しが同一チャネルに局所化され、ルーチン全体の出力を 1 箇所 (stderr) で追跡できる。例: `fix.md` ステップ 1.0.1 の `--review-file` 引数解析では、失敗パスの `FIX_FALLBACK_FAILED=1` と成功パスの `REVIEW_FILE_PATH=...` / `REMAINING_ARGS=...` が両方とも stderr に emit される。
@@ -114,7 +114,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 | 状況 | emit 先 |
 |------|---------|
-| 失敗パスで retained flag を emit する (soft failure: `exit 1` 直前・Pattern 1 対象 / Non-blocking Contract: `exit 0` 直前・Pattern 1 対象外) | stderr (`{SCOPE}_FAILED=1; reason=...`) |
+| 失敗パスで retained flag を emit する (soft failure: `exit 1` 直前 / Non-blocking Contract: `exit 0` 直前) | stderr (`{SCOPE}_FAILED=1; reason=...`) |
 | 同一 bash block が失敗パスで `エラー:` / `WARNING:` をユーザー向けに出力し、その `[CONTEXT]` emit 自体も同じ stderr チャネルに併置して成功パスの値も後続処理へ渡す (引数解析等) | stderr (ブロック全体で統一) |
 | 純粋な状態計算 (成功/enum/sentinel) で、エラーメッセージを伴わない | stdout |
 | 列挙値・集合を伝達する | stdout (begin/end marker、[`bash-cross-boundary-state-transfer.md`](../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md#pattern-2-marker-delimited-multi-value-block) 参照) |

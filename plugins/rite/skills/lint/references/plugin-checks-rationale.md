@@ -2,17 +2,9 @@
 
 Background (incident origin), detection patterns, and exclusion rules for each plugin-specific check executed by `lint/SKILL.md` Phase 3.5 (generic loop). The check table in Phase 3.5 is the SoT for **what runs and how** (script path, invocation args, result variables, count-extraction pattern); this file holds only the **why** and the per-check detection details that do not affect loop execution. Each script's header comment remains the SoT for its exact regex literals and algorithm.
 
-## Drift チェック (distributed-fix-drift-check.sh)
-
-Detects documentation drift patterns in rite-workflow procedural markdown files — the class of bug where a fix is applied to one copy of a distributed instruction but not its siblings, leaving the copies contradicting each other.
-
 ## Bang-backtick check (bang-backtick-check.sh)
 
 Static lint counterpart to the incident where inline-code bang adjacency (an exclamation mark placed immediately next to an inline-code span) broke Skill loading via bash history expansion. Scans `plugins/rite/skills/**/*.md`, `plugins/rite/agents/**/*.md`, and `plugins/rite/references/**/*.md` (plugin-scoped; the script walks the rite plugin tree specifically and does not scan repository-root `skills/` or similar directories that may belong to other plugins).
-
-## Doc-heavy patterns drift check (doc-heavy-patterns-drift-check.sh)
-
-Detects divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/skills/pr-review/SKILL.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection.
 
 ## Reviewer registry drift check (reviewer-registry-drift-check.sh)
 
@@ -73,7 +65,7 @@ Detection inputs: inbound references searched in `plugins/rite/`, `docs/`, `.git
 
 ## Shell-prose cross-ref check (sh-cross-ref-check.sh)
 
-Detects `<file>.(md|sh) (ステップ|Phase) <number>` references inside echo strings and comments under `plugins/rite/**/*.sh` that are inconsistent with the referenced markdown file's actual headings. Complements the comment line-ref check (raw `<file>:<NN>` references) and the markdown-side anchor check in `distributed-fix-drift-check.sh` Pattern 4 (which only scans `.md` prose). A past review cycle surfaced `wiki-growth-check.sh` referencing a `close.md` step with the wrong keyword (`close.md` uses the `Phase` convention, but the prose said the in-scope `ステップ` convention) — a drift that escaped cycles 1-3 because they never scanned `.sh` prose.
+Detects `<file>.(md|sh) (ステップ|Phase) <number>` references inside echo strings and comments under `plugins/rite/**/*.sh` that are inconsistent with the referenced markdown file's actual headings. Complements the comment line-ref check (raw `<file>:<NN>` references), which covers `.sh` prose; `.md`-side cross-reference accuracy is left to reviewer judgment (see Issue #1881 Decision Log). A past review cycle surfaced `wiki-growth-check.sh` referencing a `close.md` step with the wrong keyword (`close.md` uses the `Phase` convention, but the prose said the in-scope `ステップ` convention) — a drift that escaped cycles 1-3 because they never scanned `.sh` prose.
 
 Two independent checks per reference: **dangling number** (the referenced number is not present as a heading number in the target file) and **keyword mismatch** (the number exists, but the prose keyword `ステップ` / `Phase` conflicts with the target file's own convention, derived from its headings rather than a hardcoded path map). Exclusions: self, `plugins/rite/hooks/tests/` (fixtures), lines containing the `drift-check-ignore` marker, unresolvable file references, and targets with no numbered step/phase headings. Intentional or historical references can be exempted with an inline `drift-check-ignore` marker.
 

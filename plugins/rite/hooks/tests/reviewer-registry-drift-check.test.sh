@@ -32,8 +32,7 @@
 # read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)
 # requires a mandatory backup suffix for `-i`, so GNU-style `sed -i '<expr>'`
 # aborts the suite on macOS under `set -e`. The awk pattern is identical on
-# GNU and BSD and matches the `test-doc-heavy-patterns-drift-check.sh`
-# portability convention.
+# GNU and BSD.
 
 set -euo pipefail
 
@@ -47,8 +46,7 @@ if [ ! -f "$CHECKER" ]; then
   exit 1
 fi
 
-# sibling _test-helpers.sh consumers (distributed-fix-drift-check.test.sh 等)
-# と同型の sandbox cleanup pattern。
+# sibling _test-helpers.sh consumers と同型の sandbox cleanup pattern。
 cleanup_dirs=()
 cleanup() {
   for d in "${cleanup_dirs[@]:-}"; do

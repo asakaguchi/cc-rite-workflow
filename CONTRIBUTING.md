@@ -84,14 +84,11 @@ A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3
 # 3-way sync: agents/ files <-> Available Reviewers <-> Type Identifiers
 bash plugins/rite/hooks/scripts/reviewer-registry-drift-check.sh --all
 
-# Only when the Technical Writer row was touched: tech-writer pattern equivalence
-bash plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh --all
-
 # Regression tests for the registry check itself
 bash plugins/rite/hooks/tests/reviewer-registry-drift-check.test.sh
 ```
 
-`/rite:lint` runs both drift checks automatically (Phase 3.5 generic loop) as non-blocking warnings, so a forgotten Type Identifiers row or agent profile surfaces on the next lint (invariants I1/I3) even if you skip manual verification. A forgotten **Available Reviewers** row is the one gap the check cannot see (indistinguishable from a logic-selected reviewer) — verify edit location 2 manually.
+`/rite:lint` runs this drift check automatically (Phase 3.5 generic loop) as a non-blocking warning, so a forgotten Type Identifiers row or agent profile surfaces on the next lint (invariants I1/I3) even if you skip manual verification. A forgotten **Available Reviewers** row is the one gap the check cannot see (indistinguishable from a logic-selected reviewer) — verify edit location 2 manually. When touching the Technical Writer row's File Patterns column, note it is the SoT for `doc_file_patterns` (`plugins/rite/skills/pr-review/SKILL.md` ステップ 1.2.7 reads it directly rather than duplicating it), so there is no separate pattern-equivalence check to run.
 
 ## Hook Development Guide
 

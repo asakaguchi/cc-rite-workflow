@@ -46,10 +46,7 @@
 #   severity_map_build_failed         — severity_map 構築用 jq が失敗 (exit 1、caller が [fix:error] に昇格)
 #   scope_map_build_failed            — scope_map 構築用 jq が失敗、scope_map_json="{}" で続行 (非ブロッキング)
 #
-# Eval-order enumeration (Pattern-2 documented-union input — distributed-fix-drift-check.sh の
-# DEFAULT_ALL_TARGETS に本 helper が登録されており、本 enumeration は reason 表と共に Pattern 2 の
-# documented set へ寄与する。どちらか一方にあれば documented とみなすため、厳密な同期や
-# enumeration 側の reverse staleness は機械検証されない):
+# Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
 # emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `low_current_pr_demoted_to_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
 #
 # Exit codes:

@@ -1488,6 +1488,51 @@ assert_subagent_deny_gitdir "--exec-path space + config write blocked" "git --ex
 echo "TC-127-ALLOW-e5: subagent git --exec-path (bare, print-and-exit read) → allow"
 assert_subagent_allow "git --exec-path bare allowed" "git --exec-path"
 
+# Per-flag skip_arg regression pins: every separate-arg global flag must
+# independently drop its value so a future skip_arg-list regression on any one of
+# them is caught. --git-dir/--work-tree were only pinned in =form (TC-127i/l),
+# which takes the -*) self-contained branch and does NOT exercise skip_arg;
+# --namespace had no pin at all.
+echo "TC-127w6: subagent git --namespace ns config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--namespace space + config write blocked" "git --namespace ns config core.hooksPath /tmp/evil"
+
+echo "TC-127w7: subagent git --git-dir ./.git config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--git-dir space + config write blocked" "git --git-dir ./.git config core.hooksPath /tmp/evil"
+
+echo "TC-127w8: subagent git --work-tree /tmp config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--work-tree space + config write blocked" "git --work-tree /tmp config core.hooksPath /tmp/evil"
+
+# Co-located read-form must NOT mask a real write in the same command line, and a
+# second git invocation in a compound command must be re-recognized. These were a
+# CRITICAL regression (a flattened whole-string match exempted the whole line).
+echo "TC-127y1: subagent compound read;write — read must NOT mask the write → deny"
+assert_subagent_deny_gitdir "co-located read does not mask write blocked" "git config --list; git config core.hooksPath /tmp/evil"
+
+echo "TC-127y2: subagent write&&read (write first) → deny"
+assert_subagent_deny_gitdir "write then read blocked" "git config core.hooksPath /tmp/evil && git config --list"
+
+echo "TC-127y3: subagent compound read; alias write → deny"
+assert_subagent_deny_gitdir "co-located read does not mask alias write blocked" "git config --list; git config alias.x '!sh -c evil'"
+
+echo "TC-127y4: subagent second path-git invocation in compound → deny"
+assert_subagent_deny_gitdir "compound second /usr/bin/git config blocked" "git; /usr/bin/git config core.hooksPath /tmp/evil"
+
+echo "TC-127y5: subagent git remote (no sub-action); git config write → deny"
+assert_subagent_deny_gitdir "compound after bare remote blocked" "git remote; git config core.hooksPath /tmp/evil"
+
+echo "TC-127-ALLOW-y6: subagent two co-located reads (config --list; log) → allow"
+assert_subagent_allow "co-located reads allowed" "git config --list; git log --oneline"
+
+# remarg is fail-CLOSED symmetric with cfgarg: an unknown/future remote sub-action
+# denies (not allow-by-default), so remote mutation is not a version-dependent
+# enumeration hole. Read sub-actions stay allowed.
+echo "TC-127y6: subagent git remote <unknown-sub-action> → deny (fail-closed)"
+assert_subagent_deny_gitdir "unknown remote sub-action blocked" "git remote frobnicate x"
+
+echo "TC-127-ALLOW-y7: subagent git remote show / get-url (read sub-actions) → allow"
+assert_subagent_allow "git remote show allowed" "git remote show origin"
+assert_subagent_allow "git remote get-url allowed" "git remote get-url origin"
+
 echo "TC-127-ALLOW-a: subagent git config --list (read) → allow"
 assert_subagent_allow "git config --list allowed" "git config --list"
 

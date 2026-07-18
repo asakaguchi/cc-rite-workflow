@@ -152,7 +152,7 @@ trap '_rite_board_drift_cleanup; exit 143' TERM
 trap '_rite_board_drift_cleanup; exit 129' HUP
 
 # --- Repo info ---
-repo_view_err=$(mktemp /tmp/rite-board-drift-repo-err-XXXXXX) || repo_view_err=""
+repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-repo-err-XXXXXX") || repo_view_err=""
 if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
   echo "ERROR: gh repo view failed" >&2
   if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
@@ -169,8 +169,8 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
 fi
 
 # --- Scan recently-updated CLOSED Issues (single GraphQL page) ---
-gql_err=$(mktemp /tmp/rite-board-drift-gql-err-XXXXXX) || gql_err=""
-jq_err=$(mktemp /tmp/rite-board-drift-jq-err-XXXXXX) || jq_err=""
+gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-gql-err-XXXXXX") || gql_err=""
+jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-jq-err-XXXXXX") || jq_err=""
 
 # jq emits one TSV line per drifted Issue: number<TAB>status<TAB>title
 # Drift = stateReason COMPLETED AND on board (projectItem for $pn) AND Status != "Done".
@@ -230,7 +230,7 @@ if [ -n "$DRIFT_TSV" ]; then
 
     reconcile_suffix=""
     if [ "$RECONCILE" = "true" ]; then
-      reconcile_err=$(mktemp /tmp/rite-board-drift-reconcile-err-XXXXXX) || reconcile_err=""
+      reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
         --argjson project_number "$PROJECT_NUMBER" --arg status "Done" \

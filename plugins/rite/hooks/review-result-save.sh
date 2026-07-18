@@ -147,7 +147,7 @@ fi
 json_path="${REVIEW_RESULTS_DIR}/${PR_NUMBER}-${file_timestamp}.json"
 
 # Create directory (失敗してもステップ 6 を fail させない)
-mkdir_err=$(mktemp /tmp/rite-review-p61a-mkdir-err-XXXXXX 2>/dev/null) || mkdir_err=""
+mkdir_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-mkdir-err-XXXXXX" 2>/dev/null) || mkdir_err=""
 if ! mkdir -p "$REVIEW_RESULTS_DIR" 2>"${mkdir_err:-/dev/null}"; then
   echo "WARNING: .rite/review-results/ ディレクトリの作成に失敗しました。会話コンテキストのみで続行します。" >&2
   [ -n "$mkdir_err" ] && [ -s "$mkdir_err" ] && head -5 "$mkdir_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -160,12 +160,12 @@ fi
 
 # mktemp stderr 退避 (失敗原因 disk full / permission / readonly を可視化)。
 # 退避 tempfile を作る mktemp 自体の失敗も silent 化しない。
-if ! mktemp_err=$(mktemp /tmp/rite-review-p61a-mktemp-err-XXXXXX 2>/dev/null); then
+if ! mktemp_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-mktemp-err-XXXXXX" 2>/dev/null); then
   echo "WARNING: mktemp stderr 退避用 tempfile の mktemp に失敗しました (meta エラー)。json_tmp 失敗時の stderr 詳細は失われます" >&2
   mktemp_err=""
 fi
 
-if ! json_tmp=$(mktemp /tmp/rite-review-p61a-json-XXXXXX.json 2>"${mktemp_err:-/dev/null}"); then
+if ! json_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-json-XXXXXX.json" 2>"${mktemp_err:-/dev/null}"); then
   echo "WARNING: JSON 一時ファイルの作成に失敗しました" >&2
   [ -n "$mktemp_err" ] && [ -s "$mktemp_err" ] && { echo "  詳細 (mktemp stderr):" >&2; head -5 "$mktemp_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
   echo "  対処: /tmp の容量 / permission / readonly filesystem を確認してください" >&2
@@ -190,8 +190,8 @@ fi
 # Approach C: bash-internal jq timestamp injection。
 # caller が `"timestamp": "__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込み、ここで $iso_timestamp に
 # 置換する。JSON body / ファイル名 / [CONTEXT] emit の 3 値が helper 内で完全同期する。
-json_ts_injected=$(mktemp /tmp/rite-review-p61a-json-ts-XXXXXX.json 2>/dev/null) || json_ts_injected=""
-jq_ts_err=$(mktemp /tmp/rite-review-p61a-jq-ts-err-XXXXXX 2>/dev/null) || jq_ts_err=""
+json_ts_injected=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-json-ts-XXXXXX.json" 2>/dev/null) || json_ts_injected=""
+jq_ts_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-jq-ts-err-XXXXXX" 2>/dev/null) || jq_ts_err=""
 if [ -z "$json_ts_injected" ]; then
   echo "WARNING: timestamp 注入用 tempfile の mktemp に失敗しました" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
@@ -221,7 +221,7 @@ fi
 # syntactically invalid JSON (literal substitute 漏れ含む) はそこで write_failure として既に fail する。
 # 下記 json_invalid は注入成功後に走る defense-in-depth backstop であり、syntactic invalidity 経由では
 # effectively unreachable (その経路の実発火 reason は write_failure)。
-jq_val_err_r=$(mktemp /tmp/rite-jq-val-err-r-XXXXXX 2>/dev/null) || jq_val_err_r=""
+jq_val_err_r=$(mktemp "${TMPDIR:-/tmp}/rite-jq-val-err-r-XXXXXX" 2>/dev/null) || jq_val_err_r=""
 if ! jq empty "$json_tmp" 2>"${jq_val_err_r:-/dev/null}"; then
   echo "WARNING: JSON 一時ファイルが syntactically invalid です (注入後に外部要因で破損した稀ケース。通常の literal substitute 漏れは upstream の write_failure で検出済)" >&2
   [ -n "${jq_val_err_r:-}" ] && [ -s "$jq_val_err_r" ] && head -3 "$jq_val_err_r" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
@@ -309,7 +309,7 @@ if [ -e "$json_path" ]; then
 fi
 
 # mv stderr 退避 (cross-FS / perm / TOCTOU / path-too-long を区別可能に)。
-if ! mv_err=$(mktemp /tmp/rite-review-p61a-mv-err-XXXXXX); then
+if ! mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-mv-err-XXXXXX"); then
   echo "WARNING: mv stderr 退避用 tempfile の mktemp に失敗しました。mv 失敗時の stderr は失われます" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mktemp_failure_mv_err" >&2
   mv_err=""

@@ -231,7 +231,7 @@ if [[ -d ".rite/wiki/raw" ]]; then
  # without a WARNING here, mktemp failure (full /tmp / inode exhaustion)
  # silently degrades awk stderr capture to /dev/null and operators can no
  # longer see why files are being treated as pending.
- if ! fm_err=$(mktemp /tmp/rite-wic-fm-err-XXXXXX 2>/dev/null); then
+ if ! fm_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-fm-err-XXXXXX" 2>/dev/null); then
  echo "WARNING: wiki-ingest-commit: fm_err mktemp failed — frontmatter parse errors will not be surfaced" >&2
  echo " hint: /tmp permission / disk space / inode exhaustion を確認" >&2
  fm_err=""
@@ -288,7 +288,7 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
  # failure, pre-commit hook reject, permission denied) collapse into a single
  # opaque "ERROR" line with no root cause, breaking parity with the
  # separate_branch path's dump_git_err diagnostics.
- _sb_git_err=$(mktemp /tmp/rite-wic-sb-git-err-XXXXXX 2>/dev/null) || _sb_git_err=""
+ _sb_git_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-sb-git-err-XXXXXX" 2>/dev/null) || _sb_git_err=""
  _sb_dump() {
   local label="$1"
   if [ -n "$_sb_git_err" ] && [ -s "$_sb_git_err" ]; then
@@ -504,7 +504,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  # scope-limited mini-trap so SIGINT / SIGTERM / SIGHUP all remove ref_err.
  ref_err=""
  trap 'rm -f "${ref_err:-}"' EXIT INT TERM HUP
- ref_err=$(mktemp /tmp/rite-wic-ref-err-XXXXXX 2>/dev/null || echo "")
+ ref_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-ref-err-XXXXXX" 2>/dev/null || echo "")
  if [[ -n "$ref_err" ]]; then
  git show-ref --verify "refs/heads/${wiki_branch}" >/dev/null 2>"$ref_err" || true
  fi
@@ -537,7 +537,7 @@ fi
 # Same class of bug as the ref_err leak fixed in cycle 3 LOW #3 (lines
 # 269-270, 282-283). stage_dir is created at this line but the main
 # cleanup_body trap is not installed until line ~400. A signal arriving
-# between mktemp and trap install would orphan /tmp/rite-wiki-stage-XXXXXX.
+# between mktemp and trap install would orphan ${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX.
 # Install a scope-limited mini-trap immediately after mktemp and disarm it
 # right before the main trap is installed, so the orphan race window is
 # closed without double-cleanup with cleanup_body.
@@ -547,7 +547,7 @@ fi
 # message with no context — emit an explicit ERROR first.
 stage_dir=""
 trap 'rm -rf "${stage_dir:-}" 2>/dev/null || true' EXIT INT TERM HUP
-if ! stage_dir=$(mktemp -d /tmp/rite-wiki-stage-XXXXXX 2>/dev/null); then
+if ! stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX" 2>/dev/null); then
  echo "ERROR: failed to create staging directory under /tmp" >&2
  echo " hint: check /tmp permission / disk space / inode exhaustion / read-only filesystem" >&2
  trap - EXIT INT TERM HUP
@@ -712,7 +712,7 @@ done
 # diagnosable only by re-running the script without this wrapper. Emit an
 # explicit WARNING so the operator understands why git stderr disappears,
 # and set git_err="" so the no-op path is obvious from the warning trail.
-if ! git_err=$(mktemp /tmp/rite-wic-git-err-XXXXXX 2>/dev/null); then
+if ! git_err=$(mktemp "${TMPDIR:-/tmp}/rite-wic-git-err-XXXXXX" 2>/dev/null); then
  echo "WARNING: mktemp failed for git stderr capture — git error details will be suppressed" >&2
  echo " hint: check /tmp permission / disk space / inode exhaustion" >&2
  echo " impact: dump_git_err and surface_git_warnings will be no-op for this run" >&2
@@ -791,7 +791,7 @@ done
 # at a worktree problem (permission, inode), so route the diag to stderr when
 # RITE_DEBUG=1 instead of dropping it entirely.
 if [ -n "${RITE_DEBUG:-}" ]; then
- _find_err=$(mktemp /tmp/rite-wiki-ingest-find-err-XXXXXX 2>/dev/null) || _find_err=""
+ _find_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-find-err-XXXXXX" 2>/dev/null) || _find_err=""
  find .rite/wiki/raw -type d -empty -delete 2>"${_find_err:-/dev/null}" || true
  if [ -n "$_find_err" ] && [ -s "$_find_err" ]; then
  sed 's/^/[rite][debug] find -delete: /' "$_find_err" >&2 || true

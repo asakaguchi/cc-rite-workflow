@@ -178,7 +178,7 @@ trap '_rite_pr_cycle_cleanup; exit 129' HUP
 # branch itself can be deleted (a branch checked out in a worktree cannot
 # be deleted with `git branch -D`).
 # -----------------------------------------------------------------------
-wt_list_err=$(mktemp /tmp/rite-pr-cycle-cleanup-wt-err-XXXXXX 2>/dev/null) || wt_list_err=""
+wt_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-wt-err-XXXXXX" 2>/dev/null) || wt_list_err=""
 if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
   # Parse porcelain output: pair each `worktree <path>` with its `branch refs/heads/<name>`
   current_path=""
@@ -235,7 +235,7 @@ fi
 # Prune any dangling worktree metadata to keep `git worktree list` clean.
 # AC-3 (異常終了経路) の核心ロジックのため、失敗を silent に握り潰さず errors カウンタに加算する。
 if [ "$DRY_RUN" = "0" ]; then
-  prune_err=$(mktemp /tmp/rite-pr-cycle-cleanup-prune-err-XXXXXX 2>/dev/null) || prune_err=""
+  prune_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-prune-err-XXXXXX" 2>/dev/null) || prune_err=""
   # bash の `if ! cmd; then rc=$?` は `!` 演算子が exit status を反転させるため
   # then ブロック内の `$?` は常に 0 になる仕様。`if cmd; then :; else rc=$?; fi` 形式で
   # 元コマンドの非ゼロ exit code を正しく取得する (兄弟スクリプト wt_list / ref と統一)。
@@ -256,7 +256,7 @@ fi
 # `git for-each-ref` is used instead of `git branch --list` because it
 # emits the bare ref name without leading whitespace/asterisks.
 # -----------------------------------------------------------------------
-ref_err=$(mktemp /tmp/rite-pr-cycle-cleanup-ref-err-XXXXXX 2>/dev/null) || ref_err=""
+ref_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-ref-err-XXXXXX" 2>/dev/null) || ref_err=""
 if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>"${ref_err:-/dev/null}"); then
   while IFS= read -r br; do
     [ -z "$br" ] && continue
@@ -396,8 +396,8 @@ _reap_mutation_worktree() {
 
 workdir_tmp_base="${TMPDIR:-/tmp}"
 workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
-workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
-workdir_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-out-XXXXXX 2>/dev/null) || workdir_find_out=""
+workdir_find_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-workdir-err-XXXXXX" 2>/dev/null) || workdir_find_err=""
+workdir_find_out=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-workdir-out-XXXXXX" 2>/dev/null) || workdir_find_out=""
 reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
   _reap_workdir "$workdir_find_out" "$workdir_find_err"
 
@@ -435,16 +435,16 @@ reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
 # -----------------------------------------------------------------------
 mutation_tmp_base="${TMPDIR:-/tmp}"
 mutation_tmp_base="${mutation_tmp_base%/}"  # strip trailing slash
-mutation_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-err-XXXXXX 2>/dev/null) || mutation_find_err=""
-mutation_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-out-XXXXXX 2>/dev/null) || mutation_find_out=""
+mutation_find_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mutation-err-XXXXXX" 2>/dev/null) || mutation_find_err=""
+mutation_find_out=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mutation-out-XXXXXX" 2>/dev/null) || mutation_find_out=""
 # mutation_reaped_any は reaper (_reap_mutation_worktree) が成功時に 1 を立てるグローバル。
 # 走査前に 0 で初期化し、回収が 1 件でも成功したら下記 post-loop prune を起動する。
 mutation_reaped_any=0
 reap_orphan_dirs "orphan mutation worktree" "$mutation_tmp_base" 'rite-review-mutation-*' \
   _reap_mutation_worktree "$mutation_find_out" "$mutation_find_err"
 # 同じ reviewer-tmp 名前空間の `rite-revert-test-*` も同一 reaper / counter で回収する。
-revert_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-revert-err-XXXXXX 2>/dev/null) || revert_find_err=""
-revert_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-revert-out-XXXXXX 2>/dev/null) || revert_find_out=""
+revert_find_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-revert-err-XXXXXX" 2>/dev/null) || revert_find_err=""
+revert_find_out=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-revert-out-XXXXXX" 2>/dev/null) || revert_find_out=""
 reap_orphan_dirs "orphan revert-test worktree" "$mutation_tmp_base" 'rite-revert-test-*' \
   _reap_mutation_worktree "$revert_find_out" "$revert_find_err"
 # rm -rf fallback で残った stale worktree メタデータを掃除する (remove --force 経路では不要だが冪等)
@@ -479,7 +479,7 @@ manifest_path="$repo_root/$TMP_ARTIFACT_MANIFEST"
 # compare could let the guard miss. Resolve once so the compare holds.
 _repo_canon=$( cd -- "$repo_root" 2>/dev/null && pwd -P ) || _repo_canon="$repo_root"
 if [ -f "$manifest_path" ]; then
-  manifest_keep=$(mktemp /tmp/rite-pr-cycle-cleanup-manifest-keep-XXXXXX 2>/dev/null) || manifest_keep=""
+  manifest_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-manifest-keep-XXXXXX" 2>/dev/null) || manifest_keep=""
   if [ -z "$manifest_keep" ]; then
     echo "WARNING: manifest reap 用の一時ファイル mktemp に失敗しました。今回の manifest 回収をスキップします" >&2
     errors=$((errors + 1))

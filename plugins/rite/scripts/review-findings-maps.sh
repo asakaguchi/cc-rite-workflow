@@ -162,7 +162,7 @@ if [ "$auto_demote_low" = "true" ]; then
   norm_demoted_low_count=$(jq '[.findings[]? | select(.severity == "LOW" and .scope == "current-pr")] | length' "$review_source_path" 2>/dev/null || echo 0)
 fi
 if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 0 ] || [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-  if norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX 2>/dev/null); then
+  if norm_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX" 2>/dev/null); then
     # auto_demote_low jq filter: bash 変数を jq 引数で渡し、jq 内で動的判定
     if jq --arg demote_low "$auto_demote_low" '
       .findings |= map(
@@ -212,7 +212,7 @@ fi
 # jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で silent に空文字になる。
 # 重複警告が silent skip し、severity_map 構築が無音で空になる regression を防ぐため、
 # if-else で exit code を独立 capture する。
-jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-jq-err-XXXXXX" 2>/dev/null) || jq_err=""
 
 # line フィールドの nullable sentinel 正規化
 # review-result-schema.md L92 で line は `integer | null` (null が行非依存指摘の sentinel) に変更。

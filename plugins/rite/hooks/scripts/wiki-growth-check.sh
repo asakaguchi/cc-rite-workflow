@@ -183,7 +183,7 @@ wiki_branch=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+branch_name:/ {
 # git log の stderr を tempfile に退避し、permission/repo corruption 等の
 # 失敗を「branch not found」と誤報告する経路を排除する
 last_wiki=""
-git_log_err=$(mktemp /tmp/rite-wiki-growth-git-err-XXXXXX 2>/dev/null) || git_log_err=""
+git_log_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-growth-git-err-XXXXXX" 2>/dev/null) || git_log_err=""
 if [ -z "$git_log_err" ]; then
   echo "WARNING: mktemp が失敗しました — git log 失敗時の stderr 詳細が surface できません" >&2
 fi
@@ -240,7 +240,7 @@ fi
 
 # `merged:>YYYY-MM-DD` — gh search interprets full ISO 8601 timestamps too
 # gh pr list の stderr を tempfile に退避し、auth error / network error / rate limit を可視化する
-gh_pr_list_err=$(mktemp /tmp/rite-wiki-growth-gh-err-XXXXXX 2>/dev/null) || gh_pr_list_err=""
+gh_pr_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-growth-gh-err-XXXXXX" 2>/dev/null) || gh_pr_list_err=""
 if [ -z "$gh_pr_list_err" ]; then
   echo "WARNING: mktemp が失敗しました — gh pr list 失敗時の stderr 詳細が surface できません" >&2
 fi
@@ -266,7 +266,7 @@ fi
 gh_pr_list_err=""
 
 # jq stderr を tempfile に退避し、parse error 等を surface する
-jq_err=$(mktemp /tmp/rite-wiki-growth-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-growth-jq-err-XXXXXX" 2>/dev/null) || jq_err=""
 if [ -z "$jq_err" ]; then
   echo "WARNING: mktemp が失敗しました — jq 失敗時の stderr 詳細が surface できません" >&2
 fi
@@ -325,7 +325,7 @@ check_pr_raw_correspondence() {
   # Get the last `threshold` merged PRs (reuse existing threshold for the window size)
   local recent_prs_json recent_pr_numbers
   local gh_pr_err
-  gh_pr_err=$(mktemp /tmp/rite-wiki-growth-pr-err-XXXXXX 2>/dev/null) || gh_pr_err=""
+  gh_pr_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-growth-pr-err-XXXXXX" 2>/dev/null) || gh_pr_err=""
   recent_prs_json=$(gh pr list \
     --state merged \
     --base "$base_branch" \
@@ -339,7 +339,7 @@ check_pr_raw_correspondence() {
   [ -n "$gh_pr_err" ] && rm -f "$gh_pr_err"
 
   local jq_pr_err
-  jq_pr_err=$(mktemp /tmp/rite-wiki-growth-jq-err-XXXXXX 2>/dev/null) || jq_pr_err=""
+  jq_pr_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-growth-jq-err-XXXXXX" 2>/dev/null) || jq_pr_err=""
   recent_pr_numbers=$(printf '%s' "$recent_prs_json" | jq -r '.[].number' 2>"${jq_pr_err:-/dev/null}") || {
     echo "WARNING: wiki-growth-check: pr-raw-correspondence: jq parse failed, skipping" >&2
     [ -n "$jq_pr_err" ] && [ -s "$jq_pr_err" ] && head -3 "$jq_pr_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2

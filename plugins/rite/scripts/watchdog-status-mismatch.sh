@@ -132,7 +132,7 @@ trap '_rite_watchdog_cleanup; exit 129' HUP
 # --- Repo info ---
 # gh repo view stderr is captured into a dedicated tempfile (repo_view_err) so
 # the discrimination matches the 2-site contract declared above.
-repo_view_err=$(mktemp /tmp/rite-watchdog-repo-err-XXXXXX) || repo_view_err=""
+repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-repo-err-XXXXXX") || repo_view_err=""
 if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
   echo "ERROR: gh repo view failed" >&2
   if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
@@ -153,7 +153,7 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
 fi
 
 # --- Scan OPEN, non-draft PRs ---
-pr_list_err=$(mktemp /tmp/rite-watchdog-pr-list-err-XXXXXX) || pr_list_err=""
+pr_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-pr-list-err-XXXXXX") || pr_list_err=""
 if ! PR_LIST=$(gh pr list --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${pr_list_err:-/dev/null}"); then
   echo "ERROR: gh pr list failed" >&2
   if [ -n "$pr_list_err" ] && [ -s "$pr_list_err" ]; then
@@ -208,8 +208,8 @@ while IFS= read -r pr_entry; do
 
   # Query Issue's current Status in the Project. Capture gh and jq stderr into
   # independent tempfiles so a failed pipeline can be triaged by side (gh vs jq).
-  gql_err=$(mktemp /tmp/rite-watchdog-gql-err-XXXXXX) || gql_err=""
-  jq_err=$(mktemp /tmp/rite-watchdog-jq-err-XXXXXX) || jq_err=""
+  gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-gql-err-XXXXXX") || gql_err=""
+  jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-jq-err-XXXXXX") || jq_err=""
   # Inner `set -o pipefail` mirrors the outer setting; making it explicit keeps
   # the inheritance contract obvious when this block is run in a sub-shell.
   if ! current_status=$(set -o pipefail; gh api graphql -f query='
@@ -256,7 +256,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     if [ "$RECONCILE" = "true" ]; then
       # stderr を tempfile に退避して失敗時の原因 (auth / rate limit / partial failure) を可視化する。
       # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user が失敗原因を triage できない。
-      reconcile_err=$(mktemp /tmp/rite-watchdog-reconcile-err-XXXXXX) || reconcile_err=""
+      reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
         --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \

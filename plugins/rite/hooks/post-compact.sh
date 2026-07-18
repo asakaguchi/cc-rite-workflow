@@ -253,12 +253,12 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     # permission) would vanish from the WARNING. Tag the failure so the WARNING
     # can distinguish "gh returned no stderr" from "we couldn't capture it".
     stderr_capture_disabled=0
-    pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || { pr_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for pr_view_err; gh pr view stderr will not be captured" >&2; }
-    repo_view_err=$(mktemp /tmp/rite-pc-repo-err-XXXXXX) || { repo_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for repo_view_err; gh repo view stderr will not be captured" >&2; }
-    jq_owner_err=$(mktemp /tmp/rite-pc-jq-owner-err-XXXXXX) || { jq_owner_err=""; stderr_capture_disabled=1; }
-    jq_name_err=$(mktemp /tmp/rite-pc-jq-name-err-XXXXXX) || { jq_name_err=""; stderr_capture_disabled=1; }
-    gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || { gql_err=""; stderr_capture_disabled=1; }
-    jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || { jq_err=""; stderr_capture_disabled=1; }
+    pr_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-pr-err-XXXXXX") || { pr_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for pr_view_err; gh pr view stderr will not be captured" >&2; }
+    repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-repo-err-XXXXXX") || { repo_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for repo_view_err; gh repo view stderr will not be captured" >&2; }
+    jq_owner_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-jq-owner-err-XXXXXX") || { jq_owner_err=""; stderr_capture_disabled=1; }
+    jq_name_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-jq-name-err-XXXXXX") || { jq_name_err=""; stderr_capture_disabled=1; }
+    gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-gql-err-XXXXXX") || { gql_err=""; stderr_capture_disabled=1; }
+    jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-jq-err-XXXXXX") || { jq_err=""; stderr_capture_disabled=1; }
 
     # Test STATE_ROOT existence up front and warn about state_root_inaccessible
     # directly. If we instead chained `cd ... 2>/dev/null && gh pr view ...`,
@@ -325,8 +325,8 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # here would let broken Projects integration go unnoticed by the user.
       awk_pe_err=""
       awk_pn_err=""
-      awk_pe_err=$(mktemp /tmp/rite-pc-awk-pe-err-XXXXXX) || { awk_pe_err=""; stderr_capture_disabled=1; }
-      awk_pn_err=$(mktemp /tmp/rite-pc-awk-pn-err-XXXXXX) || { awk_pn_err=""; stderr_capture_disabled=1; }
+      awk_pe_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-awk-pe-err-XXXXXX") || { awk_pe_err=""; stderr_capture_disabled=1; }
+      awk_pn_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-awk-pn-err-XXXXXX") || { awk_pn_err=""; stderr_capture_disabled=1; }
       # awk rc を独立 capture することで「awk parse 失敗 (config file 不正)」と「Projects 無効
       # 設定」を区別する。両者が silent に同一視されると、permission denied や IO error で
       # Projects 整合性チェックが skip された事実が operator に届かない。
@@ -420,9 +420,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
           # (引数 unsubstituted / type mismatch 等) が空文字列として projects-status-update.sh
           # へ silent 流入する経路を遮断する。command substitution は pipeline ではないため
           # `set -o pipefail` は内部 jq の rc を outer rc に伝播しない。
-          reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
-          reconcile_parse_err=$(mktemp /tmp/rite-pc-reconcile-parse-err-XXXXXX) || reconcile_parse_err=""
-          reconcile_jq_err=$(mktemp /tmp/rite-pc-reconcile-jq-err-XXXXXX) || reconcile_jq_err=""
+          reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-reconcile-err-XXXXXX") || reconcile_err=""
+          reconcile_parse_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-reconcile-parse-err-XXXXXX") || reconcile_parse_err=""
+          reconcile_jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-reconcile-jq-err-XXXXXX") || reconcile_jq_err=""
           RECONCILE_RESULT=""
           RECONCILE_RC=0
           JQ_PAYLOAD=""

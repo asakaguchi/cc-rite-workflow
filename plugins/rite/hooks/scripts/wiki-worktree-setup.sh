@@ -171,7 +171,7 @@ abs_target="${repo_root}/${target_path}"
 # 握り潰さない (cycle 2 MEDIUM F-11 fix)。
 wt_list_err=""
 trap 'rm -f "${wt_list_err:-}"' EXIT INT TERM HUP
-wt_list_err=$(mktemp /tmp/rite-wts-list-err-XXXXXX 2>/dev/null) || wt_list_err=""
+wt_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-wts-list-err-XXXXXX" 2>/dev/null) || wt_list_err=""
 
 existing_line=""
 existing_branch=""
@@ -263,7 +263,7 @@ if [ -e "$target_path" ] && ! git -C "$target_path" rev-parse --is-inside-work-t
   # this file (trap armed before mktemp, disarmed after rm -f).
   prune_err=""
   trap 'rm -f "${prune_err:-}"' EXIT INT TERM HUP
-  prune_err=$(mktemp /tmp/rite-wts-prune-err-XXXXXX 2>/dev/null) || prune_err=""
+  prune_err=$(mktemp "${TMPDIR:-/tmp}/rite-wts-prune-err-XXXXXX" 2>/dev/null) || prune_err=""
   if ! git worktree prune 2>"${prune_err:-/dev/null}"; then
     echo "WARNING: git worktree prune に失敗しました (stale metadata が残存する可能性があります)" >&2
     [ -n "$prune_err" ] && [ -s "$prune_err" ] && head -3 "$prune_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
@@ -284,7 +284,7 @@ add_err=""
 trap 'rm -f "${add_err:-}"' EXIT INT TERM HUP
 # mktemp 失敗 (read-only /tmp / inode 枯渇 / permission denied) を silent に握り潰さず
 # WARNING で可視化する (wiki-ingest-commit.sh:559-564 の対称パターン)。
-if ! add_err=$(mktemp /tmp/rite-wts-err-XXXXXX 2>/dev/null); then
+if ! add_err=$(mktemp "${TMPDIR:-/tmp}/rite-wts-err-XXXXXX" 2>/dev/null); then
   echo "WARNING: mktemp for add_err failed — git worktree add stderr will not be captured for diagnostics" >&2
   echo "  hint: /tmp permission / disk space / inode exhaustion を確認してください" >&2
   add_err=""

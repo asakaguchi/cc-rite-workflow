@@ -39,7 +39,7 @@ Hooks registration (`.claude/settings.local.json`) はチェックしない (`/r
 
 ## Prerequisites
 
-bash 4.0+ 必須 (`mapfile` builtin を使用)。ステップ 1.0 の統合 bash block 冒頭 (Step 0) に [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を inline embed 済み (C-3 対応)。失敗時は `[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=bash_version_incompatible` を emit して `[review:error]` で exit する。
+bash 4.0+ 必須 (`mapfile` builtin の存在を bash 4+ 判定に使用。ステップ 1.2.7 の doc-heavy 検出簡素化により本体側の `mapfile` データ利用箇所は Issue #1881 で撤去済みだが、guard 自体は他の bash 4+ 機能の baseline として維持する)。ステップ 1.0 の統合 bash block 冒頭 (Step 0) に [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を inline embed 済み (C-3 対応)。失敗時は `[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=bash_version_incompatible` を emit して `[review:error]` で exit する。
 
 ## E2E Output Minimization
 

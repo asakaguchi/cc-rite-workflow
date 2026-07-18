@@ -18,7 +18,6 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLUGIN_ROOT="$(cd "$HOOKS_DIR/.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0

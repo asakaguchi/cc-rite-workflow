@@ -172,7 +172,7 @@ esac
 # before falling through.
 wiki_section=""
 if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
-  if ! _yaml_err=$(mktemp /tmp/rite-wiki-query-yaml-err-XXXXXX); then
+  if ! _yaml_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-yaml-err-XXXXXX"); then
     echo "WARNING: mktemp failed for YAML stderr capture; falling back to /dev/null" >&2
     echo "  対処: /tmp の permission / read-only / inode 枯渇を確認してください" >&2
     _yaml_err=""
@@ -225,7 +225,7 @@ _extract_yaml_value() {
 #   - exit >=2: awk runtime error (EPIPE / OOM / binary corruption) — must NOT
 #     be silently conflated with "not found", otherwise a real parse failure
 #     would degrade to the same silent-swallow pattern F-02 was meant to fix.
-if ! _awk_err=$(mktemp /tmp/rite-wiki-query-awk-err-XXXXXX); then
+if ! _awk_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-awk-err-XXXXXX"); then
   echo "WARNING: mktemp failed for awk stderr capture; falling back to /dev/null" >&2
   _awk_err=""
 fi
@@ -293,7 +293,7 @@ if [[ "$branch_strategy" == "separate_branch" ]]; then
   # to a tempfile so legitimate IO errors (permission denied / object corrupt
   # / submodule drift) surface as a WARNING with diagnostic detail, matching
   # the F-22 "silent-swallow to surface" policy applied elsewhere.
-  if ! _index_err=$(mktemp /tmp/rite-wiki-query-index-err-XXXXXX); then
+  if ! _index_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-index-err-XXXXXX"); then
     echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
     _index_err=""
   fi
@@ -498,7 +498,7 @@ while IFS=$'\x1f' read -r score title path domain summary updated confidence; do
       # exactly one WARNING instead of one per loop iteration under /tmp
       # pressure.
       if [ -z "${_git_show_err:-}" ] && [ "${_git_show_err_failed:-0}" -eq 0 ]; then
-        if ! _git_show_err=$(mktemp /tmp/rite-wiki-query-gitshow-err-XXXXXX); then
+        if ! _git_show_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-gitshow-err-XXXXXX"); then
           echo "WARNING: mktemp failed for git show stderr capture; falling back to /dev/null for the rest of this run" >&2
           _git_show_err=""
           _git_show_err_failed=1

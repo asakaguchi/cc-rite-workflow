@@ -180,7 +180,7 @@ if [ "$VERIFY_NEGATION" -eq 1 ]; then
   # >>> DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture (verify-negation copy) <<<
   # Keep one-for-one with the same_branch case copy below (mktemp stderr capture +
   # if-wrapper rc capture). Wiki 経験則 patterns/high「canonical 実装と一字一句同期」.
-  add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
+  add_dry_err=$(mktemp "${TMPDIR:-/tmp}/rite-gitignore-adddry-XXXXXX" 2>/dev/null) || add_dry_err=""
   add_dry_out=""
   add_dry_rc=0
   if add_dry_out=$(git add --dry-run -- "$negation_probe" 2>"${add_dry_err:-/dev/null}"); then
@@ -351,7 +351,7 @@ esac
 # the canonical way to ask git "is this path ignored by the current .gitignore?"
 # without polluting the working tree.
 probe_path=".rite/wiki/raw/.rite-lint-probe"
-check_ignore_err=$(mktemp /tmp/rite-gitignore-check-XXXXXX 2>/dev/null) || check_ignore_err=""
+check_ignore_err=$(mktemp "${TMPDIR:-/tmp}/rite-gitignore-check-XXXXXX" 2>/dev/null) || check_ignore_err=""
 if [ -z "$check_ignore_err" ]; then
   echo "WARNING: gitignore-health-check: mktemp failed — check-ignore stderr won't be surfaced" >&2
 fi
@@ -435,7 +435,7 @@ case "$branch_strategy" in
     # capture structure one-for-one with that copy — Wiki 経験則 patterns/high
     # 「canonical 実装と一字一句同期」. (wiki/init.md ステップ 1.3.4 holds no
     # inline copy; it delegates here via `gitignore-health-check.sh --verify-negation`.)
-    add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
+    add_dry_err=$(mktemp "${TMPDIR:-/tmp}/rite-gitignore-adddry-XXXXXX" 2>/dev/null) || add_dry_err=""
     add_dry_out=""
     add_dry_rc=0
     if add_dry_out=$(git add --dry-run -- "$negation_probe" 2>"${add_dry_err:-/dev/null}"); then

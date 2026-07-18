@@ -166,7 +166,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     echo "[CONTEXT] REVIEW_SOURCE_MISSING=1; reason=explicit_file_not_found" >&2
     review_source="fallback"
     review_source_path=""
-  elif jq_val_err_p0=$(mktemp /tmp/rite-jq-val-err-p0-XXXXXX 2>/dev/null) || true; ! jq empty "$review_file_path" 2>"${jq_val_err_p0:-/dev/null}"; then
+  elif jq_val_err_p0=$(mktemp "${TMPDIR:-/tmp}/rite-jq-val-err-p0-XXXXXX" 2>/dev/null) || true; ! jq empty "$review_file_path" 2>"${jq_val_err_p0:-/dev/null}"; then
     echo "エラー: --review-file で指定されたファイルが有効な JSON ではありません: $review_file_path" >&2
     [ -n "${jq_val_err_p0:-}" ] && [ -s "$jq_val_err_p0" ] && head -3 "$jq_val_err_p0" | sed 's/^/  /' >&2
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_parse" >&2
@@ -245,7 +245,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
         # [CONTEXT] REVIEW_SOURCE_STALE=1 を emit して observability は維持する。
         # jq バイナリ異常 / I/O エラーと「.commit_sha フィールド不在 (legacy schema)」を区別する。
         # `2>/dev/null || echo ""` の素朴な実装はこの 2 ケースを silent に融合させ、stale detection を silent 無効化してしまう。
-        json_commit_sha_err=$(mktemp /tmp/rite-fix-p0-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
+        json_commit_sha_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p0-commit-sha-err-XXXXXX" 2>/dev/null) || json_commit_sha_err=""
         if json_commit_sha=$(jq -r '.commit_sha // empty' "$review_file_path" 2>"${json_commit_sha_err:-/dev/null}"); then
           : # jq 成功 (空 or 非空)
         else
@@ -380,7 +380,7 @@ if [ -z "$review_source" ]; then
     # 構造: bash の 「!」否定 pipeline では then 節内 $? が常に 0 になるため、SoT と同じ
     # `if cmd; then :; else rc=$?; fi` 形式を採用する。mktemp の native stderr は SoT (norm_tmp) と
     # 揃えて `2>/dev/null` で抑制する (本ファイル内の他 mktemp capture site と同じ pattern)。
-    if find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX 2>/dev/null); then
+    if find_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-find-err-XXXXXX" 2>/dev/null); then
       : # mktemp 成功 — find_err は valid path
     else
       mktemp_find_err_rc=$?
@@ -439,7 +439,7 @@ if [ -z "$review_source" ]; then
     fi
     if [ -z "$review_source" ] && [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
       # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
-      jq_val_err_p2=$(mktemp /tmp/rite-jq-val-err-p2-XXXXXX 2>/dev/null) || jq_val_err_p2=""
+      jq_val_err_p2=$(mktemp "${TMPDIR:-/tmp}/rite-jq-val-err-p2-XXXXXX" 2>/dev/null) || jq_val_err_p2=""
       if ! jq empty "$latest_file" 2>"${jq_val_err_p2:-/dev/null}"; then
         echo "WARNING: $latest_file は有効な JSON ではありません。Priority 3 (PR コメント) に routing します。" >&2
         [ -n "${jq_val_err_p2:-}" ] && [ -s "$jq_val_err_p2" ] && head -3 "$jq_val_err_p2" | sed 's/^/  /' >&2
@@ -454,7 +454,7 @@ if [ -z "$review_source" ]; then
         # mv の stderr を tempfile に退避し、失敗時に原因を可視化する。
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
-        mv_err=$(mktemp /tmp/rite-fix-corrupt-mv-err-XXXXXX 2>/dev/null) || mv_err=""
+        mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-corrupt-mv-err-XXXXXX" 2>/dev/null) || mv_err=""
         if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
           echo "  corrupted file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
           echo "  対処: 内容を確認後、手動で削除するか新しい review を生成してください" >&2
@@ -481,7 +481,7 @@ if [ -z "$review_source" ]; then
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" >&2
         corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
         corrupt_suffix=".corrupt-${corrupt_epoch}"
-        mv_err=$(mktemp /tmp/rite-fix-corrupt-mv-err-XXXXXX 2>/dev/null) || mv_err=""
+        mv_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-corrupt-mv-err-XXXXXX" 2>/dev/null) || mv_err=""
         if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
           echo "  schema-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
         else
@@ -551,7 +551,7 @@ if [ -z "$review_source" ]; then
             # (PR コメント) に routing する (Priority 2 の他の失敗経路と同じ扱い)。
             # 古い local file には fallback しない (Priority 2 schema doc の設計判断と整合)。
             # jq IO エラーを silent 化しない。
-            json_commit_sha_err=$(mktemp /tmp/rite-fix-p2-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
+            json_commit_sha_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p2-commit-sha-err-XXXXXX" 2>/dev/null) || json_commit_sha_err=""
             if json_commit_sha=$(jq -r '.commit_sha // empty' "$latest_file" 2>"${json_commit_sha_err:-/dev/null}"); then
               :
             else

@@ -251,7 +251,7 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   # IO errors don't get conflated with "no match". The old `2>/dev/null || ...=""`
   # pattern silently treated all of those as "section absent" — leading the
   # Wiki enable check to misfire.
-  _yaml_err=$(mktemp /tmp/rite-wiki-trigger-yaml-err-XXXXXX 2>/dev/null) || _yaml_err=""
+  _yaml_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-yaml-err-XXXXXX" 2>/dev/null) || _yaml_err=""
   # Fail closed on parse failure (exit 2 = treat as Wiki disabled). A lenient
   # fallback that continued staging would let a corrupted config quietly leak
   # raw sources to develop even when the user set wiki.enabled: false on purpose

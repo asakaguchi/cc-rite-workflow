@@ -92,20 +92,20 @@ case "$MODE" in
     # but unguarded mktemp under `set -euo pipefail` would abort silently when
     # /tmp is exhausted. Surface mktemp failure as a normal fetch_failure_reason
     # so the caller can branch on it instead of getting a mute exit.
-    tmpfile_read=$(mktemp /tmp/rite-issue-body-read-XXXXXX) || {
+    tmpfile_read=$(mktemp "${TMPDIR:-/tmp}/rite-issue-body-read-XXXXXX") || {
       echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_read failed (disk full / inode / permission?)" >&2
       echo "fetch_failure_reason=mktemp_failed"
       _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "tmpfile_read mktemp failed"
       exit 0
     }
-    tmpfile_write=$(mktemp /tmp/rite-issue-body-write-XXXXXX) || {
+    tmpfile_write=$(mktemp "${TMPDIR:-/tmp}/rite-issue-body-write-XXXXXX") || {
       echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_write failed" >&2
       echo "fetch_failure_reason=mktemp_failed"
       _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "tmpfile_write mktemp failed"
       rm -f "$tmpfile_read"
       exit 0
     }
-    tmpfile_err=$(mktemp /tmp/rite-issue-body-err-XXXXXX) || {
+    tmpfile_err=$(mktemp "${TMPDIR:-/tmp}/rite-issue-body-err-XXXXXX") || {
       echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_err failed" >&2
       echo "fetch_failure_reason=mktemp_failed"
       _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "tmpfile_err mktemp failed"
@@ -213,7 +213,7 @@ case "$MODE" in
     # attributed in the WARNING rather than reported as "API failed, reason
     # unknown". The script is non-blocking, so mktemp failure degrades to
     # "no stderr capture" rather than aborting the caller's workflow.
-    apply_err=$(mktemp /tmp/rite-issue-body-apply-err-XXXXXX) || {
+    apply_err=$(mktemp "${TMPDIR:-/tmp}/rite-issue-body-apply-err-XXXXXX") || {
       echo "${err_level}: issue-body-safe-update apply: mktemp apply_err failed; stderr capture disabled" >&2
       _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "apply_err mktemp failed"
       apply_err=""

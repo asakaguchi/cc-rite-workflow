@@ -226,7 +226,7 @@ esac
 # silent miss し、`reason=no-pending` で skip してしまう経路が生じる。
 lsf_err=""
 trap 'rm -f "${lsf_err:-}"' EXIT INT TERM HUP
-lsf_err=$(mktemp /tmp/rite-wwc-lsf-err-XXXXXX 2>/dev/null) || lsf_err=""
+lsf_err=$(mktemp "${TMPDIR:-/tmp}/rite-wwc-lsf-err-XXXXXX" 2>/dev/null) || lsf_err=""
 set +e
 untracked=$(git -C "$worktree_path" ls-files --others --exclude-standard -- "$wiki_rel" 2>"${lsf_err:-/dev/null}")
 lsf_rc=$?

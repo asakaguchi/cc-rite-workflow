@@ -149,7 +149,7 @@ trap '_rite_review_p61b_cleanup; exit 130' INT
 trap '_rite_review_p61b_cleanup; exit 143' TERM
 trap '_rite_review_p61b_cleanup; exit 129' HUP
 
-tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
+tmpfile_patched=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61b-comment-patched-XXXXXX.md") || {
   echo "ERROR: timestamp 置換用 tmpfile 作成失敗" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=tmpfile_write_failure" >&2
   exit 1
@@ -240,7 +240,7 @@ if [ "$original_markdown" != "$patched_markdown" ]; then
 fi
 
 # gh pr comment 投稿 (exit code 明示捕捉、silent failure 防止)。
-gh_err=$(mktemp /tmp/rite-review-p61b-gh-err-XXXXXX) || gh_err=""
+gh_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61b-gh-err-XXXXXX") || gh_err=""
 if gh pr comment "$PR_NUMBER" --body-file "$tmpfile_patched" 2>"${gh_err:-/dev/null}"; then
   if [ "$JSON_SAVED" = "false" ]; then
     echo "ℹ️ ローカルファイル保存は失敗しましたが、PR コメントへの投稿は成功しました。" >&2

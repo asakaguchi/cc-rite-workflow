@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-18T23:30:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260718T132335Z-pr-1898.md, raw/fixes/20260718T140750Z-pr-1898.md, raw/reviews/20260718T142416Z-pr-1898.md を統合 — sandbox git config書き込み拒否修正PR(2 cycle 収束)で「複数skillに分散したコマンドの一貫修正時、直接変更していない同一ファイル内Error Handling復旧手順への暗黙依存見落とし」sub-patternを追加 |
 | 2026-07-18T20:20:00+09:00 | lint:warning | — | contradictions=0, stale=11, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1895 ingest 後の auto-lint。stale 11 件・unregistered_raw 266 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-18T20:15:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260718T091220Z-pr-1895.md, raw/fixes/20260718T091459Z-pr-1895.md, raw/fixes/20260718T101518Z-pr-1895.md, raw/reviews/20260718T111016Z-pr-1895.md を統合 — drift-check 層解体 PR(3 cycle 収束)で「機械比率計算→目的文 prose 化簡素化時の閾値ガード脱落」+「fix 自体が別箇所への波及を見落として新たな dangling reference を生む再発」の 2 sub-pattern を追加 |
 | 2026-07-18T15:30:00+09:00 | lint:warning | — | contradictions=0, stale=11, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1893 ingest 後の auto-lint。stale 11 件・unregistered_raw 266 件は pre-existing で本 ingest 由来ではない) |

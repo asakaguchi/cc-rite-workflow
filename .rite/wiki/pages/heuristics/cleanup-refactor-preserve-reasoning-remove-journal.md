@@ -2,8 +2,12 @@
 title: "Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する"
 domain: "heuristics"
 created: "2026-05-07T04:15:00+00:00"
-updated: "2026-07-07T20:50:00+00:00"
+updated: "2026-07-18T15:20:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260718T034912Z-pr-1893.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260718T035229Z-pr-1893.md"
   - type: "reviews"
     ref: "raw/reviews/20260506T190517Z-pr-877.md"
   - type: "reviews"
@@ -235,6 +239,16 @@ PR #1066 は「新規 PR の code comment / PR description」への journal narr
 
 累計 preventive direction 2 例 (PR #1066: code comment / PR #1780: 新設 reference doc 本文) となり、「SoT 化・規約明文化を目的とする PR ほど journal narration 混入リスクが高い」という追加観察が得られた。canonical 対策としては、新設 canonical セクションの draft 完了時点で `comment-best-practices.md` 禁止句リスト regex に対して self-grep することが特に重要 (通常の cleanup PR よりも新設 SoT PR の方が自己言及的リスクが高いため)。
 
+### PR #1893 で preventive direction 3 例目: lint regex が未カバーの「で廃止」形が LLM レビューのみで捕捉される (Issue #1880)
+
+PR #1780 は「新設 canonical reference セクション本文」だったのに対し、PR #1893 は **決定的な機械判定を目的文へ書き換える refactor** (fingerprint 重複判定・debate 台本・skill-suggest スコアリング・issue-implement 決定木の 4 箇所) で、書き換えた本人が「`#1880 で廃止`」のような変更イベント語り (経緯ナラティブ) を永続文書 6 箇所に埋め込んだ。`comment-journal-check.sh` の既存 regex (`cycle\s*\d+` / `F-\d+` / `PR\s*#\d+` 等) は `旧 X は Y していた` 形の日本語 journal phrase を PR #1161 (累積対策) で拡張済みだったが、**「`#N で廃止`」という「番号 + で + 動詞」の複合形は本 lint regex がカバーしておらず、LLM レビュー (prompt-engineer) のみが検出した** (cycle 1 MEDIUM)。
+
+fix (cycle 1) では番号・経緯を削除し、現在形の制約文 + WHY のみを残す標準の書き換え技法 (`旧実装は Y だった、本 cycle で Z を追加` → `Y のため Z にする` と同型) を適用、cycle 2 で 0 findings に到達した。
+
+**preventive direction 3 例目としての意義**: 機械判定の削除・簡素化を目的とする refactor PR (「仕様を減らす」方向の変更) では、削除理由を Issue 番号付きで語りたくなる誘惑が特に強い — PR #1780 の「SoT 化・規約明文化 PR ほど journal narration 混入リスクが高い」観察に加え、「**仕様削減・簡素化を目的とする PR も同様のリスクを持つ**」ことが本 PR で追加実証された。lint regex が既知の journal phrase 変種を汎化しても、「番号+で+動詞」のような新規複合形は後追いでしか拡張されないため、**lint はセーフティネットであり LLM レビューによる semantic 検出が一次防衛線である**ことを再確認する事例でもある。
+
+累計 preventive direction 3 例 (PR #1066: code comment / PR #1780: 新設 reference doc 本文 / PR #1893: 仕様削減 refactor の複合形 journal phrase) となった。
+
 ## 関連ページ
 
 - [既存ページなし — 本ページが本テーマの初出](#)
@@ -243,6 +257,8 @@ PR #1066 は「新規 PR の code comment / PR description」への journal narr
 
 ## ソース
 
+- [PR #1893 cycle 1 review (「#1880 で廃止」等の変更イベント語り 6 箇所を MEDIUM 検出、comment-journal-check.sh 未カバーの複合形)](../../raw/reviews/20260718T034912Z-pr-1893.md)
+- [PR #1893 cycle 1 fix (経緯ナラティブを削除し現在形の制約文 + WHY のみ残す標準書き換え)](../../raw/fixes/20260718T035229Z-pr-1893.md)
 - [PR #877 review results](../../raw/reviews/20260506T190517Z-pr-877.md)
 - [PR #878 review results](../../raw/reviews/20260506T195728Z-pr-878.md)
 - [PR #879 review results](../../raw/reviews/20260506T204827Z-pr-879.md)

@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-18T15:20:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260718T034912Z-pr-1893.md, raw/fixes/20260718T035229Z-pr-1893.md, raw/reviews/20260718T052020Z-pr-1893.md を統合 — SoT フォーマット表 (bottleneck-detection.md) の複製先 (work-memory-format.md) 同期漏れ (累積 64 回目) + fingerprint-cycling→finding-cycling rename 時の旧 marker phantom 参照ゼロ確認を追加 |
+| 2026-07-18T15:20:00+09:00 | update | [Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する](pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md) | raw/reviews/20260718T034912Z-pr-1893.md, raw/fixes/20260718T035229Z-pr-1893.md を統合 — preventive direction 3 例目 (仕様削減 refactor での「#N で廃止」複合形 journal phrase、comment-journal-check.sh 未カバーで LLM レビューのみが検出) を追加 |
 | 2026-07-18T11:10:00+09:00 | lint:warning | — | contradictions=0, stale=9, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1892 ingest 後の auto-lint。stale 9 件・unregistered_raw 266 件は pre-existing で本 ingest 由来ではない。新規ページは index 登録済み・関連リンク全実在で orphan/broken_ref なし) |
 | 2026-07-18T11:08:13+09:00 | create | [セキュリティ機械ゲートの部分撤去は撤去前 covered set の superset 維持と per-occurrence fail-closed 判定で収束させる](pages/heuristics/security-gate-partial-removal-convergence.md) | pr-1892 の review/fix 5 件を新規ページ化 — 撤去前 covered set の superset 維持・per-occurrence deny-by-default FSM・列挙非収束の honest residual・脅威モデルのユーザー諮問（6 cycle 収束で実測） |
 | 2026-07-17T21:10:00+09:00 | lint:warning | — | contradictions=0, stale=6, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1891 ingest 後の auto-lint。stale 6 件は pre-existing で本 ingest 由来ではない) |

@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-18T11:10:00+09:00 | lint:warning | — | contradictions=0, stale=9, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1892 ingest 後の auto-lint。stale 9 件・unregistered_raw 266 件は pre-existing で本 ingest 由来ではない。新規ページは index 登録済み・関連リンク全実在で orphan/broken_ref なし) |
 | 2026-07-18T11:08:13+09:00 | create | [セキュリティ機械ゲートの部分撤去は撤去前 covered set の superset 維持と per-occurrence fail-closed 判定で収束させる](pages/heuristics/security-gate-partial-removal-convergence.md) | pr-1892 の review/fix 5 件を新規ページ化 — 撤去前 covered set の superset 維持・per-occurrence deny-by-default FSM・列挙非収束の honest residual・脅威モデルのユーザー諮問（6 cycle 収束で実測） |
 | 2026-07-17T21:10:00+09:00 | lint:warning | — | contradictions=0, stale=6, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1891 ingest 後の auto-lint。stale 6 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-17T21:05:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260717T114250Z-pr-1891.md, raw/fixes/20260717T114425Z-pr-1891.md を統合 — 同一リスト内の兄弟行を個別 relabel して 1 行取り残す最小 breadth 軸の変種（PR #1891 cycle 2-3）を追加 |

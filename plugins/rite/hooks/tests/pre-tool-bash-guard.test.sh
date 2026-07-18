@@ -1533,6 +1533,19 @@ echo "TC-127-ALLOW-y7: subagent git remote show / get-url (read sub-actions) →
 assert_subagent_allow "git remote show allowed" "git remote show origin"
 assert_subagent_allow "git remote get-url allowed" "git remote get-url origin"
 
+# A verbose flag before a mutating sub-action must NOT be mistaken for a read:
+# `git remote -v add …` still mutates (.git/config remote.<n>.url → RCE on fetch).
+echo "TC-127y7: subagent git remote -v add (verbose flag before mutating sub-action) → deny"
+assert_subagent_deny_gitdir "git remote -v add blocked" "git remote -v add evil https://evil.example/x"
+
+echo "TC-127y8: subagent git remote --verbose set-url (verbose flag before mutating) → deny"
+assert_subagent_deny_gitdir "git remote --verbose set-url blocked" "git remote --verbose set-url origin https://evil.example/x"
+
+# Pin the remarg re-entry arm (bare `git remote` → fresh `git`): a legit read
+# compound must stay allowed, so removing the `git|*/git` re-entry arm fails here.
+echo "TC-127-ALLOW-y8: subagent git remote; git log (bare remote then fresh read) → allow"
+assert_subagent_allow "bare remote then fresh read allowed" "git remote; git log --oneline"
+
 echo "TC-127-ALLOW-a: subagent git config --list (read) → allow"
 assert_subagent_allow "git config --list allowed" "git config --list"
 

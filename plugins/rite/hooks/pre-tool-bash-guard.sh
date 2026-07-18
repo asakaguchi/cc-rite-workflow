@@ -394,16 +394,20 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
             *) _gn_hit="git config (non-read form)"; break ;;           # anything else → write → deny
           esac ;;
         remarg)
-          # Previous token was `remote`. Mirror cfgarg's fail-CLOSED default: a
-          # read sub-action is allow-listed, a fresh `git` re-starts scanning
-          # (bare `git remote` had no sub-action), and everything ELSE — the
-          # mutating sub-actions AND any unrecognized/future one — denies. Symmetric
-          # with cfgarg so remote mutation is not a fail-OPEN enumeration hole (a
-          # mutating remote persists `remote.<n>.url = ext::sh -c …` into
-          # .git/config → RCE on the next fetch).
+          # Previous token was `remote`. Fail-CLOSED default like cfgarg, but the
+          # grammar differs and the asymmetry matters: a `config` read option
+          # (`--list`/`--get`) is a TERMINAL action (git errors if a write
+          # follows), whereas `git remote -v`/`--verbose` is a MODIFIER that
+          # precedes the sub-action (`git remote -v add …` still mutates). So a
+          # flag here must NOT be treated as a read — it stays in remarg and the
+          # real sub-action is classified next. Only `show`/`get-url` are terminal
+          # read sub-actions. Everything else — the mutating sub-actions AND any
+          # unrecognized/future one — denies (a mutating remote persists
+          # `remote.<n>.url = ext::sh -c …` into .git/config → RCE on next fetch).
           case "$_gn_t" in
-            -v|--verbose|show|get-url) _gn_state=scan ;;   # read sub-action → OK, keep scanning
-            git|*/git) _gn_state=flags ;;                  # `remote` had no sub-action; fresh invocation
+            -*) : ;;                          # modifier flag (-v/--verbose/…): stay in remarg for the sub-action
+            show|get-url) _gn_state=scan ;;   # terminal read sub-action → OK, keep scanning
+            git|*/git) _gn_state=flags ;;     # `remote` had no sub-action; fresh invocation
             *) _gn_hit="git remote (mutating sub-action)"; break ;;   # mutating / unknown → deny
           esac ;;
         flags)

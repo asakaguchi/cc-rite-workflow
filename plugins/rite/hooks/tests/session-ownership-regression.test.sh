@@ -285,7 +285,8 @@ fi
 # when active=false. Phase C (commit 7f135e13) shrank pre-tool-bash-guard.sh
 # from 850L to 540L and removed the create_*-related branch entirely — the
 # denylist is now scoped to `gh pr diff --stat` / `gh pr diff -- <path>` /
-# `!= null` jq antipattern / reviewer-subagent state-mutating git operations.
+# `!= null` jq antipattern / the reviewer-subagent .git-write gate (since
+# Issue #1879 the working-tree git-verb denylist is gone).
 #
 # None of the remaining denylist patterns gate on the active flag; they fire
 # unconditionally based on command-string match (and, for Pattern 4, on the

@@ -5,8 +5,8 @@ set -euo pipefail
 
 # Tier 3 (env var) subagent detection を導入したため、host 環境に
 # CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE が export されていると既存の
-# main-session allow テスト (TC-022 stderr branch / TC-023 / TC-028 / TC-062 等) が
-# Tier 3 経路で誤って deny 判定され flake する。全テストで一律遮断する。
+# main-session allow テストが Tier 3 経路で誤って deny 判定され flake する。
+# 全テストで一律遮断する。
 unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -393,215 +393,22 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# Pattern 4: Reviewer subagent state-mutating git denylist
+# Pattern 4: Reviewer subagent .git-write gate
 #
-# Scope: Only when transcript_path contains "/subagents/".
-# Main session git operations must continue to work.
+# Scope: Only when transcript_path contains "/subagents/" (Tier 1) or the
+# Tier 2/3 signals fire. Main session operations must continue to work.
+#
+# Issue #1879: the working-tree verb denylist (git checkout / reset / commit /
+# branch / stash / fetch flags / worktree sub-actions / ...) was REMOVED from
+# this hook. Those mutations are Layer 1 (reviewer prompt) + Layer 3
+# (post-review-state-verify.sh) territory now. The machine gate keeps only:
+#   (L) the oversized-command length guard (timeout-bypass prevention)
+#   (Z) the shell-wrapper block (opaque quoting can hide a .git write)
+#   (H) the .git-write detection (redirect / file-mutating verb)
 # --------------------------------------------------------------------------
 
 SUBAGENT_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/subagents/agent-abc123.jsonl"
 MAIN_TRANSCRIPT="/home/user/.claude/projects/proj/session-id/main.jsonl"
-
-# --------------------------------------------------------------------------
-# TC-022: Reviewer subagent + git checkout <ref> -- <file> → deny
-# --------------------------------------------------------------------------
-echo "TC-022: reviewer subagent + 'git checkout develop -- file' → deny"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git checkout develop -- plugins/rite/hooks/pre-tool-bash-guard.sh" "$SUBAGENT_TRANSCRIPT") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-stderr_log=$(cat "$STDERR_FILE")
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
-  pass "reviewer subagent 'git checkout -- file' blocked"
-else
-  fail "Expected deny with reviewer-state-mutating-git, got decision=$decision reason=$reason"
-fi
-if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
-  pass "stderr log recorded reviewer-state-mutating-git pattern name"
-else
-  fail "Expected reviewer-state-mutating-git in stderr, got: $stderr_log"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-023: Main session + git checkout <branch> → allow (non-regression)
-# Phase 5.1 implement flow MUST NOT be blocked.
-# --------------------------------------------------------------------------
-echo "TC-023: main session + 'git checkout develop' → allow (non-regression)"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git checkout develop" "$MAIN_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "main session git checkout allowed (not a subagent)"
-else
-  fail "Expected allow for main session git checkout, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-024: Reviewer subagent + git diff → allow (read-only)
-# --------------------------------------------------------------------------
-echo "TC-024: reviewer subagent + 'git diff' → allow (read-only)"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git diff develop..HEAD -- plugins/rite/agents/_reviewer-base.md" "$SUBAGENT_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "reviewer subagent git diff allowed"
-else
-  fail "Expected allow for reviewer git diff, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-025: Reviewer subagent + git show <ref>:<file> → allow (read-only)
-# This is the documented alternative to 'git checkout <ref> -- <file>'.
-# --------------------------------------------------------------------------
-echo "TC-025: reviewer subagent + 'git show <ref>:<file>' → allow"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git show develop:plugins/rite/agents/_reviewer-base.md" "$SUBAGENT_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "reviewer subagent git show allowed (read-only alternative)"
-else
-  fail "Expected allow for reviewer git show, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-026: Reviewer subagent + git reset → deny
-# --------------------------------------------------------------------------
-echo "TC-026: reviewer subagent + 'git reset' → deny"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git reset --hard HEAD" "$SUBAGENT_TRANSCRIPT") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
-  pass "reviewer subagent git reset blocked with correct pattern name"
-else
-  fail "Expected deny with reviewer-state-mutating-git for git reset, got decision=$decision reason=$reason"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-027: Reviewer subagent + git stash → deny
-# --------------------------------------------------------------------------
-echo "TC-027: reviewer subagent + 'git stash push' → deny"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git stash push -m 'wip'" "$SUBAGENT_TRANSCRIPT") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
-  pass "reviewer subagent git stash push blocked with correct pattern name"
-else
-  fail "Expected deny with reviewer-state-mutating-git for git stash push, got decision=$decision reason=$reason"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-028: Main session + git reset → allow (non-regression)
-# The /rite:fix flow in the main session may use git reset legitimately.
-# --------------------------------------------------------------------------
-echo "TC-028: main session + 'git reset' → allow (non-regression)"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git reset HEAD~1" "$MAIN_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "main session git reset allowed"
-else
-  fail "Expected allow for main session git reset, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-029: Reviewer subagent + gh pr diff → allow (workflow operation)
-# --------------------------------------------------------------------------
-echo "TC-029: reviewer subagent + 'gh pr diff 123' → allow"
-rc=0
-output=$(run_guard_with_transcript "Bash" "gh pr diff 123" "$SUBAGENT_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "reviewer subagent gh pr diff allowed"
-else
-  fail "Expected allow for reviewer gh pr diff, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-030: Reviewer subagent + bash test runner → allow (workflow operation)
-# --------------------------------------------------------------------------
-echo "TC-030: reviewer subagent + 'bash test.sh' → allow"
-rc=0
-output=$(run_guard_with_transcript "Bash" "bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh" "$SUBAGENT_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "reviewer subagent bash test allowed"
-else
-  fail "Expected allow for reviewer bash test, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-031: Reviewer subagent + git worktree add → allow (isolated inspection)
-# --------------------------------------------------------------------------
-echo "TC-031: reviewer subagent + 'git worktree add' → allow"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git worktree add /tmp/rite-review-wt develop" "$SUBAGENT_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "reviewer subagent git worktree add allowed"
-else
-  fail "Expected allow for reviewer git worktree add, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-032: Reviewer subagent + git worktree remove → deny
-# --------------------------------------------------------------------------
-echo "TC-032: reviewer subagent + 'git worktree remove' → deny"
-rc=0
-output=$(run_guard_with_transcript "Bash" "git worktree remove /tmp/rite-review-wt" "$SUBAGENT_TRANSCRIPT") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
-  pass "reviewer subagent git worktree remove blocked with correct pattern name"
-else
-  fail "Expected deny with reviewer-state-mutating-git for git worktree remove, got decision=$decision reason=$reason"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# TC-033: Reviewer subagent + heredoc containing 'git checkout' → allow (false positive guard)
-# --------------------------------------------------------------------------
-echo "TC-033: reviewer subagent + heredoc text containing 'git checkout' → allow"
-rc=0
-HEREDOC_CMD3='cat <<'"'"'EOF'"'"'
-git checkout develop -- file.md
-EOF'
-output=$(run_guard_with_transcript "Bash" "$HEREDOC_CMD3" "$SUBAGENT_TRANSCRIPT") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "heredoc text 'git checkout' allowed (no false positive)"
-else
-  fail "Expected allow for heredoc text, got rc=$rc output=$output"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
-# Pattern 4 Cycle 2 additions
-#
-# Coverage expansion: every always-deny verb, bypass path, and read-only
-# sub-command that stays allowed.
-# --------------------------------------------------------------------------
-
-# --- Helper: deny assertion with stderr/reason validation ---
-assert_subagent_deny() {
-  local label="$1"
-  local cmd="$2"
-  local rc=0
-  local output
-  output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
-  local decision
-  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-  local reason
-  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-  if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
-    pass "$label"
-  else
-    fail "$label — expected deny (reviewer-state-mutating-git), got decision=$decision reason=$reason"
-  fi
-}
 
 # --- Helper: allow assertion (subagent) ---
 assert_subagent_allow() {
@@ -632,244 +439,114 @@ assert_main_allow() {
 }
 
 # --------------------------------------------------------------------------
-# TC-034〜042: Always-deny verbs coverage (denylist 主要カテゴリを網羅)
+# TC-201: verb-denylist removal — mutating git verbs are NOT machine-gated
+# (Issue #1879 AC-1/AC-4). These commands were denied by the removed sub-blocks
+# (A)-(G); after the removal they must pass the hook untouched. The READ-ONLY
+# guarantee for them is the reviewer prompt (Layer 1) + post-review-state-verify
+# (Layer 3), NOT this hook — this loop pins the hook's non-involvement so a
+# future edit cannot silently re-grow the verb denylist.
 # --------------------------------------------------------------------------
-echo "TC-034: subagent + git add → deny"
-assert_subagent_deny "subagent git add . blocked" "git add ."
-
-echo "TC-035: subagent + git commit → deny"
-assert_subagent_deny "subagent git commit blocked" "git commit -am 'wip'"
-
-echo "TC-036: subagent + git push → deny"
-assert_subagent_deny "subagent git push blocked" "git push origin feat/foo"
-
-echo "TC-037: subagent + git merge → deny"
-assert_subagent_deny "subagent git merge blocked" "git merge develop"
-
-echo "TC-038: subagent + git rebase → deny"
-assert_subagent_deny "subagent git rebase blocked" "git rebase -i HEAD~3"
-
-echo "TC-039: subagent + git cherry-pick → deny"
-assert_subagent_deny "subagent git cherry-pick blocked" "git cherry-pick abc1234"
-
-echo "TC-040: subagent + git revert → deny"
-assert_subagent_deny "subagent git revert blocked" "git revert abc1234"
-
-echo "TC-041: subagent + git restore → deny"
-assert_subagent_deny "subagent git restore blocked" "git restore --source=HEAD file.md"
-
-echo "TC-042: subagent + git update-ref → deny"
-assert_subagent_deny "subagent git update-ref blocked" "git update-ref refs/heads/foo abc1234"
-
-# --------------------------------------------------------------------------
-# TC-043〜047: Shell meta-char boundary bypass prevention
-# --------------------------------------------------------------------------
-echo "TC-043: subagent + semicolon-chained 'true;git reset' → deny"
-assert_subagent_deny "shell boundary ;git reset blocked" "true;git reset --hard HEAD"
-
-echo "TC-044: subagent + AND-chained '&&git checkout' → deny"
-assert_subagent_deny "shell boundary &&git checkout blocked" "cd /tmp&&git checkout develop -- file"
-
-echo "TC-045: subagent + command-substitution '\$(git commit)' → deny"
-assert_subagent_deny "shell boundary \$(git commit) blocked" "result=\$(git commit -am wip)"
-
-echo "TC-046: subagent + subshell '(git reset)' → deny"
-assert_subagent_deny "shell boundary (git reset) blocked" "(git reset --hard HEAD)"
-
-echo "TC-047: subagent + backtick \`git push\` → deny"
-assert_subagent_deny "shell boundary backtick git push blocked" "echo \`git push origin feat/foo\`"
+echo "TC-201: subagent mutating git verbs → allow (Layer 1/3 territory, not machine-gated)"
+for verb_cmd in \
+  "git checkout develop" \
+  "git checkout develop -- file.md" \
+  "git checkout -b pr-123-test" \
+  "git reset --hard HEAD" \
+  "git add ." \
+  "git commit -am 'wip'" \
+  "git push origin feat/foo" \
+  "git stash push" \
+  "git branch new-branch-name" \
+  "git branch -D old-branch" \
+  "git worktree add -b nb /tmp/d HEAD" \
+  "git worktree remove /tmp/d" \
+  "git fetch --prune origin" \
+  "git tag -a v1.0 -m 'release'" \
+  "git reflog expire --all --expire=now" \
+  ; do
+  assert_subagent_allow "subagent '$verb_cmd' allowed (verb denylist removed)" "$verb_cmd"
+done
+# NOTE: git update-ref / symbolic-ref / config-write / mutating-remote are NOT in
+# this allow set — they write .git directly and are denied by sub-block (N),
+# pinned in TC-127 below. They were never working-tree verbs (Issue #1879 removed
+# working-tree verbs; .git-write is the retained gate).
+echo ""
 
 # --------------------------------------------------------------------------
-# TC-048〜053: Read-only sub-command false positive prevention
-# (git tag -l / git stash list / git reflog / git worktree list / git branch --list)
+# TC-202: read-only git / workflow commands → allow (non-regression)
 # --------------------------------------------------------------------------
-echo "TC-048: subagent + 'git tag -l v1.*' → allow (read-only list)"
-assert_subagent_allow "subagent git tag -l allowed" "git tag -l 'v1.*'"
-
-echo "TC-049: subagent + 'git tag --list' → allow"
-assert_subagent_allow "subagent git tag --list allowed" "git tag --list"
-
-echo "TC-050: subagent + 'git stash list' → allow (read-only)"
-assert_subagent_allow "subagent git stash list allowed" "git stash list"
-
-echo "TC-051: subagent + 'git stash show stash@{0}' → allow (read-only)"
-assert_subagent_allow "subagent git stash show allowed" "git stash show stash@{0}"
-
-echo "TC-052: subagent + 'git reflog' (bare) → allow (read-only display)"
-assert_subagent_allow "subagent bare git reflog allowed" "git reflog"
-
-echo "TC-053: subagent + 'git worktree list' → allow (read-only)"
-assert_subagent_allow "subagent git worktree list allowed" "git worktree list"
+echo "TC-202: subagent read-only git / workflow commands → allow"
+for ro_cmd in \
+  "git diff develop..HEAD -- plugins/rite/agents/_reviewer-base.md" \
+  "git show develop:plugins/rite/agents/_reviewer-base.md" \
+  "git status" \
+  "git log --oneline -20" \
+  "git worktree add --detach /tmp/rite-review-mutation-abc HEAD" \
+  "gh pr diff 123" \
+  "bash plugins/rite/hooks/tests/flow-state.test.sh" \
+  ; do
+  assert_subagent_allow "subagent '$ro_cmd' allowed" "$ro_cmd"
+done
+echo ""
 
 # --------------------------------------------------------------------------
-# TC-054〜057: git branch coverage (display allowed, mutations denied)
+# TC-203: past false-positive commands → allow (Issue #1879 AC-4)
+# Commands that historically required bypass/false-positive patches against the
+# removed verb denylist (quote-boundary echoes, grep pattern args, branch names
+# embedding flag substrings, worktree-add arg-loop noglob #1866). With the verb
+# machinery gone these must all pass with zero mis-detection.
 # --------------------------------------------------------------------------
-echo "TC-054: subagent + bare 'git branch' → allow (list display)"
-assert_subagent_allow "subagent bare git branch allowed" "git branch"
-
-echo "TC-055: subagent + 'git branch --list' → allow"
-assert_subagent_allow "subagent git branch --list allowed" "git branch --list"
-
-echo "TC-056: subagent + 'git branch -a' → allow (display all)"
-assert_subagent_allow "subagent git branch -a allowed" "git branch -a"
-
-echo "TC-057a: subagent + 'git branch feature/foo' (bare new branch) → deny"
-assert_subagent_deny "subagent bare new branch creation blocked" "git branch feature/foo"
-
-echo "TC-057b: subagent + 'git branch --delete feature/foo' (long-form) → deny"
-assert_subagent_deny "subagent git branch --delete blocked" "git branch --delete feature/foo"
-
-echo "TC-057c: subagent + 'git branch --force feat' → deny"
-assert_subagent_deny "subagent git branch --force blocked" "git branch --force feat"
-
-# --------------------------------------------------------------------------
-# TC-057d〜057h: git worktree add new-ref-leak forms denied,
-# proper --detach / existing-branch forms allowed.
-# 既存 (E) では `git worktree remove/prune` のみ block していたため、reviewer が
-# `git worktree add -b <newbranch>` 経由で新規 named branch を leak できた gap を補完。
-# --------------------------------------------------------------------------
-echo "TC-057d: subagent + 'git worktree add -b pr-994-test /tmp/d HEAD' → deny (new branch leak)"
-assert_subagent_deny "subagent worktree add -b new-branch blocked" \
-  "git worktree add -b pr-994-test /tmp/d HEAD"
-
-echo "TC-057e: subagent + 'git worktree add --new-branch foo /tmp/d HEAD' → deny (long-form)"
-assert_subagent_deny "subagent worktree add --new-branch blocked" \
-  "git worktree add --new-branch foo /tmp/d HEAD"
-
-echo "TC-057f: subagent + 'git worktree add /tmp/d' (1 positional, auto-creates branch) → deny"
-assert_subagent_deny "subagent bare worktree add (auto-branch) blocked" \
-  "git worktree add /tmp/d"
-
-echo "TC-057g: subagent + 'git worktree add --detach /tmp/d HEAD' → allow (no ref leak)"
-assert_subagent_allow "subagent worktree add --detach allowed" \
-  "git worktree add --detach /tmp/d HEAD"
-
-echo "TC-057h: subagent + 'git worktree add /tmp/d develop' (existing branch) → allow"
-assert_subagent_allow "subagent worktree add existing-branch allowed" \
-  "git worktree add /tmp/d develop"
-
-echo "TC-057i: subagent + 'git worktree move /tmp/a /tmp/b' → deny"
-assert_subagent_deny "subagent worktree move blocked" \
-  "git worktree move /tmp/a /tmp/b"
+echo "TC-203: past false-positive command set → allow (no mis-detection)"
+for fp_cmd in \
+  'echo "git checkout develop -- f"' \
+  'grep "git reset" log.txt' \
+  "git fetch origin hot-fix" \
+  "git fetch origin release-patch v1.0-rc-final" \
+  "git worktree add /tmp/wt develop" \
+  "git branch --list" \
+  "git branch --show-current" \
+  "git tag -l" \
+  "git stash list" \
+  "git reflog" \
+  ; do
+  assert_subagent_allow "subagent '$fp_cmd' allowed (no false positive)" "$fp_cmd"
+done
+# worktree-add arg with a bare glob from a CWD holding a `-b` file (Issue #1866
+# scenario): the arg-parsing loop is gone, so no CWD pathname expansion can
+# mis-latch a flag — pin from the crafted CWD to keep the regression meaningful.
+tc203_noglob_dir=$(mktemp -d)
+: > "$tc203_noglob_dir/-b"
+_tc203_prev=$(pwd)
+if cd "$tc203_noglob_dir"; then
+  assert_subagent_allow "worktree add with bare glob + CWD '-b' file allowed (arg loop removed)" "git worktree add /tmp/wt develop *"
+  cd "$_tc203_prev" || true
+else
+  fail "TC-203 noglob setup: cd into temp dir failed"
+fi
+rm -rf "$tc203_noglob_dir"
+echo ""
 
 # --------------------------------------------------------------------------
-# TC-057j: reproduction — git checkout -b <new-branch> from subagent
-# Pattern (A) Always-deny の deny verb `git checkout` で block されることを期待
-# (Pattern (E) ではない)。reason 文字列に `reviewer-state-mutating-git` が含まれる
-# ことは assert_subagent_deny helper が確認する。
+# TC-204: main session non-regression (all patterns 4 checks are subagent-scoped)
 # --------------------------------------------------------------------------
-echo "TC-057j: subagent + 'git checkout -b pr-994-test' (reproduction) → deny"
-assert_subagent_deny "subagent git checkout -b new-branch blocked" \
-  "git checkout -b pr-994-test"
-
-# --------------------------------------------------------------------------
-# TC-057k〜057p: Pattern (E) bypass 経路の cycle 1 fix
-# (test-reviewer / security-reviewer 指摘で実機検証された bypass 経路)
-# --------------------------------------------------------------------------
-
-# -b attached form (no space): `-bNAME`
-echo "TC-057k: subagent + 'git worktree add -bpr-994-test /tmp/d HEAD' → deny (attached, no space)"
-assert_subagent_deny "subagent worktree add -bNAME (no space) blocked" \
-  "git worktree add -bpr-994-test /tmp/d HEAD"
-
-# -b attached form with `=`: `-b=NAME`
-echo "TC-057l: subagent + 'git worktree add -b=evil /tmp/d HEAD' → deny (attached '=' form)"
-assert_subagent_deny "subagent worktree add -b=NAME (attached =) blocked" \
-  "git worktree add -b=evil /tmp/d HEAD"
-
-# --new-branch=NAME (long-form attached)
-echo "TC-057m: subagent + 'git worktree add --new-branch=evil /tmp/d HEAD' → deny"
-assert_subagent_deny "subagent worktree add --new-branch=NAME blocked" \
-  "git worktree add --new-branch=evil /tmp/d HEAD"
-
-# Intermediate flag: `--track -b NAME`
-echo "TC-057n: subagent + 'git worktree add --track -b newbr /tmp/d origin/main' → deny (intermediate -b)"
-assert_subagent_deny "subagent worktree add --track -b blocked (intermediate flag)" \
-  "git worktree add --track -b newbr /tmp/d origin/main"
-
-# Positional postfix: `add /tmp/d -b newbr HEAD`
-echo "TC-057o: subagent + 'git worktree add /tmp/d -b newbr HEAD' → deny (path-then-b postfix)"
-assert_subagent_deny "subagent worktree add path-then-b blocked" \
-  "git worktree add /tmp/d -b newbr HEAD"
-
-# Absolute path bypass: `/usr/bin/git checkout -b ...`
-echo "TC-057p: subagent + '/usr/bin/git checkout -b pr-994-test' → deny (absolute path bypass)"
-assert_subagent_deny "subagent /usr/bin/git checkout -b blocked (absolute path bypass)" \
-  "/usr/bin/git checkout -b pr-994-test"
-
-# `command git` bypass
-echo "TC-057q: subagent + 'command git checkout -b foo' → deny (command builtin bypass)"
-assert_subagent_deny "subagent 'command git checkout -b' blocked" \
-  "command git checkout -b foo"
-
-# Backslash-escaped: `\git checkout`
-echo "TC-057r: subagent + '\\\\git checkout -b foo' → deny (backslash-escaped bypass)"
-assert_subagent_deny "subagent '\\\\git checkout -b' blocked (backslash-escape bypass)" \
-  '\git checkout -b foo'
-
-# --orphan flag for git worktree add (creates new orphan branch)
-echo "TC-057s: subagent + 'git worktree add --orphan newbr /tmp/d' → deny (orphan branch creation)"
-assert_subagent_deny "subagent worktree add --orphan blocked" \
-  "git worktree add --orphan newbr /tmp/d"
+echo "TC-204: main session git / wrapper commands → allow"
+for main_cmd in \
+  "git checkout develop" \
+  "git reset --hard HEAD" \
+  "git add ." \
+  "git commit -am 'fix: msg'" \
+  "git push origin feat/foo" \
+  'bash -c "echo readonly-probe"' \
+  ; do
+  assert_main_allow "main session '$main_cmd' allowed" "$main_cmd"
+done
+echo ""
 
 # --------------------------------------------------------------------------
-# TC-057t〜057z: cycle 3 — quote bypass + git global flag bypass
-# (security-reviewer cycle 2 で empirical 発見した pre-existing limitation。
-# Pattern 4 を quote 正規化 + global flag 正規化で structural に閉じる)
-# --------------------------------------------------------------------------
-
-# Quote bypass — Pattern 5 は既に `"` / `'` を正規化しているが Pattern 4 は非対称だった
-echo "TC-057t: subagent + 'eval \"git checkout -b evil\"' → deny (eval quote bypass)"
-assert_subagent_deny "subagent eval-quoted git checkout -b blocked" \
-  'eval "git checkout -b evil"'
-
-echo "TC-057u: subagent + 'sh -c \"git checkout -b evil\"' → deny (sh -c quote bypass)"
-assert_subagent_deny "subagent sh -c quoted git checkout -b blocked" \
-  'sh -c "git checkout -b evil"'
-
-echo "TC-057v: subagent + 'bash -c \"git checkout -b evil\"' → deny (bash -c quote bypass)"
-assert_subagent_deny "subagent bash -c quoted git checkout -b blocked" \
-  'bash -c "git checkout -b evil"'
-
-# git global flag bypass — `-C` / `--git-dir` / `--work-tree` 経由で verb を後置すると bypass
-echo "TC-057w: subagent + 'git -C /tmp checkout -b evil' → deny (-C global flag bypass)"
-assert_subagent_deny "subagent git -C <dir> checkout -b blocked" \
-  "git -C /tmp checkout -b evil"
-
-echo "TC-057x: subagent + 'git --git-dir=/tmp/.git checkout -b evil' → deny (--git-dir attached)"
-assert_subagent_deny "subagent git --git-dir=X checkout -b blocked" \
-  "git --git-dir=/tmp/.git checkout -b evil"
-
-echo "TC-057y: subagent + 'git --work-tree /tmp checkout -b evil' → deny (--work-tree spaced)"
-assert_subagent_deny "subagent git --work-tree X checkout -b blocked" \
-  "git --work-tree /tmp checkout -b evil"
-
-echo "TC-057z: subagent + 'git -C /tmp worktree add -b evil .wt HEAD' → deny (-C with worktree add)"
-assert_subagent_deny "subagent git -C <dir> worktree add -b blocked" \
-  "git -C /tmp worktree add -b evil .wt HEAD"
-
-# Combined: quote + global flag double bypass
-echo "TC-057aa: subagent + 'eval \"git -C /tmp checkout -b evil\"' → deny (combined bypass)"
-assert_subagent_deny "subagent eval-quoted git -C checkout -b blocked (combined)" \
-  'eval "git -C /tmp checkout -b evil"'
-
-# Non-regression: bare flag `--bare` should still allow read-only verbs
-echo "TC-057ab: subagent + 'git --bare log --oneline' → allow (--bare with read-only verb)"
-assert_subagent_allow "subagent git --bare log allowed (--bare with read-only verb)" \
-  "git --bare log --oneline"
-
-# Non-regression: `git -C` with read-only verb should allow
-echo "TC-057ac: subagent + 'git -C /tmp log --oneline' → allow (-C with read-only verb)"
-assert_subagent_allow "subagent git -C log allowed (-C with read-only verb)" \
-  "git -C /tmp log --oneline"
-
-# --------------------------------------------------------------------------
-# TC-057ad〜af: shell-wrapper の deny message に read-only probe 用の
-# 代替ガイダンス (subshell / 直接実行 / bash <script>) を付加する。
-# pattern 名 (reviewer-state-mutating-git) は既存テスト互換のため不変で、wrapper 専用の
-# 理由・代替が reason に出ることを pin する。「(Z) bash -c 一律 block は緩和しない」判断のため、
-# read-only git を包む wrapper も依然 deny されること、wrapper block が subagent 限定で
-# main session は非影響であることも併せて固定する。
+# TC-057ad〜af: shell-wrapper (Z) — deny with read-only probe guidance
+# wrapper は中身が read-only でも一律 deny (緩和しない)。deny message には
+# 代替ガイダンス (subshell / 直接実行 / bash <script>) が入る。pattern 名は
+# verb 列挙撤去に伴い reviewer-shell-wrapper へ改名 (Issue #1879)。
 # --------------------------------------------------------------------------
 
 # Helper: subagent deny かつ reason に wrapper guidance が含まれることを確認
@@ -883,7 +560,7 @@ assert_subagent_deny_wrapper_guidance() {
   decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
   reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
   if [ "$decision" = "deny" ] \
-    && [[ "$reason" == *"reviewer-state-mutating-git"* ]] \
+    && [[ "$reason" == *"reviewer-shell-wrapper"* ]] \
     && [[ "$reason" == *"Shell-command wrappers"* ]] \
     && [[ "$reason" == *"subshell"* ]] \
     && [[ "$reason" == *"bash <script.sh>"* ]]; then
@@ -901,158 +578,26 @@ echo "TC-057ae: subagent + 'bash -c \"git status\"' (read-only git wrapped) → 
 assert_subagent_deny_wrapper_guidance "subagent read-only-git bash -c probe still denied (policy: no relaxation)" \
   'bash -c "git status"'
 
-echo "TC-057af: main session + 'bash -c \"echo readonly-probe\"' → allow (wrapper block is subagent-scoped)"
-assert_main_allow "main session non-git bash -c allowed (wrapper block subagent-scoped)" \
-  'bash -c "echo readonly-probe"'
+echo "TC-057ag: subagent + 'eval \"echo x\"' → deny (wrapper)"
+assert_subagent_deny_wrapper_guidance "subagent eval denied" 'eval "echo x"'
+
+echo "TC-057ah: subagent + 'sh -c ...' hiding a .git write → deny (wrapper closes the (H) bypass)"
+assert_subagent_deny_wrapper_guidance "subagent sh -c hiding .git write denied" \
+  "sh -c 'echo pwned > .git/hooks/pre-commit'"
+
+echo "TC-057ai: subagent + 'bash script.sh' (not -c) → allow"
+assert_subagent_allow "subagent bash <script.sh> allowed (only -c forms are wrappers)" "bash /tmp/probe.sh"
+echo ""
 
 # --------------------------------------------------------------------------
-# TC-058: git fetch (bare) allowed, --prune denied
+# Tier 2/3 subagent detection (TC-113〜115)
+# 検出そのものは (L)/(Z)/(H) のスコープ判定として存続する。deny 対象は verb
+# 列挙撤去に伴い .git write (H) に変更 (Issue #1879)。
 # --------------------------------------------------------------------------
-echo "TC-058a: subagent + 'git fetch origin' (bare) → allow"
-assert_subagent_allow "subagent bare git fetch allowed" "git fetch origin"
-
-echo "TC-058b: subagent + 'git fetch --prune' → deny"
-assert_subagent_deny "subagent git fetch --prune blocked" "git fetch --prune origin"
-
-# --------------------------------------------------------------------------
-# TC-059: Reviewer subagent + git reflog expire → deny
-# --------------------------------------------------------------------------
-echo "TC-059: subagent + 'git reflog expire --all' → deny"
-assert_subagent_deny "subagent git reflog expire blocked" "git reflog expire --all --expire=now"
-
-# --------------------------------------------------------------------------
-# TC-060: Reviewer subagent + git tag -a (annotated tag creation) → deny
-# --------------------------------------------------------------------------
-echo "TC-060: subagent + 'git tag -a v1.0 -m msg' → deny"
-assert_subagent_deny "subagent git tag -a blocked" "git tag -a v1.0 -m 'release'"
-
-# --------------------------------------------------------------------------
-# TC-061: False positive guard — quoted string containing 'git checkout'
-# --------------------------------------------------------------------------
-# The quote character `"` before `git` breaks the word boundary expected by
-# the case-glob `*" git checkout "*`, so echoed strings containing the
-# denylist verbs are correctly allowed. This TC locks in that behavior as a
-# non-regression guarantee.
-echo "TC-061: subagent + 'echo \"git checkout develop -- f\"' → allow (false positive guard)"
-assert_subagent_allow "echoed 'git checkout' string allowed (quote boundary)" 'echo "git checkout develop -- f"'
-
-# TC-061b: grep pattern argument containing 'git reset'
-echo "TC-061b: subagent + 'grep \"git reset\" log.txt' → allow"
-assert_subagent_allow "grep arg 'git reset' allowed (quote boundary)" 'grep "git reset" log.txt'
-
-# --------------------------------------------------------------------------
-# TC-062〜064: Main session non-regression for additional verbs
-# --------------------------------------------------------------------------
-echo "TC-062: main session + 'git add .' → allow"
-assert_main_allow "main session git add allowed" "git add ."
-
-echo "TC-063: main session + 'git commit -am msg' → allow"
-assert_main_allow "main session git commit allowed" "git commit -am 'fix: msg'"
-
-echo "TC-064: main session + 'git push origin' → allow"
-assert_main_allow "main session git push allowed" "git push origin feat/foo"
-
-# --------------------------------------------------------------------------
-# Pattern 4 Cycle 3 additions
-# --------------------------------------------------------------------------
-
-# --------------------------------------------------------------------------
-# TC-065〜066: Newline (`\n`) bypass closure — cycle 2 HIGH regression
-# cycle 2 で確認された「CMD_NORMALIZED に \n/\r が未正規化」経路を lock
-# --------------------------------------------------------------------------
-echo "TC-065: subagent + newline-separated 'true\\ngit reset' → deny"
-assert_subagent_deny "newline boundary \\ngit reset blocked" $'true\ngit reset --hard HEAD'
-
-echo "TC-066: subagent + 3-line script with 'git commit' → deny"
-assert_subagent_deny "multi-line script git commit blocked" $'echo a\ngit commit -am wip\necho b'
-
-echo "TC-066b: subagent + carriage-return '\\rgit checkout' → deny"
-assert_subagent_deny "CR boundary \\rgit checkout blocked" $'true\rgit checkout develop'
-
-# --------------------------------------------------------------------------
-# TC-067〜074: Always-deny coverage expansion (cycle 2 MEDIUM - 46% → ~90%)
-# 未カバー verb を array-driven loop で網羅
-# --------------------------------------------------------------------------
-echo "TC-067: subagent + always-deny verb coverage loop"
-for verb_cmd in \
-  "git pull origin main" \
-  "git rm README.md" \
-  "git clean -fd" \
-  "git gc --aggressive" \
-  "git prune --dry-run" \
-  "git symbolic-ref HEAD refs/heads/foo" \
-  "git am < /tmp/patch" \
-  "git apply --index /tmp/patch" \
-  "git mv old.md new.md" \
-  "git notes add -m msg HEAD" \
-  "git config user.email a@b.c" \
-  "git remote add upstream https://github.com/foo/bar" \
-  "git bisect start" \
-  "git filter-branch --tree-filter 'rm -f foo' HEAD" \
-  "git filter-repo --path foo --invert-paths" \
-  "git replace old new"; do
-  assert_subagent_deny "subagent '$verb_cmd' blocked" "$verb_cmd"
-done
-
-# --------------------------------------------------------------------------
-# TC-068〜075: git stash sub-action coverage (8 mutating sub-actions)
-# --------------------------------------------------------------------------
-echo "TC-068: subagent + git stash sub-action coverage"
-for stash_cmd in \
-  "git stash pop" \
-  "git stash drop stash@{0}" \
-  "git stash apply stash@{1}" \
-  "git stash clear" \
-  "git stash save 'wip'" \
-  "git stash create" \
-  "git stash store abc123" \
-  "git stash branch foo stash@{0}"; do
-  assert_subagent_deny "subagent '$stash_cmd' blocked" "$stash_cmd"
-done
-
-# --------------------------------------------------------------------------
-# TC-076〜080: git fetch regression guard — cycle 2 HIGH
-# branch / remote 名に -p/-f を substring として含む bare fetch が
-# allow されることを lock (cycle 1 で導入した Pattern 4(F) regression を閉塞)
-# --------------------------------------------------------------------------
-echo "TC-076: subagent + 'git fetch origin hot-fix' → allow (branch name contains -f)"
-assert_subagent_allow "bare fetch hot-fix branch allowed" "git fetch origin hot-fix"
-
-echo "TC-077: subagent + 'git fetch origin feature-patch' → allow (branch contains -p)"
-assert_subagent_allow "bare fetch feature-patch branch allowed" "git fetch origin feature-patch"
-
-echo "TC-078: subagent + 'git fetch origin release-focus' → allow"
-assert_subagent_allow "bare fetch release-focus branch allowed" "git fetch origin release-focus"
-
-echo "TC-079: subagent + 'git fetch origin v1.0-rc-final' → allow"
-assert_subagent_allow "bare fetch v1.0-rc-final branch allowed" "git fetch origin v1.0-rc-final"
-
-echo "TC-080: subagent + 'git fetch upstream main-pipeline' → allow"
-assert_subagent_allow "bare fetch main-pipeline branch allowed" "git fetch upstream main-pipeline"
-
-# --------------------------------------------------------------------------
-# TC-081〜082: git fetch short-flag still denied (regression guard for fix)
-# --------------------------------------------------------------------------
-echo "TC-081: subagent + 'git fetch -p origin' → deny (short -p flag)"
-assert_subagent_deny "short -p flag blocked" "git fetch -p origin"
-
-echo "TC-082: subagent + 'git fetch -f origin' → deny (short -f flag)"
-assert_subagent_deny "short -f flag blocked" "git fetch -f origin"
-
-echo "TC-082b: subagent + 'git fetch --force upstream' → deny (long --force flag)"
-assert_subagent_deny "long --force flag blocked" "git fetch --force upstream"
-
-# --------------------------------------------------------------------------
-# TC-083〜084: Brace/pipe/space-less bypass non-regression
-# --------------------------------------------------------------------------
-echo "TC-083: subagent + 'echo x|git reset' → deny (pipe boundary)"
-assert_subagent_deny "pipe |git reset blocked" "echo x|git reset --hard HEAD"
-
-echo "TC-084: subagent + '{git reset --hard HEAD;}' → deny (brace boundary)"
-assert_subagent_deny "brace group git reset blocked" "{git reset --hard HEAD;}"
 
 # alias of MAIN_TRANSCRIPT (above) — Tier 2/3 セクションを self-contained に保つため局所定義
 MAIN_TRANSCRIPT_TC113="$MAIN_TRANSCRIPT"
+TIER_PROBE_CMD="echo pwned > .git/hooks/pre-commit"
 
 # Helper: run hook with raw JSON input + clean env (Tier 3 env vars unset)
 #   Optional 引数: $2 / $3 に `NAME=value` 形式を渡すと、env -u で unset した後に SET する
@@ -1071,21 +616,21 @@ run_guard_clean_env() {
 }
 
 # --------------------------------------------------------------------------
-# TC-113: subagent_type field set → Tier 2 deny (git checkout blocked)
+# TC-113: subagent_type field set → Tier 2 deny (.git write blocked)
 # --------------------------------------------------------------------------
 echo "TC-113: input JSON subagent_type field → Tier 2 deny"
 rc=0
-tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: "code-reviewer"}')
+tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113_input") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-113 subagent_type field triggers Tier 2 fallback"
 else
   fail "TC-113 expected deny, got decision=$decision reason=$reason"
 fi
-if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+if [[ "$stderr_log" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-113 stderr block log recorded"
 else
   fail "TC-113 expected stderr block log, got: $stderr_log"
@@ -1098,17 +643,17 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113b: agent_type field set → Tier 2 deny"
 rc=0
-tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, agent_type: "code-reviewer"}')
+tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, agent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113b_input") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-113b agent_type field triggers Tier 2 fallback (OR with subagent_type)"
 else
   fail "TC-113b expected deny, got decision=$decision reason=$reason"
 fi
-if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+if [[ "$stderr_log" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-113b stderr block log recorded"
 else
   fail "TC-113b expected stderr block log, got: $stderr_log"
@@ -1121,7 +666,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113c: subagent_type=\"\" → Tier 2 does not fire (main session)"
 rc=0
-tc113c_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: ""}')
+tc113c_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: ""}')
 output=$(run_guard_clean_env "$tc113c_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113c empty subagent_type does not trigger Tier 2 (main session preserved)"
@@ -1137,7 +682,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113d: subagent_type=123 → Tier 2 does not fire (numeric rejected by | strings)"
 rc=0
-tc113d_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: 123}')
+tc113d_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: 123}')
 output=$(run_guard_clean_env "$tc113d_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113d numeric subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
@@ -1152,7 +697,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113e: subagent_type=[...] → Tier 2 does not fire (array rejected by | strings)"
 rc=0
-tc113e_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: ["code-reviewer", "security"]}')
+tc113e_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: ["code-reviewer", "security"]}')
 output=$(run_guard_clean_env "$tc113e_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113e array subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
@@ -1167,7 +712,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-113f: subagent_type={...} → Tier 2 does not fire (object rejected by | strings)"
 rc=0
-tc113f_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: {name: "code-reviewer", level: 1}}')
+tc113f_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: {name: "code-reviewer", level: 1}}')
 output=$(run_guard_clean_env "$tc113f_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
   pass "TC-113f object subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
@@ -1182,17 +727,17 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-114: CLAUDE_SUBAGENT_TYPE env var → Tier 3 deny"
 rc=0
-tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git reset --hard HEAD"}, cwd: "/tmp", transcript_path: $tp}')
+tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114_input" "CLAUDE_SUBAGENT_TYPE=code-reviewer") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-114 CLAUDE_SUBAGENT_TYPE triggers Tier 3 fallback"
 else
   fail "TC-114 expected deny via env var, got decision=$decision reason=$reason"
 fi
-if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+if [[ "$stderr_log" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-114 stderr block log recorded"
 else
   fail "TC-114 expected stderr block log, got: $stderr_log"
@@ -1205,17 +750,17 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-114b: CLAUDE_AGENT_TYPE env var → Tier 3 deny"
 rc=0
-tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git reset --hard HEAD"}, cwd: "/tmp", transcript_path: $tp}')
+tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114b_input" "CLAUDE_AGENT_TYPE=code-reviewer") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-114b CLAUDE_AGENT_TYPE triggers Tier 3 fallback (OR with CLAUDE_SUBAGENT_TYPE)"
 else
   fail "TC-114b expected deny via env var, got decision=$decision reason=$reason"
 fi
-if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+if [[ "$stderr_log" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-114b stderr block log recorded"
 else
   fail "TC-114b expected stderr block log, got: $stderr_log"
@@ -1223,14 +768,14 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-115: All three tiers unset → main session, git checkout allowed (regression guard)
+# TC-115: All three tiers unset → main session, .git write allowed (regression guard)
 # --------------------------------------------------------------------------
 echo "TC-115: 3 tiers unset → main session allowed (regression guard)"
 rc=0
-tc115_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp}')
+tc115_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc115_input") || rc=$?
 if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-115 main session git checkout allowed (Tier 2/3 no false positives)"
+  pass "TC-115 main session .git write allowed (Tier 2/3 no false positives)"
 else
   fail "TC-115 expected allow, got rc=$rc output=$output"
 fi
@@ -1415,24 +960,20 @@ rm -rf "$fake_bin_118"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-119〜124: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
-#   Issue #1717: Pattern 4 (reviewer state-mutating-git denylist) shared the
-#   fail-OPEN ERR trap with the convenience patterns, so a parse crash inside
-#   Pattern 4 converged to exit 0 (allow) and silently bypassed the security
-#   boundary. The fix installs a fail-CLOSED ERR trap over the Pattern 4 block
-#   (deny + exit 2 + WARNING) and restores fail-open afterwards. Pattern 4 uses
-#   only bash built-ins, so — unlike the deny-emit path faked in TC-118 — it
-#   cannot be crashed via a fake external binary; the hook exposes a test-only,
-#   fail-CLOSED-ONLY fault-injection env var (RITE_BTG_TEST_CRASH=pattern4) that
-#   raises an ERR inside the fail-closed trap region (TC-119). A symmetric
-#   fail-OPEN injection was deliberately NOT added — an env-triggered fail-open
-#   path would be an allow-all backdoor to a security boundary — so AC-3 (Patterns
-#   1-3 stay fail-open) is pinned structurally instead (TC-120). TC-123 covers the
-#   timeout-bypass guard: an oversized global-flag command denies fail-closed before
-#   the super-linear normalization can time out the fail-open hook. These TCs drive
-#   the hook directly (the run_guard_* helpers do not thread extra env through the pipe).
+# TC-119〜122: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
+#   Issue #1717: Pattern 4 shared the fail-OPEN ERR trap with the convenience
+#   patterns, so a parse crash inside Pattern 4 converged to exit 0 (allow) and
+#   silently bypassed the security boundary. The fix installs a fail-CLOSED ERR
+#   trap over the Pattern 4 block (deny + exit 2 + WARNING) and restores
+#   fail-open afterwards. Pattern 4 uses only bash built-ins, so — unlike the
+#   deny-emit path faked in TC-118 — it cannot be crashed via a fake external
+#   binary; the hook exposes a test-only, fail-CLOSED-ONLY fault-injection env
+#   var (RITE_BTG_TEST_CRASH=pattern4) that raises an ERR inside the trap region
+#   (TC-119). A symmetric fail-OPEN injection was deliberately NOT added — an
+#   env-triggered fail-open path would be an allow-all backdoor — so the
+#   Patterns 1-3 fail-open invariant is pinned structurally instead (TC-120).
 # --------------------------------------------------------------------------
-echo "TC-119: Pattern 4 crash in reviewer subagent → deny + exit 2 + stderr WARNING (AC-1)"
+echo "TC-119: Pattern 4 crash in reviewer subagent → deny + exit 2 + stderr WARNING"
 rc=0
 tc119_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
@@ -1445,10 +986,10 @@ if [ "$rc" = "2" ]; then
 else
   fail "TC-119 expected rc=2, got rc=$rc"
 fi
-if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
-  pass "TC-119 emits deny JSON with reviewer-state-mutating-git reason"
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
+  pass "TC-119 emits deny JSON with reviewer-gitdir-write reason"
 else
-  fail "TC-119 expected deny (reviewer-state-mutating-git), got decision=$decision reason=$reason"
+  fail "TC-119 expected deny (reviewer-gitdir-write), got decision=$decision reason=$reason"
 fi
 if [[ "$stderr_log" == *"WARNING"* ]] && [[ "$stderr_log" == *"Pattern 4"* ]]; then
   pass "TC-119 stderr WARNING makes the fail-closed firing visible"
@@ -1457,14 +998,14 @@ else
 fi
 echo ""
 
-echo "TC-120: Patterns 1-3 fail-open invariant is structurally preserved (AC-3)"
-# AC-3 requires that a crash in the Patterns 1-3 region still resolves to allow.
-# This is guaranteed structurally: the default ERR trap is the fail-OPEN handler,
-# and the fail-CLOSED trap is installed ONLY inside the reviewer-only Pattern 4
-# block and restored to fail-open at that block's exit. We deliberately do NOT ship
-# a fail-open fault-injection env var to drive this behaviorally — such a var would
-# be an allow-all backdoor to the security boundary (Issue #1717 review F-02). So we
-# pin the three invariants that guarantee AC-3 by inspecting the hook source.
+echo "TC-120: Patterns 1-3 fail-open invariant is structurally preserved"
+# A crash in the Patterns 1-3 region must still resolve to allow. This is
+# guaranteed structurally: the default ERR trap is the fail-OPEN handler, and the
+# fail-CLOSED trap is installed ONLY inside the reviewer-only Pattern 4 block and
+# restored to fail-open at that block's exit. We deliberately do NOT ship a
+# fail-open fault-injection env var to drive this behaviorally — such a var would
+# be an allow-all backdoor to the security boundary (Issue #1717 review F-02). So
+# we pin the invariants that guarantee it by inspecting the hook source.
 tc120_src=$(cat "$HOOK")
 # (a) the default (pre-Pattern-4) ERR trap is the fail-OPEN handler
 if [[ "$tc120_src" == *"trap '_rite_btg_pattern13_fail_open' ERR"* ]]; then
@@ -1481,9 +1022,9 @@ fi
 # (c) the fail-OPEN trap is restored at Pattern 4 block exit. Pin the EXECUTABLE
 # statement, not a comment: the fail-open trap line must appear at least TWICE — once
 # as the default install (before Pattern 4) and once as the restore (block exit). This
-# is now the only guard for AC-3's block-exit fail-open restoration (behavioral
-# injection was removed as an allow-all backdoor, F-02), so it must catch deletion of
-# the actual restore statement — not just its comment (Issue #1717 review F-04).
+# is the only guard for the block-exit fail-open restoration (behavioral injection
+# was removed as an allow-all backdoor, F-02), so it must catch deletion of the
+# actual restore statement — not just its comment (Issue #1717 review F-04).
 tc120_restore_count=$(printf '%s\n' "$tc120_src" | grep -c "trap '_rite_btg_pattern13_fail_open' ERR")
 if [ "${tc120_restore_count:-0}" -ge 2 ]; then
   pass "TC-120 fail-open trap statement appears >=2x (default install + block-exit restore)"
@@ -1514,7 +1055,7 @@ else
 fi
 echo ""
 
-echo "TC-122: hooks.json PreToolUse:Bash has a timeout (AC-4)"
+echo "TC-122: hooks.json PreToolUse:Bash has a timeout"
 HOOKS_JSON="$SCRIPT_DIR/../hooks.json"
 if jq empty "$HOOKS_JSON" 2>/dev/null; then
   pass "TC-122 hooks.json is valid JSON"
@@ -1528,7 +1069,7 @@ else
   fail "TC-122 expected a numeric timeout on the PreToolUse:Bash hook, got '$tc122_timeout'"
 fi
 # Pin the exact value (Issue #1717 review F-03): the .sh header comment documents
-# "a 10s timeout", but nothing tied that prose to the config. Pin 10 here so that
+# "10s" and nothing else ties that prose to the config. Pin 10 here so that
 # changing hooks.json without updating the header comment fails this test (drift
 # detection). Update BOTH this literal and the .sh header if the value ever changes.
 if [ "$tc122_timeout" = "10" ]; then
@@ -1538,57 +1079,17 @@ else
 fi
 echo ""
 
-echo "TC-123: many-global-flag command → iteration-cap fail-closed deny (F-01 secondary bound)"
-# The Pattern 4 global-flag normalization is super-linear, and the PreToolUse hook
-# timeout is fail-OPEN. A reviewer subagent could pad a git command with thousands of
-# global flags so normalization times out → the deny is dropped → the git runs. The
-# per-flag iteration cap denies fail-closed past 128 flags (a secondary bound; the
-# length guard in TC-124 is the primary one). Use a READ-ONLY verb (`status`) under
-# the byte ceiling so this exercises the CAP, not the length guard, and so the deny is
-# genuinely attributable to the cap: without the cap the command would normalize to
-# `git status` and be ALLOWED — with the cap it is denied (Issue #1717 review F-05).
-rc=0
-tc123_pad=$(printf -- '-C x %.0s' $(seq 1 400))
-tc123_cmd="git ${tc123_pad}status"
-tc123_input=$(jq -n --arg cmd "$tc123_cmd" --arg tp "$SUBAGENT_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
-output=$(echo "$tc123_input" | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "TC-123 many-global-flag READ-ONLY reviewer command is denied by the cap (allow→deny flip)"
-else
-  fail "TC-123 expected deny (cap fires on 400 flags), got decision=$decision rc=$rc"
-fi
-if [[ "$reason" == *"abnormally large"* ]]; then
-  pass "TC-123 deny reason explains the oversized-command / timeout-bypass rationale"
-else
-  fail "TC-123 expected oversized-command explanation in reason, got: $reason"
-fi
-# Guard scope: the same command on a MAIN session must NOT be denied (main sessions
-# never enter Pattern 4 — the cap must not add false denies to non-reviewer Bash).
-rc=0
-tc123_main_input=$(jq -n --arg cmd "$tc123_cmd" --arg tp "$MAIN_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
-output=$(echo "$tc123_main_input" | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-123 many-global-flag MAIN-session command is not denied by the reviewer-only cap"
-else
-  fail "TC-123 expected allow (rc=0, empty) for oversized main-session command, got rc=$rc output=$output"
-fi
-echo ""
-
-echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths (F-01b)"
-# The PRIMARY F-01 bound (Issue #1717 review F-01b showed the iteration cap alone was
-# insufficient): any reviewer command over the byte ceiling is denied fail-closed
-# BEFORE the O(n²) heredoc strip (${COMMAND%%<<*}, ~45s on ~1.3MB) and the O(n²) Pattern
-# 2 regex (>2min on a few MB) — both of which would otherwise time out the fail-open
-# hook and let the padded git run. Build huge commands via temp file + --rawfile to
-# avoid argv limits, and pin that the deny is FAST (proves the O(n²) work is skipped).
+echo "TC-124: oversized command → length-guard fail-closed deny WITHOUT the O(n²) paths"
+# The (L) length guard is the primary timeout-bypass bound: any reviewer command
+# over the byte ceiling is denied fail-closed BEFORE the O(n²) heredoc strip
+# (${COMMAND%%<<*}, ~45s on ~1.3MB) and the O(n²) Pattern 2 regex (>2min on a few
+# MB) — both of which would otherwise time out the fail-open hook and let a padded
+# .git write run. Build huge commands via temp file + --rawfile to avoid argv
+# limits, and pin that the deny is FAST (proves the O(n²) work is skipped).
 tc124_dir=$(mktemp -d)
 tc124_bigval=$(printf 'x%.0s' $(seq 1 10000))
-# (a) 1.28MB state-mutating (checkout) padded with huge flag values → fast deny
-{ printf 'git '; for _i in $(seq 1 128); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'checkout evil'; } > "$tc124_dir/cmd.txt"
+# (a) 1.28MB command padded with huge values → fast deny
+{ printf 'git '; for _i in $(seq 1 128); do printf -- '-C %s ' "$tc124_bigval"; done; printf 'status'; } > "$tc124_dir/cmd.txt"
 jq -n --rawfile cmd "$tc124_dir/cmd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/in.json"
 rc=0
@@ -1597,10 +1098,16 @@ output=$(timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=
 _t1=$(date +%s%N)
 _ms=$(( (_t1 - _t0) / 1000000 ))
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [ "$rc" != "124" ]; then
   pass "TC-124 oversized (1.3MB) reviewer command is denied fail-closed"
 else
   fail "TC-124 expected deny for oversized command, got decision=$decision rc=$rc"
+fi
+if [[ "$reason" == *"reviewer-oversized-command"* ]] && [[ "$reason" == *"abnormally large"* ]]; then
+  pass "TC-124 deny reason names the pattern and explains the timeout-bypass rationale"
+else
+  fail "TC-124 expected reviewer-oversized-command explanation in reason, got: $reason"
 fi
 if [ "$_ms" -lt 5000 ]; then
   pass "TC-124 oversized deny completes fast (${_ms}ms < 5s — O(n²) paths skipped, no timeout→fail-open)"
@@ -1708,8 +1215,9 @@ echo "TC-125k: subagent mv into .git → deny"
 assert_subagent_deny_gitdir "mv into .git blocked" "mv /tmp/evil .git/hooks/pre-commit"
 
 # --- CRITICAL regression: repo under a `/git`-containing ancestor (Issue #1864 fix) ---
-# The `/git`→` git` invocation-normalization used to split these paths so `>` detached from the
-# `.git` token → silent allow (RCE). (H) now tokenizes from the pre-munge snapshot.
+# A removed `/git`→` git` invocation-normalization used to split these paths so `>` detached
+# from the `.git` token → silent allow (RCE). The normalization is gone (Issue #1879), but these
+# pin that /git-ancestor paths keep tokenizing intact.
 echo "TC-125l: subagent redirect into .git under a /srv/git ancestor → deny (path not corrupted)"
 assert_subagent_deny_gitdir "redirect into /srv/git/.../.git blocked" "echo evil > /srv/git/proj/.git/config"
 
@@ -1807,7 +1315,7 @@ assert_subagent_deny_gitdir "rsync into .git blocked" "rsync /tmp/evil .git/hook
 echo "TC-125z3: subagent truncate .git/config → deny"
 assert_subagent_deny_gitdir "truncate .git/config blocked" "truncate -s 0 .git/config"
 
-# --- ALLOW cases: the AC's own false-positive gate ("read-only git / tests not mis-detected") ---
+# --- ALLOW cases: the false-positive gate ("read-only .git access not mis-detected") ---
 echo "TC-125-ALLOW-a: subagent READS .git/config (cat) → allow"
 assert_subagent_allow "cat .git/config allowed (read, not write)" "cat .git/config"
 
@@ -1835,7 +1343,7 @@ assert_subagent_allow "dd if=.git/config of=/tmp/x allowed (read source)" "dd if
 
 # Over-broadening sentinel on /git-ancestor paths: a plain READ (cat/grep — no redirect, no file
 # verb) must stay allowed even when the path contains a `/git` segment. (The WRITE-side regression
-# guard for the _gd_src snapshot fix is TC-125l/m; these pin that reads never start being blocked.)
+# guard is TC-125l/m; these pin that reads never start being blocked.)
 echo "TC-125-ALLOW-j: read .git under /srv/git ancestor (cat) → allow"
 assert_subagent_allow "cat /srv/git/.../.git/config allowed" "cat /srv/git/proj/.git/config"
 
@@ -1849,8 +1357,8 @@ echo ""
 # --- noglob regression: the (H) tokenizer runs under `set -f`, so a reviewer command's bare glob
 # (`*`/`?`/`[`) is NOT pathname-expanded against the hook CWD (Issue #1864 follow-up). Without noglob
 # a `*` sitting BEFORE a `.git` READ path expands to CWD entries; a file named like a write-verb
-# (cp/tee/…) then latches the file-verb vector and the legit `.git` READ is wrongly DENIED (AC-1
-# false-positive; unbounded expansion could also time the hook out → fail-open). This pins the fix:
+# (cp/tee/…) then latches the file-verb vector and the legit `.git` READ is wrongly DENIED
+# (false-positive; unbounded expansion could also time the hook out → fail-open). This pins the fix:
 # with `set -f` the `*` stays literal → allow. Runs from a temp CWD holding verb-named files so the
 # pre-fix (globbing) behavior would over-DENY (fail-on-revert).
 tc125_noglob_dir=$(mktemp -d)
@@ -1867,30 +1375,219 @@ fi
 rm -rf "$tc125_noglob_dir"
 echo ""
 
-# --- noglob regression for the `git worktree add` arg loop (Issue #1866, sibling of TC-125) ---
-# The `for tok in $WT_ARGS` loop (~line 608) that counts positional args / detects new-branch
-# flags now runs under `set -f`, so a glob metachar surviving in the worktree-add args is NOT
-# pathname-expanded against the hook CWD. Without noglob, a bare `*` in the args expands to CWD
-# entries; a file named exactly `-b` (the new-branch flag token) then latches WT_NEW_BRANCH_FLAG
-# and a legit `git worktree add <path> <existing-ref>` is wrongly DENIED (AC-1 over-DENY false
-# positive; an unbounded glob could also time the hook out → fail-open, bypassing the branch-leak
-# check). This pins the fix: with `set -f` the `*` stays a literal positional token → allow.
-#   Command shape note: the trailing `*` is a deliberately adversarial 4th token (git itself would
-#   reject a 3rd positional) — its only job is to be a glob that expands against the crafted CWD.
-#   The assertion is about the GUARD not over-denying due to CWD pollution, not about git accepting
-#   the command. Runs from a temp CWD holding a `-b` file so the pre-fix (globbing) path over-DENYs
-#   (fail-on-revert): verified empirically that the un-fixed loop returns deny for this input.
-tc126_noglob_dir=$(mktemp -d)
-: > "$tc126_noglob_dir/-b"    # a file named like the new-branch flag token — would set WT_NEW_BRANCH_FLAG if globbed
-_tc126_noglob_prev=$(pwd)
-if cd "$tc126_noglob_dir"; then
-  echo "TC-126-ALLOW-noglob: worktree-add args with a bare glob not polluted by CWD flag-file → allow (set -f)"
-  assert_subagent_allow "worktree add with bare glob + existing ref allowed under noglob" "git worktree add /tmp/wt develop *"
-  cd "$_tc126_noglob_prev" || true
-else
-  fail "TC-126-ALLOW-noglob setup: cd into temp dir failed"
-fi
-rm -rf "$tc126_noglob_dir"
+# --------------------------------------------------------------------------
+# TC-127: reviewer native .git-writing git subcommands (sub-block (N), #1879)
+# `git config <key> <value>` / mutating `git remote` / `git update-ref` /
+# `git symbolic-ref` write .git/config or .git refs directly — no redirect and
+# no file verb, so (H) cannot see them. `git config core.hooksPath` is the exact
+# RCE vector the header invariant names. These four subcommands were folded into
+# the removed (A) always-deny block; sub-block (N) restores a machine gate for
+# just their .git-write forms. Read forms of `git config` stay allowed.
+# --------------------------------------------------------------------------
+echo "TC-127a: subagent git config core.hooksPath (RCE vector) → deny"
+assert_subagent_deny_gitdir "git config core.hooksPath blocked" "git config core.hooksPath /tmp/evil-hooks"
+
+echo "TC-127b: subagent git config core.fsmonitor → deny"
+assert_subagent_deny_gitdir "git config core.fsmonitor blocked" "git config core.fsmonitor /tmp/evil.sh"
+
+echo "TC-127c: subagent git config alias.*=!cmd → deny"
+assert_subagent_deny_gitdir "git config alias write blocked" "git config alias.x '!sh -c evil'"
+
+echo "TC-127d: subagent git update-ref → deny"
+assert_subagent_deny_gitdir "git update-ref blocked" "git update-ref refs/heads/foo abc1234"
+
+echo "TC-127e: subagent git symbolic-ref → deny"
+assert_subagent_deny_gitdir "git symbolic-ref blocked" "git symbolic-ref HEAD refs/heads/foo"
+
+echo "TC-127f: subagent git remote set-url → deny"
+assert_subagent_deny_gitdir "git remote set-url blocked" "git remote set-url origin https://evil.example/x"
+
+echo "TC-127g: subagent git remote add → deny"
+assert_subagent_deny_gitdir "git remote add blocked" "git remote add evil https://evil.example/x"
+
+# Global-flag-prefix bypass: the subcommand does not sit right after `git`. These
+# would slip a naive substring match (the removed (A)-(G) code normalized global
+# flags for exactly this). (N) strips leading global flags so the subcommand
+# surfaces, and denies inline `-c` config injection (no subcommand needed).
+echo "TC-127h: subagent git -C . config core.hooksPath (flag prefix) → deny"
+assert_subagent_deny_gitdir "git -C . config core.hooksPath blocked" "git -C . config core.hooksPath /tmp/evil"
+
+echo "TC-127i: subagent git --git-dir=./.git config core.hooksPath → deny"
+assert_subagent_deny_gitdir "git --git-dir config write blocked" "git --git-dir=./.git config core.hooksPath /tmp/evil"
+
+echo "TC-127j: subagent git -c core.hooksPath=… <cmd> (inline config, no subcommand) → deny"
+assert_subagent_deny_gitdir "git -c core.hooksPath inline blocked" "git -c core.hooksPath=/tmp/evil status"
+
+echo "TC-127k: subagent git -c alias.x=!cmd log (inline alias) → deny"
+assert_subagent_deny_gitdir "git -c alias inline blocked" "git -c alias.x='!sh -c evil' log"
+
+echo "TC-127l: subagent git --work-tree=/x update-ref (flag prefix) → deny"
+assert_subagent_deny_gitdir "git --work-tree update-ref blocked" "git --work-tree=/tmp update-ref refs/heads/foo abc1234"
+
+echo "TC-127m: subagent git -C. config core.hooksPath (glued -C, self-contained) → deny"
+assert_subagent_deny_gitdir "git -C. config core.hooksPath blocked" "git -C. config core.hooksPath /tmp/evil"
+
+# Path / quoted / backslashed git-binary invocation: (N) must normalize the
+# invocation token to bare `git` so the subcommand surfaces. Without this,
+# `/usr/bin/git config core.hooksPath` slips the gate (bare-`git`-only check),
+# and `\git` / `"git"` keep their decoration on the config-match path.
+echo "TC-127n: subagent /usr/bin/git config core.hooksPath (abspath invocation) → deny"
+assert_subagent_deny_gitdir "abspath git config write blocked" "/usr/bin/git config core.hooksPath /tmp/evil"
+
+echo "TC-127o: subagent ./git config core.hooksPath (relative-path invocation) → deny"
+assert_subagent_deny_gitdir "relpath git config write blocked" "./git config core.hooksPath /tmp/evil"
+
+echo "TC-127p: subagent \\git config core.hooksPath (leading-backslash invocation) → deny"
+assert_subagent_deny_gitdir "backslash git config write blocked" "\\git config core.hooksPath /tmp/evil"
+
+echo "TC-127q: subagent /usr/bin/git update-ref (abspath) → deny"
+assert_subagent_deny_gitdir "abspath git update-ref blocked" "/usr/bin/git update-ref refs/heads/foo abc1234"
+
+# Quoted / backslashed git remote sub-action: the sub-action token must be
+# dequoted before the ` git remote <action> ` match, else `git remote "add"`
+# writes .git/config unblocked.
+echo "TC-127r: subagent git remote \"add\" (quoted sub-action) → deny"
+assert_subagent_deny_gitdir "quoted remote add blocked" "git remote \"add\" evil https://evil.example/x"
+
+echo "TC-127s: subagent git remote se\"t-url\" (interior-quoted sub-action) → deny"
+assert_subagent_deny_gitdir "interior-quoted remote set-url blocked" "git remote se\"t-url\" origin https://evil.example/x"
+
+echo "TC-127t: subagent git remote a\\dd (backslash sub-action) → deny"
+assert_subagent_deny_gitdir "backslash remote add blocked" "git remote a\\dd evil https://evil.example/x"
+
+# Inline config injection via --config-env (sibling of -c; deny message names both).
+echo "TC-127u: subagent git --config-env=core.hooksPath=EV (inline, =form) → deny"
+assert_subagent_deny_gitdir "--config-env= inline blocked" "git --config-env=core.hooksPath=EVILVAR status"
+
+echo "TC-127v: subagent git --config-env core.hooksPath=EV (inline, space form) → deny"
+assert_subagent_deny_gitdir "--config-env space inline blocked" "git --config-env core.hooksPath=EVILVAR status"
+
+# --attr-source consumes a following token (space form); it must not let the
+# subcommand escape detection.
+echo "TC-127w: subagent git --attr-source tree config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--attr-source space + config write blocked" "git --attr-source tree config core.hooksPath /tmp/evil"
+
+# Each separate-arg global flag independently pinned so a future skip_arg-list
+# regression on any one of them is caught (they share the branch, but the branch
+# is only exercised per-flag). --shallow-file was a real gap found in review.
+echo "TC-127w2: subagent git --super-prefix x config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--super-prefix space + config write blocked" "git --super-prefix x config core.hooksPath /tmp/evil"
+
+echo "TC-127w3: subagent git --shallow-file /dev/null config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--shallow-file space + config write blocked" "git --shallow-file /dev/null config core.hooksPath /tmp/evil"
+
+echo "TC-127w4: subagent git --shallow-file /dev/null update-ref (space arg flag) → deny"
+assert_subagent_deny_gitdir "--shallow-file space + update-ref blocked" "git --shallow-file /dev/null update-ref refs/heads/foo abc1234"
+
+# --exec-path space form: covered by the removed (A)-(G) normalization, so (N)
+# must deny it too (superset-of-develop, no regression) even though bare
+# `git --exec-path` is a harmless print-and-exit (pinned as allow below).
+echo "TC-127w5: subagent git --exec-path /x config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--exec-path space + config write blocked" "git --exec-path /x config core.hooksPath /tmp/evil"
+
+echo "TC-127-ALLOW-e5: subagent git --exec-path (bare, print-and-exit read) → allow"
+assert_subagent_allow "git --exec-path bare allowed" "git --exec-path"
+
+# Per-flag skip_arg regression pins: every separate-arg global flag must
+# independently drop its value so a future skip_arg-list regression on any one of
+# them is caught. --git-dir/--work-tree were only pinned in =form (TC-127i/l),
+# which takes the -*) self-contained branch and does NOT exercise skip_arg;
+# --namespace had no pin at all.
+echo "TC-127w6: subagent git --namespace ns config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--namespace space + config write blocked" "git --namespace ns config core.hooksPath /tmp/evil"
+
+echo "TC-127w7: subagent git --git-dir ./.git config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--git-dir space + config write blocked" "git --git-dir ./.git config core.hooksPath /tmp/evil"
+
+echo "TC-127w8: subagent git --work-tree /tmp config core.hooksPath (space arg flag) → deny"
+assert_subagent_deny_gitdir "--work-tree space + config write blocked" "git --work-tree /tmp config core.hooksPath /tmp/evil"
+
+# Co-located read-form must NOT mask a real write in the same command line, and a
+# second git invocation in a compound command must be re-recognized. These were a
+# CRITICAL regression (a flattened whole-string match exempted the whole line).
+echo "TC-127y1: subagent compound read;write — read must NOT mask the write → deny"
+assert_subagent_deny_gitdir "co-located read does not mask write blocked" "git config --list; git config core.hooksPath /tmp/evil"
+
+echo "TC-127y2: subagent write&&read (write first) → deny"
+assert_subagent_deny_gitdir "write then read blocked" "git config core.hooksPath /tmp/evil && git config --list"
+
+echo "TC-127y3: subagent compound read; alias write → deny"
+assert_subagent_deny_gitdir "co-located read does not mask alias write blocked" "git config --list; git config alias.x '!sh -c evil'"
+
+echo "TC-127y4: subagent second path-git invocation in compound → deny"
+assert_subagent_deny_gitdir "compound second /usr/bin/git config blocked" "git; /usr/bin/git config core.hooksPath /tmp/evil"
+
+echo "TC-127y5: subagent git remote (no sub-action); git config write → deny"
+assert_subagent_deny_gitdir "compound after bare remote blocked" "git remote; git config core.hooksPath /tmp/evil"
+
+echo "TC-127-ALLOW-y6: subagent two co-located reads (config --list; log) → allow"
+assert_subagent_allow "co-located reads allowed" "git config --list; git log --oneline"
+
+# remarg is fail-CLOSED symmetric with cfgarg: an unknown/future remote sub-action
+# denies (not allow-by-default), so remote mutation is not a version-dependent
+# enumeration hole. Read sub-actions stay allowed.
+echo "TC-127y6: subagent git remote <unknown-sub-action> → deny (fail-closed)"
+assert_subagent_deny_gitdir "unknown remote sub-action blocked" "git remote frobnicate x"
+
+echo "TC-127-ALLOW-y7: subagent git remote show / get-url (read sub-actions) → allow"
+assert_subagent_allow "git remote show allowed" "git remote show origin"
+assert_subagent_allow "git remote get-url allowed" "git remote get-url origin"
+
+# A verbose flag before a mutating sub-action must NOT be mistaken for a read:
+# `git remote -v add …` still mutates (.git/config remote.<n>.url → RCE on fetch).
+echo "TC-127y7: subagent git remote -v add (verbose flag before mutating sub-action) → deny"
+assert_subagent_deny_gitdir "git remote -v add blocked" "git remote -v add evil https://evil.example/x"
+
+echo "TC-127y8: subagent git remote --verbose set-url (verbose flag before mutating) → deny"
+assert_subagent_deny_gitdir "git remote --verbose set-url blocked" "git remote --verbose set-url origin https://evil.example/x"
+
+# Pin the remarg re-entry arm (bare `git remote` → fresh `git`): a legit read
+# compound must stay allowed, so removing the `git|*/git` re-entry arm fails here.
+echo "TC-127-ALLOW-y8: subagent git remote; git log (bare remote then fresh read) → allow"
+assert_subagent_allow "bare remote then fresh read allowed" "git remote; git log --oneline"
+
+# Accepted over-DENY (documented tradeoff, like TC-127x): a read pipe after
+# `git remote -v` tokenizes as `-v grep` (separators collapse upstream) and
+# denies fail-closed. Pinned so a maintainer sees it is intentional — re-allowing
+# an unknown token after a flag would reopen the `git remote -v add` bypass.
+echo "TC-127y9: subagent git remote -v | grep (read pipe over-DENY — accepted tradeoff) → deny"
+assert_subagent_deny_gitdir "remote -v pipe over-deny accepted" "git remote -v | grep origin"
+
+echo "TC-127-ALLOW-a: subagent git config --list (read) → allow"
+assert_subagent_allow "git config --list allowed" "git config --list"
+
+echo "TC-127-ALLOW-b: subagent git config --get (read) → allow"
+assert_subagent_allow "git config --get allowed" "git config --get core.editor"
+
+echo "TC-127-ALLOW-c: subagent git config --get-regexp (read) → allow"
+assert_subagent_allow "git config --get-regexp allowed" "git config --get-regexp '^alias'"
+
+echo "TC-127-ALLOW-d: subagent git remote -v (read) → allow"
+assert_subagent_allow "git remote -v allowed" "git remote -v"
+
+# NOTE: `git symbolic-ref HEAD` (a READ) is over-blocked by (N) — symbolic-ref
+# has no read allow-list carve-out (unlike `git config`). That over-block is
+# pre-existing (the removed (A) block also denied `symbolic-ref`) and accepted
+# (recoverable via the deny message); the read alternative (rev-parse) is what
+# stays allowed. Do NOT add a symbolic-ref read carve-out — that would change
+# pre-existing behavior. TC-127x below pins the accepted read-side over-block.
+echo "TC-127x: subagent git symbolic-ref HEAD (READ, over-blocked — accepted tradeoff) → deny"
+assert_subagent_deny_gitdir "git symbolic-ref read over-blocked (accepted)" "git symbolic-ref HEAD"
+
+echo "TC-127-ALLOW-e: subagent git rev-parse --symbolic-full-name (symbolic-ref read alternative) → allow"
+assert_subagent_allow "git rev-parse --symbolic-full-name read allowed" "git rev-parse --symbolic-full-name HEAD"
+
+echo "TC-127-ALLOW-e2: subagent git -C . config --list (flag prefix + read) → allow (normalization keeps reads)"
+assert_subagent_allow "git -C . config --list allowed" "git -C . config --list"
+
+echo "TC-127-ALLOW-e3: subagent git -C . status (flag prefix, non-dangerous subcommand) → allow"
+assert_subagent_allow "git -C . status allowed" "git -C . status"
+
+echo "TC-127-ALLOW-e4: subagent /usr/bin/git status (abspath invocation, non-dangerous) → allow (normalization keeps reads)"
+assert_subagent_allow "/usr/bin/git status allowed" "/usr/bin/git status"
+
+echo "TC-127-ALLOW-f: MAIN session git config core.hooksPath → allow (reviewer-only gate)"
+assert_main_allow "main-session git config write not blocked by (N)" "git config core.hooksPath /tmp/x"
 echo ""
 
 # --------------------------------------------------------------------------

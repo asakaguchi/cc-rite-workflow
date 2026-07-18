@@ -4,8 +4,8 @@
 # Edit / Write / MultiEdit / NotebookEdit tools.
 #
 # Why this exists (Issue #1860):
-#   The sibling `pre-tool-bash-guard.sh` Pattern 4 only blocks state-mutating
-#   *git* commands issued through the Bash tool — it does nothing about a
+#   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (since Issue
+#   #1879 its machine gate is the .git-write path) — it does nothing about a
 #   reviewer subagent that opens `Edit`/`Write` on a source file in the parent
 #   working tree (observed in production: a reviewer edited an implementation
 #   file in-place to run a mutation test, then hand-restored it). The prose ban

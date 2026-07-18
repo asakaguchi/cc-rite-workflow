@@ -423,8 +423,10 @@ In `multi_session` mode rite **never switches the main checkout's current branch
 Consequences enforced across the workflow:
 
 - New session branches are created with their base as **`origin/{base}` directly**
-  (`git worktree add -b {branch} {path} origin/{base}`), not via a local `{base}`
-  that another worktree may have checked out.
+  (`git worktree add --no-track -b {branch} {path} origin/{base}`), not via a local
+  `{base}` that another worktree may have checked out. `--no-track` avoids
+  `branch.autoSetupMerge` writing upstream tracking to `.git/config`, which sandbox
+  environments reject (Issue #1894).
 - A branch is deleted **only after** its worktree is removed (a branch checked out
   in a worktree cannot be deleted or fetch-updated).
 - `cleanup`'s base update runs **only when the main checkout is on `{base}`**; on any

@@ -275,7 +275,7 @@ fi
 | `reuse` | worktree 登録済 + branch 一致 → 再利用（resume 相当、`git worktree add` しない） |
 | `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |
 | `branch_only` | branch 存在・worktree なし → `git worktree add "{path}" "{branch}"`（`-b` なし） |
-| `create_new` | branch も worktree もなし → `git worktree add -b "{branch}" "{path}" "origin/{base_branch}"` |
+| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
 
 **dirty main checkout ガード（Issue #1832）**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する全経路**（`branch_only` / `create_new` / `stale_residue` で「削除して再作成」を選択した場合。`reuse` は既存 worktree 継続のため対象外）で、`git worktree add` を実行する**前に**評価する。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない（marker は行頭 `[CONTEXT]` の行のみ）:
@@ -560,8 +560,10 @@ Step 4 で `/rite:issue-implement` が autonomous に invoke した `rite:lint` 
 ### 6.1 push
 
 ```bash
-git push -u origin {branch_name}
+git push origin {branch_name}
 ```
+
+> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。flow-state が `{branch_name}` を常時保持しているため upstream に依存する必要はない。
 
 ### 6.2 PR 作成
 

@@ -752,8 +752,10 @@ Before finalizing the PR body, gather two additional sources so reviewers start 
 Push the local branch to remote:
 
 ```bash
-git push -u origin {branch_name}
+git push origin {branch_name}
 ```
+
+> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。3.4 の `gh pr create` は `--head` で明示的にブランチを指定するため upstream に依存しない。
 
 ### 3.4 Create Draft PR
 
@@ -800,7 +802,7 @@ if [ ! -s "$pr_workdir/pr_body.md" ]; then
   exit 1
 fi
 
-gh pr create --draft --base "{base_branch}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
+gh pr create --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
 ```
 
 ### 3.5 Update Work Memory Phase
@@ -968,7 +970,7 @@ URL: {pr_url}
 
 | Error | Resolution |
 |--------|------|
-| Push failure | Check network -> `gh auth status` -> `git pull --rebase` -> retry |
+| Push failure | Check network -> `gh auth status` -> `git pull --rebase origin {branch_name}` -> retry |
 | PR creation failure | Check existing PRs with `gh pr list` -> verify permissions -> retry |
 | Issue not found | Choose: create without Issue / specify different Issue / cancel |
 ## Language Support

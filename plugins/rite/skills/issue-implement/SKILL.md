@@ -512,7 +512,7 @@ After implementation is complete, push changes to remote:
 2. Stage changes with `git add`
 3. Generate commit message in Conventional Commits format
 4. Commit with `git commit`
-5. Push to remote with `git push -u origin {branch_name}`
+5. Push to remote with `git push origin {branch_name}` (no `-u`: sandbox 環境での upstream tracking 書込拒否を避けるため — Issue #1894)
 
 **Commit message generation:**
 
@@ -544,7 +544,7 @@ git commit -m "$(cat <<'EOF'
 {commit_message}
 EOF
 )"
-git push -u origin {branch_name}
+git push origin {branch_name}
 ```
 
 **Note**: Commit and push must be completed before invoking `/rite:pr-create`.

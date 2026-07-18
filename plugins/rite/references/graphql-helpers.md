@@ -269,7 +269,7 @@ BRANCH_NAME=$(git branch --show-current)
 REMOTE_REF=$(git ls-remote --heads origin "$BRANCH_NAME" 2>/dev/null)
 if [ -z "$REMOTE_REF" ]; then
  echo "ERROR: Branch '$BRANCH_NAME' not found on remote" >&2
- echo "Run 'git push -u origin $BRANCH_NAME' first" >&2
+ echo "Run 'git push origin $BRANCH_NAME' first" >&2
  exit 1
 fi
 ```
@@ -294,7 +294,7 @@ fi
 REMOTE_REF=$(git ls-remote --heads origin "$BRANCH_NAME" 2>/dev/null)
 if [ -z "$REMOTE_REF" ]; then
  echo "ERROR: Branch '$BRANCH_NAME' not found on remote. Pushing..." >&2
- git push -u origin "$BRANCH_NAME" || {
+ git push origin "$BRANCH_NAME" || {
  echo "ERROR: Failed to push branch" >&2
  exit 1
  }
@@ -308,7 +308,7 @@ echo "Pre-PR checks passed: $COMMIT_COUNT commit(s), branch on remote"
 | Error Message | Cause | Fix |
 |--------------|-------|-----|
 | `No commits between X and Y` | Head branch has no new commits vs base | Create and push at least one commit |
-| `Could not resolve to a Ref` | Branch doesn't exist on remote | `git push -u origin {branch_name}` |
+| `Could not resolve to a Ref` | Branch doesn't exist on remote | `git push origin {branch_name}` |
 | `A pull request already exists` | PR for this branch already open | Use `gh pr view` to find existing PR |
 | `Base branch is invalid` | Base branch doesn't exist | Verify `rite-config.yml` `branch.base` |
 

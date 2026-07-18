@@ -209,9 +209,10 @@
 
 | [統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる](pages/heuristics/consolidation-refactor-layered-follow-up.md) | heuristics | レジストリ統合系 refactor の取りこぼしは層構造で現れる。cycle ごとに全域 grep の除外リスト（凍結ファイル・意図的言及）を明示的に引き継ぎ、凍結コピーは successor 注記 + follow-up Issue で一括追従を明記する。PR #1891 の 4 cycle 収束（5→6→5→4→0）で実測。 | 2026-07-17T21:04:54+09:00 | high |
 | [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語・新規エントリは number-free に保つ](pages/patterns/bilingual-changelog-sync-conventions.md) | patterns | en/ja CHANGELOG の運用 3 慣習: PR 単位の同時更新（リリース時バックフィルではない）、和訳はカテゴリ見出しのみでバージョン見出しは英語維持（release 置換対称性の前提）、新規 [Unreleased] エントリは number-free（number-reference-check、既存節は grandfathered）。PR #1891 で実測。 | 2026-07-17T21:04:54+09:00 | high |
+| [セキュリティ機械ゲートの部分撤去は撤去前 covered set の superset 維持と per-occurrence fail-closed 判定で収束させる](pages/heuristics/security-gate-partial-removal-convergence.md) | heuristics | verb 列挙などの機械ゲートを部分撤去し一部を残すリファクタでは、維持部分を撤去前 covered set の superset にし、allow-list を flatten-substring でなく per-occurrence の deny-by-default FSM で判定し、脅威モデルをユーザーに明示することで review-fix ループを収束させる。PR #1892 の 6 cycle 収束で実測。 | 2026-07-18T11:08:13+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 184
-- ドメイン別: patterns=62, heuristics=58, anti-patterns=62
-- 最終更新: 2026-07-17T21:04:54+09:00
+- 総ページ数: 185
+- ドメイン別: patterns=62, heuristics=59, anti-patterns=62
+- 最終更新: 2026-07-18T11:08:13+09:00

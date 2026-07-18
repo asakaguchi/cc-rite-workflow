@@ -454,6 +454,25 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   the branch** (push-pending / unpushed work is preserved; branch cleanup stays the
   responsibility of the normal `cleanup` path).
 
+### SSH host alias 経由の `git push`/`fetch` が sandbox のネットワーク許可リストでブロックされる
+
+`origin` remote が `~/.ssh/config` の `Host` alias（例: `git@github.com-work:owner/repo.git`）
+経由の環境で、sandbox が有効なとき `git push` / `git fetch` の SSH 接続がブロックされることがある。
+
+**症状**: `socat[N] E CONNECT github.com-work:22: Bad Gateway` のようなエラーで SSH 接続が拒否
+され、`git push origin {branch}` / `git fetch origin {base}` が失敗する。`gh` CLI（HTTPS 経由で
+`api.github.com` を使う）は影響を受けないため、`gh issue view` 等の issue 操作は成功するのに
+push/fetch だけ失敗する非対称な挙動になる。
+
+**原因**: sandbox のネットワーク許可リストはドメイン名ベース（`github.com` / `*.github.com` 等）
+で構成される。`~/.ssh/config` の `Host` alias は実際の接続先ホスト名としては alias 名（例:
+`github.com-work`）になり、許可リストのいずれのパターンにも一致しない。
+
+**対処**: 上記はコマンド自体の失敗ではなく sandbox のネットワーク制限のため、当該 `git push` /
+`git fetch` コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要
+— 既知の環境制約、Issue #1897）。sandbox のネットワーク許可リストはプラグイン外の環境設定のため、
+rite 側の設定変更では解消できない。SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
+
 > **Canonical spec**: This file documents the operational *patterns*; the canonical
 > runtime specification for the session-worktree layer (lifecycle, claim, reap,
 > shared-state-root resolution, crash recovery) lives in

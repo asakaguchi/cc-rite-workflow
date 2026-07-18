@@ -38,8 +38,6 @@
 |------------|-----------|------|---------|
 | {file:line} | {reviewer_a} vs {reviewer_b} | 合意 / エスカレーション | {resolution_summary} |
 
-**討論メトリクス**: 矛盾 {debate_triggered} 件 → 自動解決 {debate_resolved} 件 / エスカレーション {debate_escalated} 件（解決率: {debate_resolution_rate}%）
-
 ### 高信頼度の指摘（複数レビュアー合意）
 <!-- 2人以上のレビュアーが同じ問題を指摘 -->
 
@@ -213,8 +211,6 @@
 | ファイル:行 | レビュアー | 結果 | 合意内容 |
 |------------|-----------|------|---------|
 | {file:line} | {reviewer_a} vs {reviewer_b} | 合意 / エスカレーション | {resolution_summary} |
-
-**討論メトリクス**: 矛盾 {debate_triggered} 件 → 自動解決 {debate_resolved} 件 / エスカレーション {debate_escalated} 件（解決率: {debate_resolution_rate}%）
 
 ### 仕様との整合性（該当がある場合のみ）
 <!-- ステップ 1.3.1 で Issue 仕様が取得できた場合のみ表示 -->

@@ -1,14 +1,14 @@
-# Fingerprint Cycling Detection — Quality Signal SoT
+# Finding Cycling Detection — Quality Signal SoT
 
-> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/pr-review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`/rite:open` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
+> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Finding Cycling Detection** (review サイクル間の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/pr-review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`skills/iterate/SKILL.md` の review-fix loop 内で間接的に実行される。本ファイルは cycle 間比較の判断基準 / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
-`/rite:open` の review-fix loop には、cycle 数に応じてレビュー品質を段階的に緩める **cycle-count-based degradation は存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。品質判定の escalation は以下 **4 つの quality signal** で行う。（これとは別レイヤで、非収束ループの最終安全網として `safety.max_review_cycles` の cycle 上限サーキットブレーカー = #1701 が存在するが、これは品質を緩めず cycle 上限で停止/ユーザー委譲するだけで、下記 signal 群とは独立に両立する。詳細は `skills/iterate/SKILL.md` 設計判断を参照。）
+review-fix loop には、cycle 数に応じてレビュー品質を段階的に緩める **cycle-count-based degradation は存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。品質判定の escalation は以下 **4 つの quality signal** で行う。（これとは別レイヤで、非収束ループの最終安全網として `safety.max_review_cycles` の cycle 上限サーキットブレーカー = #1701 が存在するが、これは品質を緩めず cycle 上限で停止/ユーザー委譲するだけで、下記 signal 群とは独立に両立する。詳細は `skills/iterate/SKILL.md` 設計判断を参照。）
 
 | Signal | 検出 phase | 内容 |
 |--------|-----------|------|
-| **Signal 1** — 同一 finding cycling | Phase 5.4.1.0 (本 reference) | review サイクル間で同 fingerprint の finding が残存 |
+| **Signal 1** — 同一 finding cycling | Phase 5.4.1.0 (本 reference) | review サイクル間で同一内容の finding が残存 |
 | **Signal 2** — root-cause-missing fix | `fix.md` ステップ 3.2.1 | 根本原因を捉えない fix がコミットされる経路の検出 |
 | **Signal 3** — cross-validation disagreement | `pr-review.md` ステップ 5.2 + debate fails | レビュアー間の disagreement が debate でも解消されない |
 | **Signal 4** — finding quality gate failure | `_reviewer-base.md` Finding Quality Guardrail | reviewer 自身が self-degraded 状態を宣言 |
@@ -17,13 +17,13 @@ Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase
 
 設計判断: **品質 escalation の機構**は 4 quality signal のみとし、cycle 数に応じてレビュー品質を段階的に緩める iteration counter（progressive relaxation / degradation）は導入しない。過去に明示的に削除した cycle-count-based degradation の再発を防ぐため。ただしこれは「品質緩和の禁止」であり、非収束ループの最終安全網としての cycle 上限サーキットブレーカー（`safety.max_review_cycles`、#1701）とは別レイヤで両立する — 後者は品質を一切緩めず、上限到達で停止（対話は AskUserQuestion、`/rite:batch-run` バッチは failed 遷移）するだけで、本 signal 群の quality escalation を代替も抑制もしない。
 
-## §1 — Phase 5.4.1.0 Fingerprint Cycling Detection
+## §1 — Phase 5.4.1.0 Finding Cycling Detection
 
 `review.loop.convergence_monitoring` が enabled (default: `true`) で、PR に先行する `📜 rite レビュー結果` コメントがある時に発火する。Signal 1 of 4。
 
 ### Design note
 
-旧 cycle-count-based convergence monitor を **置き換え** た新 monitor。cycle は数えない。**finding を semantic fingerprint で識別** し、cycle 間で同一 fingerprint が 1 度でも再出現すれば escalate する。
+旧 cycle-count-based convergence monitor を **置き換え** た monitor。cycle は数えない。**2 つのレビュー結果を比べ、同じ指摘が残っているかを semantic に判断** し、cycle 間で同一内容の finding が 1 度でも再出現すれば escalate する。ハッシュや類似度スコアによる機械判定は使わない — 文言のリライトで同一指摘を取りこぼす硬直があるため。
 
 ### Step 1 — Fetch 2 most recent review comments
 
@@ -36,14 +36,14 @@ Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase
 # pipefail を有効化して pipeline 途中の失敗も捕捉する。
 set -o pipefail
 pr_number="{pr_number}"
-gh_err=$(mktemp /tmp/rite-fp-gh-err-XXXXXX 2>/dev/null) || gh_err=""
+gh_err=$(mktemp /tmp/rite-fc-gh-err-XXXXXX 2>/dev/null) || gh_err=""
 if ! comments=$(gh api --paginate --slurp repos/{owner}/{repo}/issues/${pr_number}/comments 2>"${gh_err:-/dev/null}" \
     | jq 'add | [.[] | select(.body | contains("📜 rite レビュー結果"))] | .[-2:]'); then
-  echo "WARNING: gh api による PR コメント取得または jq filter に失敗。fingerprint check を skip します (fail-open)" >&2
+  echo "WARNING: gh api による PR コメント取得または jq filter に失敗。cycling check を skip します (fail-open)" >&2
   [ -n "$gh_err" ] && [ -s "$gh_err" ] && head -5 "$gh_err" | sed 's/^/  /' >&2
   [ -n "$gh_err" ] && rm -f "$gh_err"
   set +o pipefail
-  echo "[CONTEXT] FINGERPRINT_CHECK skip (gh api or jq failure)"
+  echo "[CONTEXT] CYCLING_CHECK skip (gh api or jq failure)"
   exit 0
 fi
 [ -n "$gh_err" ] && rm -f "$gh_err"
@@ -51,55 +51,36 @@ set +o pipefail
 
 count=$(printf '%s' "$comments" | jq 'length' 2>/dev/null || echo 0)
 if [ "${count:-0}" -lt 2 ]; then
-  echo "[CONTEXT] FINGERPRINT_CHECK skip (only ${count:-0} review comment(s) on PR)"
+  echo "[CONTEXT] CYCLING_CHECK skip (only ${count:-0} review comment(s) on PR)"
   exit 0
 fi
 ```
 
-### Step 2 — Extract findings & compute fingerprints
+### Step 2 — Compare the two review results semantically
 
-Fingerprint spec:
+取得した 2 件のレビュー結果 (previous cycle / this cycle) の Markdown body から finding を読み取り、**前サイクルの各指摘が今サイクルにも残存しているか** を判断する。ハッシュや類似度計算は使わない — LLM が指摘の内容そのものを比較する。
 
-```
-fingerprint = sha1( normalize(file_path) + ":" + category + ":" + normalize(message) )
-```
+**同一判断の基準**:
 
-- `normalize(file_path)`: absolute path なら repository-root prefix を strip、`./` を collapse。
-- `category`: reviewer identity + severity (例: `security-reviewer:HIGH`)。
-- `normalize(message)`: 行番号を除去 (`:NNN:` → `:`)、識別子を `<ident>` placeholder で mask、lowercase、whitespace を collapse。
+- 文言・行番号・severity 表記が変わっていても、**同じファイルの同じ性質の欠陥** を指しているなら同一指摘とみなす（指摘文言の大幅リライトも取りこぼさない）
+- 同じファイルでも **別の欠陥**（別の関数・別の失敗モード）を指すなら別指摘
+- 前サイクルの指摘が fix により解消され、その fix が **新たに生んだ** 指摘は残存ではない（新規 finding として扱う）
+- **判断がつかない場合は「残存」側に倒す**（見逃しより誤検出を許容 — escalation は AskUserQuestion で人間が最終判断するため false positive のコストは低い）
 
-Similarity matching (fingerprint が完全一致しない場合):
-
-- **same file path** AND **same category** AND **Jaccard token-similarity > 0.7** → 同一 fingerprint として扱う。
-
-semantic 作業のため、LLM が各 `📜 rite レビュー結果` コメントの Markdown body (table / per-reviewer sections) から finding を抽出し、in-context で fingerprint を計算する。SHA-1 helper (macOS BSD / Linux coreutils portable):
-
-```bash
-# sha1sum は Linux coreutils、shasum は macOS/BSD (Perl script 付属)。どちらも利用不可な場合は python3 fallback。
-sha1_portable() {
-  if command -v sha1sum >/dev/null 2>&1; then
-    printf '%s' "$1" | sha1sum | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then
-    printf '%s' "$1" | shasum -a 1 | awk '{print $1}'
-  else
-    printf '%s' "$1" | python3 -c 'import hashlib,sys; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())'
-  fi
-}
-sha1_portable "{file_path}:{category}:{normalized_message}"
-```
-
-### Step 3 — Compare fingerprint sets
+### Step 3 — Judge cycling
 
 | Condition | Signal |
 |-----------|--------|
-| Intersection size == 0 | **Healthy progress** — finding が残存していない、review を normal continue |
-| Intersection size ≥ 1 | **Signal 1 fired (same-finding cycling)** — escalate |
+| 残存指摘なし | **Healthy progress** — finding が残存していない、review を normal continue |
+| 残存指摘 1 件以上 | **Signal 1 fired (same-finding cycling)** — escalate |
 
 context marker を emit:
 
 ```
-[CONTEXT] FINGERPRINT_CYCLING hits={n} total_current={m} total_previous={p}
+[CONTEXT] FINDING_CYCLING hits={n} total_current={m} total_previous={p}
 ```
+
+`hits` は残存と判断した指摘数、`total_current` / `total_previous` は各サイクルの指摘総数。
 
 ### Step 4 — Escalate via AskUserQuestion (hits >= 1 のみ)
 
@@ -246,12 +227,12 @@ new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
 # failure を防ぐため issue_url を guard し warnings[] を surface する (先例 pr-review.md ステップ
 # 7.4.2 の post-result handling を移植)
 if [ -z "$new_issue_url" ] || [ "$new_issue_url" = "null" ]; then
-  echo "ERROR: Fingerprint 循環 finding の Issue 化に失敗しました (issue_url が空)" >&2
+  echo "ERROR: 循環 finding の Issue 化に失敗しました (issue_url が空)" >&2
   printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w" >&2; done
   echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_issue_url" >&2
   exit 1
 fi
-echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issue_number') として切り出しました: $new_issue_url"
+echo "✅ 循環 finding を #$(printf '%s' "$result" | jq -r '.issue_number') として切り出しました: $new_issue_url"
 # Issue 作成は成功。Projects 登録の partial/failed と warnings[] を surface する (silent にしない)
 project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
 printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
@@ -260,4 +241,4 @@ if [ "$project_reg" = "partial" ] || [ "$project_reg" = "failed" ]; then
 fi
 ```
 
-Signal 3 / Signal 4 由来の split では title prefix を `review-split:` のまま (Signal 1 と統一)、body の冒頭 "Quality Signal 1 発火" を実発火 signal 名に置換する。`options.source` も `fingerprint_split` → `quality_signal_3_split` / `quality_signal_4_split` に変更する。
+Signal 3 / Signal 4 由来の split では title prefix を `review-split:` のまま (Signal 1 と統一)、body の冒頭 "Quality Signal 1 発火" を実発火 signal 名に置換する。`options.source` も `fingerprint_split` → `quality_signal_3_split` / `quality_signal_4_split` に変更する（enum 値は `create-issue-with-projects.sh` の機械契約のため `fingerprint_split` の名称を維持している — Signal 1 由来の split を意味する歴史的名称）。

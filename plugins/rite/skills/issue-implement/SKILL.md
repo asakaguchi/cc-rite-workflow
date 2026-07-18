@@ -315,93 +315,18 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
 **Relationship with parallel implementation (5.1.0.1-5.1.0.4)**: When parallel implementation is active, execute the re-evaluation checkpoint **after each parallel batch completes** (not after each individual parallel task). The batch completion triggers dependency state update, and newly unblocked steps are candidates for the next parallel batch.
 
-**Re-evaluation procedure**:
+**Re-evaluation purpose**（固定した手順表・チェック表・閾値は持たない — 列挙外の状況で判断が硬直するため。work memory への記録義務は維持する）:
 
-1. **Verify completion criteria**: If the implementation plan includes a `検証基準` column, verify the completed step's criteria using the appropriate tool before marking it complete:
+各ステップ完了時に、次の 4 つを状況に応じて判断し、判断の痕跡を work memory に残す:
 
-   | Criteria Type | Verification Method |
-   |--------------|---------------------|
-   | File existence | `Glob` or `Read` tool |
-   | Function/export existence | `Grep` tool (e.g., `export.*functionName`) |
-   | Pattern presence | `Grep` tool |
-   | Test passage | `Bash` tool (run test command) |
-   | Config value | `Read` or `Grep` tool |
-   | Line count / structure | `Read` tool + count |
+1. **完了の確証**: このステップは計画の意図（`検証基準` 列があればその基準）を本当に満たしたか。ツールで確認できるもの（ファイル存在・パターン・テスト通過・設定値）は Read / Grep / Glob / Bash で確認してから完了にする。基準を満たせないまま完了扱いにしない。再試行しても満たせない場合は、基準側が誤っているのか実装が誤っているのかを判断し、基準を更新したなら「計画逸脱ログ」に記録する。繰り返し失敗して判断に迷うときは `AskUserQuestion` でユーザーに委ねる（続行 / 基準更新 / 逸脱記録つきスキップ）
+2. **逸脱の検知と記録**: スコープ逸脱（計画外ファイルの変更）・共有コード変更の影響範囲・Issue の What/Why との乖離に気付いたら、work memory の「計画逸脱ログ」に既存のテーブル形式で記録する（記録は義務。閾値や固定チェックリストはない）。軽微な調整（同一ステップ内の手法変更・不要になったステップのスキップ・小さな補助ステップの追加）は記録して続行する。計画の前提を変える変更（計画外の新規ファイル追加・公開 API / 契約の変更・見積もりを大きく超えるスコープ拡大・残ステップの依存構造の組み替え）は `AskUserQuestion` でユーザーに確認する
+3. **次ステップの選定**: `depends_on` が解けたステップの中から「次に最も明白な問題」を選ぶ。目安: 下流を最も多く解放するもの・リスクが高く早く失敗を表面化させたいもの・小さく完了して勢いを保てるもの — どれを優先するかは残りの計画全体を見て判断する
+4. **行き詰まりの検知**: このステップが計画時の粒度見積もりを明らかに超えて膨らんでいる（修正の往復が続く、変更ファイル・行数が想定と乖離した）と感じたら、[Bottleneck Detection Reference](../../references/bottleneck-detection.md) の Oracle discovery（既存の正しい実装を構造ガイドに使う）でステップをサブステップ `S{n}.1`, `S{n}.2`, ... に再分解し、work memory の「ボトルネック検出ログ」に記録する（記録は次回 bulk update = commit 時）。固定閾値は使わない — 膨らみの判断は計画粒度との乖離で行う。再分解後は最初のサブステップから実行を続ける
 
-   **When criteria is met**: Proceed to step 2 (Post-Step Quality Gate).
+**Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step).
 
-   **When criteria is NOT met**:
-   - Re-attempt the implementation to satisfy the criteria
-   - If the criteria itself is incorrect (implementation approach changed), record the deviation in work memory's "計画逸脱ログ" section and update the criteria before marking complete
-   - Do NOT mark the step as complete until the (original or updated) criteria is verified
-   - **Escalation**: If 2 re-attempts fail to satisfy the criteria, use `AskUserQuestion` to ask the user whether to (a) continue retrying, (b) update the criteria, or (c) skip verification and mark complete with a deviation log entry
-
-   **When no `検証基準` column exists** (legacy plans or skipped plans): Skip this verification step and proceed to step 2 directly.
-
-2. **Post-Step Quality Gate** (mental check — no tool calls required, complete within 10 seconds):
-
-   After verifying completion criteria (or skipping verification), perform a lightweight self-check on the just-completed step using the immediately available work context. This gate catches scope drift, regression risks, and specification misalignment early — before they compound across subsequent steps.
-
-   **Relationship with parallel implementation**: When a parallel batch completes multiple steps simultaneously, run the Quality Gate for each step in the batch individually, using each step's specific work context.
-
-   **Check items**:
-
-   | # | Check | Question | Trigger |
-   |---|-------|----------|---------|
-   | 1 | **Scope drift** | Did you modify files not listed in the implementation plan? | Edited files outside the plan's "変更対象ファイル" |
-   | 2 | **Regression concern** | If shared/common code was changed, are you aware of the impact scope? | Modified a shared utility, configuration, or common module file that you observed being referenced by other files during this implementation session |
-   | 3 | **Specification alignment** | Is the change consistent with the Issue's What/Why? | Change purpose diverges from the Issue description |
-
-   **Evaluation**: For each check, assess pass/flag based on the work context already in memory (files edited, step description, Issue body). Do NOT invoke Read, Grep, Bash, or any other tool — this is a mental evaluation only.
-
-   **When all checks pass**: Proceed to step 3 (mark complete). No output needed.
-
-   **When any check is flagged**:
-   - Record the flagged item(s) in work memory's "計画逸脱ログ" section using the existing table format (consistent with step 6's plan deviation recording):
-     ```
-     | {next_number} | S{n} | QG | {check_name}: {brief description} | — | — |
-     ```
-     Where `逸脱種別` is `QG` (Quality Gate). `影響範囲` and `代替ステップ` are `—` (not applicable for informational flags).
-   - **Continue execution** (do NOT stop or ask the user). The Quality Gate is informational — it logs concerns for later review but does not block progress.
-   - Proceed to step 3 (mark complete).
-
-3. **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step)
-4. **Update dependency state**: Identify newly unblocked steps (steps whose `depends_on` are all complete)
-5. **Select next step**: From the unblocked steps, pick the one with highest priority using:
-
-| Priority | Criterion | Reason |
-|----------|-----------|--------|
-| 1 | Steps that unblock the most downstream steps | Maximize parallelism |
-| 2 | Steps with highest implementation risk | Fail fast — surface problems early |
-| 3 | Steps with smallest scope | Quick wins build momentum |
-
-6. **Check for plan deviation**: If the implementation reveals that a planned step is unnecessary, needs modification, or a new step is required:
-   - Record the deviation in work memory's "計画逸脱ログ" section (see work-memory-format.md)
-   - Adjust the remaining plan accordingly
-   - **Minor adjustments** (no user confirmation needed): Changing implementation approach within the same step, skipping a step that became unnecessary, adding a small helper step (scope < 1 file)
-   - **Significant scope changes** (ask user via `AskUserQuestion`): Adding new files not in the original plan, changing public API/interface contracts, scope expansion exceeding 50% of original estimate, changing the dependency structure of 3+ remaining steps
-
-7. **Bottleneck detection**: After the step completes, check if it exceeded any bottleneck threshold. Metrics are counted from when the step started to when it finished. This is a guard clause — skip immediately when no threshold is exceeded (zero overhead on normal path).
-
-   > **Reference**: [Bottleneck Detection Reference](../../references/bottleneck-detection.md) for complete thresholds, Oracle discovery protocol, and re-decomposition procedure.
-
-   **Threshold check** (any match triggers detection):
-
-| Threshold | Condition |
-|-----------|-----------|
-| Round count | > 3 rounds (Read/Edit/Bash cycles) within the step |
-| File count | > 5 files modified (Edit/Write) within the step |
-| Line count | > 200 lines changed (insertions + deletions) within the step |
-
-   **When no threshold exceeded**: Return immediately — proceed to display format below. No further action.
-
-   **When threshold exceeded**:
-   1. **Discover Oracle and re-decompose**: Follow [Bottleneck Detection Reference](../../references/bottleneck-detection.md) — discover Oracle (Priority 1→2→3), then re-decompose step into sub-steps `S{n}.1`, `S{n}.2`, etc.
-   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [Step Re-decomposition Procedure](../../references/bottleneck-detection.md#step-re-decomposition-procedure)
-   3. **Display and record**: Use the bottleneck display format (see below). Add entry to work memory "ボトルネック検出ログ" section at next bulk update (commit time)
-   4. **Continue**: Execute the first sub-step (`S{n}.1`) — do NOT re-evaluate the parent step
-
-**Display format** (after each step, normal path — no bottleneck):
+**Display format** (after each step, normal path):
 
 ```
 ✅ Step {completed_id} 完了: {step_description}
@@ -415,13 +340,13 @@ After completing each implementation step, re-evaluate the remaining steps befor
 → 次に実行: Step {next_id}
 ```
 
-**Display format** (after step with bottleneck detected — Oracle found):
+**Display format** (行き詰まり判断でステップを再分解した場合):
 
 ```
 ⚠️ ボトルネック検出: Step S{n} ({step_description})
-検出理由: {threshold_exceeded} （{actual_value}/{threshold_value}）
+検出理由: {なぜ膨らんでいると判断したかの短い説明}
 
-Oracle: {oracle_source} ({oracle_file_path})
+Oracle: {oracle_source} ({oracle_file_path}) ／ なし（フォールバック分解を適用）
 
 再分解:
 | Step | 内容 | depends_on |
@@ -431,25 +356,6 @@ Oracle: {oracle_source} ({oracle_file_path})
 
 → 次に実行: Step S{n}.1
 ```
-
-**Display format** (after step with bottleneck detected — no Oracle found):
-
-```
-⚠️ ボトルネック検出: Step S{n} ({step_description})
-検出理由: {threshold_exceeded} （{actual_value}/{threshold_value}）
-
-Oracle: なし（フォールバック分解を適用）
-
-再分解:
-| Step | 内容 | depends_on |
-|------|------|------------|
-| S{n}.1 | {sub_step_1} | — |
-| S{n}.2 | {sub_step_2} | S{n}.1 |
-
-→ 次に実行: Step S{n}.1
-```
-
-> **Reference**: See [Bottleneck Detection Reference - User Notification](../../references/bottleneck-detection.md#user-notification) for complete display format details.
 
 **When all steps are complete**: Proceed to 5.1.0.6 (Test Verification Gate), then 5.1.0.7 (Documentation Impact Investigation), then 5.1.1 (Commit). The chain is **5.1.0.6 → 5.1.0.6.1 → 5.1.0.7 → 5.1.1**; never bypass 5.1.0.7 on the way to commit.
 
@@ -572,47 +478,14 @@ The decision is made by the LLM based on the actual diff (`git diff --name-statu
 
 ##### Investigation Procedure
 
-**Step 1: Extract specification keywords**
+（探し方の固定手順（必須 glob の列挙）は持たない — 台本ではなく「何を見つけて直すか」の目的で指示する。）
 
-From the implementation just completed, extract user-facing identifiers that may appear in documentation. Sources:
+実装が導入した**ユーザー可視の識別子**（コマンド名・config キー・ファイルパス・phase / workflow 名・hook / helper 名。work memory の「決定事項・メモ」と diff 自体がソース。明らかに内部限定のものは除く）ごとに、**リポジトリ全体**からその識別子に言及するドキュメントを探し、実装後の仕様と食い違う記述を見つけて直す:
 
-| Source | Examples |
-|--------|---------|
-| Renamed / added / removed commands | `/rite:open`, slash-command names |
-| Renamed / added / removed config keys | `rite-config.yml` keys (`branch.base`, `wiki.enabled`) |
-| Renamed / added / removed file paths | Section file paths a user copies into their project |
-| Renamed / added / removed phase / workflow names | `skills/iterate/SKILL.md` fix side, `review-fix loop` |
-| Renamed / added / removed public function / hook names | hook script names, exported helpers |
-
-Use the work memory's `決定事項・メモ` and the diff itself as the source. Skip identifiers that are clearly internal.
-
-**Step 2: Project-wide search**
-
-For each keyword, search the **entire repository** for documentation references using the Grep tool. The search scope is fixed to project-wide and is not configurable.
-
-**Required Grep invocations (run all three per keyword)**:
-
-1. `glob: "**/*.md"` — all Markdown files (includes `CLAUDE.md` at any depth, `docs/**/*.md`, `plugins/**/*.md`)
-2. `glob: "README*"` — extension-less or alternative-extension README files (`README`, `README.rst`, `README.adoc`, etc.) that the `*.md` glob misses
-3. `glob: "CHANGELOG*"` — CHANGELOG files that reference user-visible features by name
-
-All three globs use `output_mode: "files_with_matches"` and the same `pattern: "{keyword}"`. Running all three is mandatory — skipping `README*` or `CHANGELOG*` because "they're usually `*.md`" causes silent drift in repos that use extension-less READMEs.
-
-**Exclude the modified file set from the results**: Compute the set of currently-modified files from `git diff --name-only origin/{base_branch}...HEAD` and exclude any file in that set from the Read/Edit step (Step 3). The modified file set is typically multiple files, not one — do not assume a single "the file".
-
-**Step 3: Read and judge**
-
-For each candidate file returned by the search, use the Read tool to inspect the matched lines and judge whether the documentation is now stale:
-
-| Judgment | Action |
-|---------|--------|
-| Stale (documentation describes the old behavior / old name / removed feature) | Edit immediately with the Edit tool |
-| Still accurate (the keyword appears but the surrounding text is still correct) | Leave as-is |
-| Uncertain | Treat as stale and update; over-updating documentation is cheaper than leaving drift |
-
-**Step 4: Edit and stage**
-
-Apply the necessary edits with the Edit tool. Do **not** prompt the user via `AskUserQuestion` — the auto-fix is mandatory per the MUST NOT constraints below. Stage the edited documentation files together with the implementation changes.
+- 探索は Grep で行い、識別子の性質から言及がありそうな場所を判断して掃く。Markdown（`CLAUDE.md` / `docs/` / `plugins/**/*.md`）だけでなく、拡張子なし README や CHANGELOG のような `*.md` glob が取りこぼすファイルも対象に含める（「普段は *.md だから」と決め打ちすると silent drift になる）
+- 今回の変更ファイル集合（`git diff --name-only origin/{base_branch}...HEAD` — 通常は複数ファイル）は既に更新済みのため、調査対象から除外する
+- ヒットした各ファイルは Read で該当行の周辺を確認し、古い挙動・旧名称・削除済み機能を記述していれば Edit で即時修正する。周辺文脈がまだ正しいなら触らない。**迷ったら stale として更新する**（ドキュメントの過剰更新は drift の放置より安い）
+- 修正したドキュメントは実装と同じコミットにステージする。`AskUserQuestion` は使わない（下記 Constraints）
 
 ##### Result Handling
 

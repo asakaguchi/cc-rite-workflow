@@ -1876,7 +1876,7 @@ Claude は ステップ 1 末尾で `/tmp/rite-fix-target-author-skip-{pr_number
    `{reason_suffix}` は `accept_reason` が非空なら `; reason: {accept_reason}`、空なら空文字列
 4. **accept fingerprint 永続化**: `.rite/state/accepted-fingerprints-{pr_number}.txt` に当該 finding の fingerprint を append (詳細は下記 bash block)
 
-**fingerprint 計算式 (ステップ 2.1.A 独自仕様、cycling formula と意図的に分離)**:
+**fingerprint 計算式 (ステップ 2.1.A 独自仕様 — accept 抑止専用。cycle 間比較は `pr-review/references/finding-cycling.md` の semantic 判断であり、本 hash はそれとは独立の機械契約)**:
 
 ```
 fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(message))
@@ -1941,7 +1941,7 @@ trap '_rite_fix_phase21A_cleanup; exit 130' INT
 trap '_rite_fix_phase21A_cleanup; exit 143' TERM
 trap '_rite_fix_phase21A_cleanup; exit 129' HUP
 
-# Step 3: fingerprint 計算 (ステップ 2.1.A 独自 simplified normalize — cycling formula と分離)
+# Step 3: fingerprint 計算 (ステップ 2.1.A 独自 simplified normalize — accept 抑止専用)
 # normalize(file_path): `./` prefix のみ collapse、case-sensitive path 保護のため lowercase 化しない
 # normalize(message): trim + whitespace collapse、identifier mask しない (audit log の human readability 重視)
 norm_file=$(printf '%s' "$file_path" | sed 's@^\./@@')
@@ -2563,7 +2563,7 @@ fix(review): {description}
 
 ### 3.2.1 Root Cause Gate
 
-Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) from `skills/fix/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`.
+Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
 **Step 1 — Semantic LLM check (no shell variable dependency)**: The LLM examines the commit body it generated in ステップ 3.2 and determines whether a root-cause explanation is present. Because shell variables do not persist across Bash tool invocations, this gate is intentionally LLM-semantic rather than bash-automated.
 

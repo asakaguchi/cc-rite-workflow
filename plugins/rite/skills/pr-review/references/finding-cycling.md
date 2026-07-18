@@ -23,7 +23,7 @@ Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase
 
 ### Design note
 
-旧 cycle-count-based convergence monitor を **置き換え** た monitor。cycle は数えない。**2 つのレビュー結果を比べ、同じ指摘が残っているかを semantic に判断** し、cycle 間で同一内容の finding が 1 度でも再出現すれば escalate する。（旧実装の SHA-1 fingerprint + Jaccard token-similarity による機械判定は #1880 で廃止 — 文言のリライトで同一指摘を取りこぼす硬直があったため、判断をモデルに返還した。）
+旧 cycle-count-based convergence monitor を **置き換え** た monitor。cycle は数えない。**2 つのレビュー結果を比べ、同じ指摘が残っているかを semantic に判断** し、cycle 間で同一内容の finding が 1 度でも再出現すれば escalate する。ハッシュや類似度スコアによる機械判定は使わない — 文言のリライトで同一指摘を取りこぼす硬直があるため。
 
 ### Step 1 — Fetch 2 most recent review comments
 

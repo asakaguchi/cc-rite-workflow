@@ -315,14 +315,14 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
 **Relationship with parallel implementation (5.1.0.1-5.1.0.4)**: When parallel implementation is active, execute the re-evaluation checkpoint **after each parallel batch completes** (not after each individual parallel task). The batch completion triggers dependency state update, and newly unblocked steps are candidates for the next parallel batch.
 
-**Re-evaluation purpose** (旧 7 段の手順表・チェック表・閾値表は #1880 で廃止 — 列挙外の状況で判断が硬直するため、判断をモデルに返還した。work memory への記録義務は維持する):
+**Re-evaluation purpose**（固定した手順表・チェック表・閾値は持たない — 列挙外の状況で判断が硬直するため。work memory への記録義務は維持する）:
 
 各ステップ完了時に、次の 4 つを状況に応じて判断し、判断の痕跡を work memory に残す:
 
 1. **完了の確証**: このステップは計画の意図（`検証基準` 列があればその基準）を本当に満たしたか。ツールで確認できるもの（ファイル存在・パターン・テスト通過・設定値）は Read / Grep / Glob / Bash で確認してから完了にする。基準を満たせないまま完了扱いにしない。再試行しても満たせない場合は、基準側が誤っているのか実装が誤っているのかを判断し、基準を更新したなら「計画逸脱ログ」に記録する。繰り返し失敗して判断に迷うときは `AskUserQuestion` でユーザーに委ねる（続行 / 基準更新 / 逸脱記録つきスキップ）
 2. **逸脱の検知と記録**: スコープ逸脱（計画外ファイルの変更）・共有コード変更の影響範囲・Issue の What/Why との乖離に気付いたら、work memory の「計画逸脱ログ」に既存のテーブル形式で記録する（記録は義務。閾値や固定チェックリストはない）。軽微な調整（同一ステップ内の手法変更・不要になったステップのスキップ・小さな補助ステップの追加）は記録して続行する。計画の前提を変える変更（計画外の新規ファイル追加・公開 API / 契約の変更・見積もりを大きく超えるスコープ拡大・残ステップの依存構造の組み替え）は `AskUserQuestion` でユーザーに確認する
 3. **次ステップの選定**: `depends_on` が解けたステップの中から「次に最も明白な問題」を選ぶ。目安: 下流を最も多く解放するもの・リスクが高く早く失敗を表面化させたいもの・小さく完了して勢いを保てるもの — どれを優先するかは残りの計画全体を見て判断する
-4. **行き詰まりの検知**: このステップが計画時の粒度見積もりを明らかに超えて膨らんでいる（修正の往復が続く、変更ファイル・行数が想定と乖離した）と感じたら、[Bottleneck Detection Reference](../../references/bottleneck-detection.md) の Oracle discovery（既存の正しい実装を構造ガイドに使う）でステップをサブステップ `S{n}.1`, `S{n}.2`, ... に再分解し、work memory の「ボトルネック検出ログ」に記録する（記録は次回 bulk update = commit 時）。固定閾値は廃止 — 膨らみの判断は計画粒度との乖離で行う。再分解後は最初のサブステップから実行を続ける
+4. **行き詰まりの検知**: このステップが計画時の粒度見積もりを明らかに超えて膨らんでいる（修正の往復が続く、変更ファイル・行数が想定と乖離した）と感じたら、[Bottleneck Detection Reference](../../references/bottleneck-detection.md) の Oracle discovery（既存の正しい実装を構造ガイドに使う）でステップをサブステップ `S{n}.1`, `S{n}.2`, ... に再分解し、work memory の「ボトルネック検出ログ」に記録する（記録は次回 bulk update = commit 時）。固定閾値は使わない — 膨らみの判断は計画粒度との乖離で行う。再分解後は最初のサブステップから実行を続ける
 
 **Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step).
 
@@ -478,7 +478,7 @@ The decision is made by the LLM based on the actual diff (`git diff --name-statu
 
 ##### Investigation Procedure
 
-（旧版の固定 3-grep プロトコル（`**/*.md` / `README*` / `CHANGELOG*` の必須 3 glob）は #1880 で廃止 — 探し方の台本ではなく「何を見つけて直すか」の目的で指示する。）
+（探し方の固定手順（必須 glob の列挙）は持たない — 台本ではなく「何を見つけて直すか」の目的で指示する。）
 
 実装が導入した**ユーザー可視の識別子**（コマンド名・config キー・ファイルパス・phase / workflow 名・hook / helper 名。work memory の「決定事項・メモ」と diff 自体がソース。明らかに内部限定のものは除く）ごとに、**リポジトリ全体**からその識別子に言及するドキュメントを探し、実装後の仕様と食い違う記述を見つけて直す:
 

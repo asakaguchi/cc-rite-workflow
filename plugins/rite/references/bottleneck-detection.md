@@ -4,7 +4,7 @@ Oracle discovery and step re-decomposition for implementation bottlenecks.
 
 ## Overview
 
-During implementation (Phase 5.1), a step is a **bottleneck** when it is clearly outgrowing the granularity the plan assumed — repeated fix round-trips, or file/line changes far beyond what the step was scoped for. The judgment is semantic: compare the step's actual trajectory against the plan's granularity estimate. There are no fixed thresholds (the former round/file/line threshold table was removed in #1880 — the numbers made the check rigid at boundary cases and substituted counting for judgment).
+During implementation (Phase 5.1), a step is a **bottleneck** when it is clearly outgrowing the granularity the plan assumed — repeated fix round-trips, or file/line changes far beyond what the step was scoped for. The judgment is semantic: compare the step's actual trajectory against the plan's granularity estimate. There are no fixed thresholds — fixed numbers make the check rigid at boundary cases and substitute counting for judgment.
 
 When a bottleneck is recognized, pause the step, discover an Oracle in the codebase, and re-decompose the step into smaller sub-steps.
 

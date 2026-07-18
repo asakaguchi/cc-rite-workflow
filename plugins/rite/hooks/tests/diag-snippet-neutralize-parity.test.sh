@@ -165,12 +165,6 @@ echo ""
 echo "=== TC-5: 関数内 >&2 経由の既知 emission site は個別 pin ==="
 # log() / surface_git_warnings() 内部の >&2 は同一行 sweep で構造的に検出できない。
 # 中和を適用した既知 site が回帰しないことを行単位で pin する。
-assert_grep "TC-5: distributed-fix-drift-check.sh table-side awk stderr log" \
-  "$HOOKS_DIR/scripts/distributed-fix-drift-check.sh" \
-  'head -1 "\$AWK_TABLE_ERR" \| tr -d .\\n. \| neutralize_ctrl --c0-only'
-assert_grep "TC-5: distributed-fix-drift-check.sh emit-side awk stderr log" \
-  "$HOOKS_DIR/scripts/distributed-fix-drift-check.sh" \
-  'head -1 "\$AWK_EMIT_ERR" \| tr -d .\\n. \| neutralize_ctrl --c0-only'
 assert_grep "TC-5: wiki-ingest-commit.sh surface_git_warnings" \
   "$HOOKS_DIR/scripts/wiki-ingest-commit.sh" \
   'grep -iE .\^\(warning\|hint\|error\):. \| neutralize_ctrl --keep-newline'

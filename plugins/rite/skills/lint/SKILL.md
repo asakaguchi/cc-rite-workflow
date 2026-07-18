@@ -442,23 +442,21 @@ Run every rite-workflow internal quality check listed in the check table below t
 
 | # | Check (label) | Invocation (relative to `{plugin_root}/`) | Vars prefix | Count line (regex) |
 |---|---------------|-------------------------------------------|-------------|---------------------|
-| 1 | Drift チェック | `hooks/scripts/distributed-fix-drift-check.sh --all` | `drift` | `Total drift findings: (\d+)` |
-| 2 | Bang-backtick check | `hooks/scripts/bang-backtick-check.sh --all` | `bang_backtick` | `Total bang-backtick findings: (\d+)` |
-| 3 | Doc-heavy patterns drift check | `hooks/scripts/doc-heavy-patterns-drift-check.sh --all` | `doc_heavy_drift` | `Total doc-heavy-patterns-drift findings: (\d+)` |
-| 4 | Reviewer registry drift check | `hooks/scripts/reviewer-registry-drift-check.sh --all` | `reviewer_registry_drift` | `Total reviewer-registry-drift findings: (\d+)` |
-| 5 | Wiki growth check | `hooks/scripts/wiki-growth-check.sh --quiet` | `wiki_growth` | `Total wiki-growth-check findings: (\d+)` |
-| 6 | Gitignore health check | `hooks/scripts/gitignore-health-check.sh --quiet` | `gitignore_health` | `Total gitignore-health-check findings: (\d+)` |
-| 7 | Backlink format check | `hooks/scripts/backlink-format-check.sh --all` | `backlink_format` | `Total backlink-format findings: (\d+)` |
-| 8 | Hardcoded line-number check | `hooks/scripts/hardcoded-line-number-check.sh --all` | `hardcoded_line` | `Total hardcoded line-number findings: (\d+)` |
-| 9 | Comment journal narration | `hooks/scripts/comment-journal-check.sh --all` | `comment_journal` | `Total comment-journal findings: (\d+)` |
-| 10 | Comment line-ref check | `hooks/scripts/comment-line-ref-check.sh --all` | `comment_line_ref` | `Total comment-line-ref findings: (\d+)` |
-| 11 | Direct gh issue create check | `scripts/check-no-direct-gh-issue-create.sh --all` | `direct_gh_issue` | `Total files with violations: (\d+)` |
-| 12 | Orphan reference check | `hooks/scripts/orphan-reference-check.sh --all` | `orphan_check` | `orphans=(\d+)` |
-| 13 | Shell-prose cross-ref check | `hooks/scripts/sh-cross-ref-check.sh --all` | `sh_cross_ref` | `Total sh-cross-ref findings: (\d+)` |
-| 14 | Operational bash block heaviness check | `hooks/scripts/bash-heaviness-check.sh --all` | `bash_heaviness` | `Total bash-heaviness findings: (\d+)` |
-| 15 | Projects board drift check | `hooks/scripts/projects-board-drift-check.sh --quiet` | `projects_board_drift` | `Total projects-board-drift findings: (\d+)` |
-| 16 | Number reference check | `hooks/scripts/number-reference-check.sh --all` | `number_ref` | `Total number-ref findings: (\d+)` |
-| 17 | Sentinel contract check | `hooks/scripts/sentinel-contract-check.sh --all` | `sentinel_contract` | `Total sentinel-contract findings: (\d+)` |
+| 1 | Bang-backtick check | `hooks/scripts/bang-backtick-check.sh --all` | `bang_backtick` | `Total bang-backtick findings: (\d+)` |
+| 2 | Reviewer registry drift check | `hooks/scripts/reviewer-registry-drift-check.sh --all` | `reviewer_registry_drift` | `Total reviewer-registry-drift findings: (\d+)` |
+| 3 | Wiki growth check | `hooks/scripts/wiki-growth-check.sh --quiet` | `wiki_growth` | `Total wiki-growth-check findings: (\d+)` |
+| 4 | Gitignore health check | `hooks/scripts/gitignore-health-check.sh --quiet` | `gitignore_health` | `Total gitignore-health-check findings: (\d+)` |
+| 5 | Backlink format check | `hooks/scripts/backlink-format-check.sh --all` | `backlink_format` | `Total backlink-format findings: (\d+)` |
+| 6 | Hardcoded line-number check | `hooks/scripts/hardcoded-line-number-check.sh --all` | `hardcoded_line` | `Total hardcoded line-number findings: (\d+)` |
+| 7 | Comment journal narration | `hooks/scripts/comment-journal-check.sh --all` | `comment_journal` | `Total comment-journal findings: (\d+)` |
+| 8 | Comment line-ref check | `hooks/scripts/comment-line-ref-check.sh --all` | `comment_line_ref` | `Total comment-line-ref findings: (\d+)` |
+| 9 | Direct gh issue create check | `scripts/check-no-direct-gh-issue-create.sh --all` | `direct_gh_issue` | `Total files with violations: (\d+)` |
+| 10 | Orphan reference check | `hooks/scripts/orphan-reference-check.sh --all` | `orphan_check` | `orphans=(\d+)` |
+| 11 | Shell-prose cross-ref check | `hooks/scripts/sh-cross-ref-check.sh --all` | `sh_cross_ref` | `Total sh-cross-ref findings: (\d+)` |
+| 12 | Operational bash block heaviness check | `hooks/scripts/bash-heaviness-check.sh --all` | `bash_heaviness` | `Total bash-heaviness findings: (\d+)` |
+| 13 | Projects board drift check | `hooks/scripts/projects-board-drift-check.sh --quiet` | `projects_board_drift` | `Total projects-board-drift findings: (\d+)` |
+| 14 | Number reference check | `hooks/scripts/number-reference-check.sh --all` | `number_ref` | `Total number-ref findings: (\d+)` |
+| 15 | Sentinel contract check | `hooks/scripts/sentinel-contract-check.sh --all` | `sentinel_contract` | `Total sentinel-contract findings: (\d+)` |
 
 **Execution loop** — for each table row, run (`{script}` = Invocation column path, `{args}` = Invocation column args, `{prefix}` = Vars prefix column):
 

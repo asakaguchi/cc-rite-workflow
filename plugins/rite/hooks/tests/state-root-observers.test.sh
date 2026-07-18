@@ -7,13 +7,10 @@
 #
 #   TC-1..3  hooks/scripts/review-schema-version-check.sh --all (scan-root 解決)
 #   TC-4..5  hooks/review-skip-notification.sh              (表示パス解決)
-#   TC-6..7  hooks/scripts/distributed-fix-drift-check.sh Pattern 6
-#            (--repo-root を delegate へ伝搬しない契約)
 #
-# A regression back to `git rev-parse --show-toplevel` (or to forwarding
-# --repo-root into the Pattern 6 delegate) would split the writer root and the
-# reader root in a linked-worktree session: the scanner reads an empty
-# directory and drift detection silently no-ops. The sandbox mirrors the
+# A regression back to `git rev-parse --show-toplevel` would split the writer
+# root and the reader root in a linked-worktree session: the scanner reads an
+# empty directory and drift detection silently no-ops. The sandbox mirrors the
 # plugin layout (hooks/ + hooks/scripts/) inside a real git repo with a linked
 # worktree, same as review-result-state-root.test.sh.
 
@@ -137,61 +134,6 @@ if printf '%s\n' "$fallback_out" | grep -qF "ローカルファイル: .rite/rev
   pass "TC-5: cwd-relative display path used as fallback"
 else
   fail "TC-5: cwd-relative fallback path missing. got: $fallback_out"
-fi
-
-# ─── TC-6: Pattern 6 は delegate に --repo-root を伝搬しない (--all のみ) ───
-echo "TC-6: Pattern 6 invokes the delegate with --all only (no --repo-root)"
-DRIFT_CHECKER="$PLUGIN_ROOT/hooks/scripts/distributed-fix-drift-check.sh"
-P6="$TEST_DIR/p6"
-mkdir -p "$P6/plugins/rite/hooks/scripts"
-git -C "$P6" init -q -b main
-ARGS_FILE="$P6/checker-args.txt"
-cat > "$P6/plugins/rite/hooks/scripts/review-schema-version-check.sh" <<SHIM
-#!/bin/bash
-printf '%s\n' "\$@" > "$ARGS_FILE"
-exit 0
-SHIM
-chmod +x "$P6/plugins/rite/hooks/scripts/review-schema-version-check.sh"
-rc=0
-bash "$DRIFT_CHECKER" --pattern 6 --repo-root "$P6" >/dev/null 2>&1 || rc=$?
-if [ "$rc" -eq 0 ] && [ -f "$ARGS_FILE" ]; then
-  recorded=$(cat "$ARGS_FILE")
-  if [ "$recorded" = "--all" ]; then
-    pass "TC-6: delegate received exactly '--all'"
-  else
-    fail "TC-6: delegate args drifted (expected '--all', got '$recorded')"
-  fi
-  if grep -q -- "--repo-root" "$ARGS_FILE"; then
-    fail "TC-6: --repo-root propagated to the delegate (state-root bypass regression)"
-  else
-    pass "TC-6: --repo-root not propagated"
-  fi
-else
-  fail "TC-6: pattern 6 invocation failed (rc=$rc, args_file=$([ -f "$ARGS_FILE" ] && echo present || echo absent))"
-fi
-
-# ─── TC-7: delegate の drift stderr が Pattern 6 finding として report される ───
-echo "TC-7: delegate drift markers are parsed into Pattern 6 findings"
-P7="$TEST_DIR/p7"
-mkdir -p "$P7/plugins/rite/hooks/scripts"
-git -C "$P7" init -q -b main
-cat > "$P7/plugins/rite/hooks/scripts/review-schema-version-check.sh" <<'SHIM'
-#!/bin/bash
-echo "[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=/shared/.rite/review-results/7-x.json; schema_version=9.9.9" >&2
-exit 1
-SHIM
-chmod +x "$P7/plugins/rite/hooks/scripts/review-schema-version-check.sh"
-rc=0
-out=$(bash "$DRIFT_CHECKER" --pattern 6 --repo-root "$P7" 2>/dev/null) || rc=$?
-if [ "$rc" -eq 1 ]; then
-  pass "TC-7: drift from delegate surfaces as checker rc=1"
-else
-  fail "TC-7: expected rc=1 (drift), got rc=$rc"
-fi
-if printf '%s\n' "$out" | grep -qF "schema_version='9.9.9' outside accept list"; then
-  pass "TC-7: Pattern 6 finding names the drifted version"
-else
-  fail "TC-7: Pattern 6 finding missing. output: $out"
 fi
 
 echo "=== Results: $PASS passed, $FAIL failed ==="

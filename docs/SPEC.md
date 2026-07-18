@@ -219,7 +219,6 @@ rite-workflow/
 │ │ ├── rite-tmp-artifact.sh # 一時成果物 manifest 記録 (name 非依存 reap 用)
 │ │ ├── review-schema-version-check.sh # review-result schema drift 検出
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
-│ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
 │ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.5 reviewer registry 3-way 同期検証
 │ │ ├── gitignore-health-check.sh
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
@@ -1301,8 +1300,6 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | — |
 | `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | — |
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
-| `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
-| `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | — |
 | `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.5 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
 | `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | — |
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
@@ -1322,7 +1319,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `orphan-reference-check.sh` | plugins/rite/ 配下の未参照 (orphan) ファイル検出 | — |
 | `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | — |
 | `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | — |
-| `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 | — |
+| `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 (`fix.md` ステップ 3.1.1 の pre-commit gate から直接呼び出される) | `review.loop.pre_commit_drift_check` |
 | `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、setup.md Phase 4.5.0.2) | — |
 | `lib/` (`wiki-config.sh` / `worktree-git.sh`) | wiki 系 helper の共有ライブラリ (config 読取 / worktree git 操作) | — |
 | `tests/` | hooks/scripts レベルのテストスイート | — |

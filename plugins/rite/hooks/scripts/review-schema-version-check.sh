@@ -11,8 +11,9 @@
 # Any other value (including missing schema_version) is reported as drift via:
 #   [CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=<path>; schema_version=<value>
 #
-# Invoked from `distributed-fix-drift-check.sh` Pattern 6, and can be run
-# standalone for ad-hoc inspection.
+# Invoked directly from `fix/SKILL.md` ステップ 3.1.1 (pre-commit gate) and
+# `lint/SKILL.md` Phase 3.5 (check table), and can be run standalone for
+# ad-hoc inspection.
 #
 # Usage:
 #   review-schema-version-check.sh --target FILE [--target FILE]...

@@ -78,7 +78,7 @@ review:
     # 同一 finding 循環 / root-cause 不明 fix / cross-validation 不一致 / finding quality gate 不通過
     convergence_monitoring: true          # 同一 finding 循環の semantic 検知
     auto_propagation_scan: true           # Fix 後の類似パターン伝播スキャン
-    pre_commit_drift_check: true          # コミット前に distributed-fix-drift-check を実行
+    pre_commit_drift_check: true          # コミット前に review-schema-version-check を実行
   security_reviewer:
     mandatory: false                          # 全 PR で必須選定するか
     recommended_for_code_changes: true        # 実行可能コード変更時は推奨

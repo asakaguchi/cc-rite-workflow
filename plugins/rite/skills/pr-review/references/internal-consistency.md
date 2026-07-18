@@ -291,4 +291,4 @@ pr-review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記
 - [`../../fix/references/assessment-rules.md`](../../fix/references/assessment-rules.md) — ALL findings are blocking ルール
 - [`../../../agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) — Confidence Scoring 80+ ゲートの定義
 
-drift 監視は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (`/rite:lint` Phase 3.5) で自動検出する (warning/non-blocking)。
+`doc_file_patterns` は `skills/reviewers/SKILL.md` の Technical Writer 行を SoT として `../SKILL.md` ステップ 1.2.7 が参照する構成のため、両者の drift は構造的に発生しない。

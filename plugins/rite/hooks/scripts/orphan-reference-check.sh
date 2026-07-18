@@ -43,7 +43,7 @@
 #   `git rev-parse --show-toplevel`, falling back to `pwd`).
 #
 # Note: `--quiet` is not implemented (unlike sibling lint scripts such as
-# `distributed-fix-drift-check.sh`). lint.md Phase 3.15 captures both the
+# `gitignore-health-check.sh`). lint.md Phase 3.15 captures both the
 # `[orphan-reference-check] checked=N orphans=M` summary line and the
 # `ORPHAN: path (...)` per-orphan lines into the warning appendix, so
 # suppressing the summary is not desirable for the canonical use case.

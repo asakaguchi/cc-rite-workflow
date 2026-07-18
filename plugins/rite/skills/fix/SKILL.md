@@ -754,7 +754,7 @@ exit 1
 
 **ステップ 2+ 進入禁止**: `[fix:error]` が emit された時点で Claude は以降の Phase (ステップ 2 Categorization, ステップ 3 Commit, ステップ 4 Report) への bash tool 呼び出しを一切行ってはならない。bash の `exit 1` による機械的強制ルールであり、自然言語判断による例外を認めない。
 
-**ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2):
+**ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons**:
 
 > **注**: ステップ 1.2.0 Selection logic (Priority 0/1/2/3 + fallback) の reason は `scripts/review-source-resolve.sh` へ移設済み。Priority 0/2 (file-based) の severity_map build / normalization の reason は `scripts/review-findings-maps.sh` へ移設済み (下記 bullet 列挙)。本表は ステップ 1.0.1 / 1.2.0 caller guard / 1.2.0.1 Interactive Fallback / Priority 3 pr_comment (string-based 鏡像含む) の reason を扱う。
 
@@ -788,7 +788,7 @@ exit 1
 | `broad_retrieval_jq_extraction_failed` | ステップ 1.2.0 Priority 3 Broad Comment Retrieval で `pr_comments` からの rite review コメント抽出 jq が失敗 (jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損、tempfile 不在として `BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT` へ routing、`REVIEW_SOURCE_PARSE_FAILED` flag) |
 | `git_rev_parse_head_failed` | Priority 3 の commit_sha stale detection 用 `git rev-parse HEAD` が失敗 (stale 判定を skip し `head_sha=""` で継続、`REVIEW_SOURCE_STALE_CHECK_FAILED` flag。`jq_error_on_commit_sha` と同じ stale-check namespace) |
 
-> **Note**: Priority 0/2 (file-based) の severity_map build / normalization の reason は委譲先 helper `scripts/review-findings-maps.sh` が emit する (SoT は helper docstring)。`distributed-fix-drift-check.sh` Pattern 2 は「同一ファイル内に `| reason |` table 行があれば同ファイル内で `reason=` emit される」ことを前提とするため、委譲済 reason は **markdown table 行にせず bullet 形式**で列挙する。同じ理由で本文 prose では bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason は fix flow 上で従来どおり観測される。helper は `distributed-fix-drift-check.sh` の DEFAULT_ALL_TARGETS に登録済みで、helper docstring 内の Eval-order enumeration は Pattern-2 の documented set（reason 表 ∪ enumeration）入力として `reason=` emit と照合される。
+> **Note**: Priority 0/2 (file-based) の severity_map build / normalization の reason は委譲先 helper `scripts/review-findings-maps.sh` が emit する (SoT は helper docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason は fix flow 上で従来どおり観測される。
 
 **review-findings-maps.sh reasons** (helper が `[CONTEXT] REVIEW_SOURCE_*` / `FIX_FALLBACK_FAILED` を emit。normalization 系 4 reason — `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `low_current_pr_demoted_to_nit_noted` / `jq_mutation_failed` — は Priority 3 鏡像も同名 emit するため上の table 行にも存在する):
 - `mktemp_failure_norm_tmp`: schema 1.1.0 normalization 用 tempfile (`/tmp/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する
@@ -2425,30 +2425,18 @@ git diff
 対応した指摘: {count}件
 ```
 
-### 3.1.1 Pre-Commit Drift Lint Gate
+### 3.1.1 Pre-Commit Schema Version Check
 
-Before committing, run the distributed fix drift check to catch known propagation failure patterns (Pattern 1-5) mechanically. This prevents drift from entering the review cycle, saving an entire review-fix round trip.
+Before committing, verify that `.rite/review-results/*.json` schema versions are within the accepted list, mechanically. This prevents schema drift from entering the review cycle, saving an entire review-fix round trip.
 
 1. Check if `review.loop.pre_commit_drift_check` is enabled in `rite-config.yml` (default: `true`). If disabled, skip to ステップ 3.2.
 
-2. Run the drift check on files changed by the current fix:
+2. Run the check:
 
 ```bash
-# Get changed files that are in the default target set
-changed_files=$(git diff --name-only HEAD 2>/dev/null | grep -E '^plugins/rite/commands/pr/(fix|review)\.md$|^plugins/rite/agents/tech-writer\.md$' || true)
-
-if [ -n "$changed_files" ]; then
-  target_args=""
-  while IFS= read -r f; do
-    target_args="$target_args --target $f"
-  done <<< "$changed_files"
-  bash {plugin_root}/hooks/scripts/distributed-fix-drift-check.sh $target_args --quiet
-  drift_exit=$?
-else
-  drift_exit=0
-fi
-changed_target_count=$(echo "$changed_files" | grep -c . 2>/dev/null || true)
-printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d changed_targets=%d\n' "$drift_exit" "${changed_target_count:-0}"
+bash {plugin_root}/hooks/scripts/review-schema-version-check.sh --all --quiet
+drift_exit=$?
+printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d\n' "$drift_exit"
 ```
 
 3. Handle the exit code:

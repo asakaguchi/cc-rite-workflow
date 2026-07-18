@@ -100,7 +100,7 @@ review:
     # skills/fix/references/fix-relaxation-rules.md "Loop Termination" for the live spec.
     convergence_monitoring: true          # (scaffolding only — see comment above)
     auto_propagation_scan: true           # Run similar-pattern propagation scan after fix (default: true)
-    pre_commit_drift_check: true          # Run distributed-fix-drift-check before commit (default: true)
+    pre_commit_drift_check: true          # Run review-schema-version-check before commit (default: true)
   doc_heavy:
     enabled: true                   # Enable Doc-Heavy PR detection and override (default: true)
     lines_ratio_threshold: 0.6      # doc_lines / total_diff_lines threshold (default: 0.6)
@@ -407,7 +407,7 @@ issue:
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
 | `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits on 0 findings (normal), the `safety.max_review_cycles` circuit breaker (default 5), or manual abort (Ctrl+C → `/rite:recover`) — see `skills/iterate/SKILL.md` for the live spec |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
-| `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
+| `loop.pre_commit_drift_check` | boolean | `true` | Run `review-schema-version-check` before committing fix changes to catch review-result schema_version drift |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
 | `doc_heavy.lines_ratio_threshold` | float | `0.6` | Threshold for `doc_lines / total_diff_lines` that marks a PR as doc-heavy |
 | `doc_heavy.count_ratio_threshold` | float | `0.7` | Threshold for `doc_files / total_files` (used as fallback for small diffs) |

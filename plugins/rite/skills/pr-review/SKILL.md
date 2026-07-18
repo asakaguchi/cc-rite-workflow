@@ -39,7 +39,7 @@ Hooks registration (`.claude/settings.local.json`) はチェックしない (`/r
 
 ## Prerequisites
 
-bash 4.0+ 必須 (ステップ 1.2.7 の `mapfile -t changed_file_paths < "$gh_files_stdout"` builtin を使用)。ステップ 1.0 の統合 bash block 冒頭 (Step 0) に [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を inline embed 済み (C-3 対応)。失敗時は `[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=bash_version_incompatible` を emit して `[review:error]` で exit する。
+bash 4.0+ 必須 (`mapfile` builtin を使用)。ステップ 1.0 の統合 bash block 冒頭 (Step 0) に [bash-compat-guard.md](../../references/bash-compat-guard.md) の canonical guard を inline embed 済み (C-3 対応)。失敗時は `[CONTEXT] REVIEW_ARG_PARSE_FAILED=1; reason=bash_version_incompatible` を emit して `[review:error]` で exit する。
 
 ## E2E Output Minimization
 
@@ -549,246 +549,41 @@ skip 発動時に explicit set する 3 retained flags:
 | `{doc_heavy_pr_value}` | `false` |
 | `{doc_heavy_pr_decision_summary}` | `"doc_heavy.enabled=false (skipped)"` または `"empty diff (changedFiles=0)"` (発動した skip 条件に応じて) |
 
+**Configuration**: Read `review.doc_heavy` from `rite-config.yml`（キー省略時は default を使う。数値として読めない値は default にフォールバックし `WARNING: review.doc_heavy.{key} が不正なため default {default} を使用します` を stderr に出力する）:
 
-**Configuration**: Read `review.doc_heavy` from `rite-config.yml` with the following defaults when the key is absent:
+| Key | Default | Description |
+|-----|---------|-------------|
+| **`enabled`** | `true` | この Phase の有効/無効 |
+| **`lines_ratio_threshold`** | `0.6` | 行数比率の目安閾値 |
+| **`count_ratio_threshold`** | `0.7` | ファイル数比率の目安閾値 |
 
-| Key | Type | 値域 | Default | Description |
-|-----|------|------|---------|-------------|
-| **`enabled`** | boolean | `true` / `false` | `true` | この Phase の有効/無効 |
-| **`lines_ratio_threshold`** | number | `(0.0, 1.0]` | `0.6` | `doc_lines / total_diff_lines` の閾値 (行数比率) |
-| **`count_ratio_threshold`** | number | `(0.0, 1.0]` | `0.7` | `doc_files / total_files` の閾値 (ファイル数比率) |
-| **`max_diff_lines_for_count`** | positive integer | `>= 1` | `2000` | ファイル数比率判定を有効にする最大 diff 行数 |
+**目的文判断**: ステップ 1.1 で取得済みの `files` 配列（`additions`/`deletions` 付き、再取得不要）を用いて次の目的文で判定する:
 
-**型 validation 必須** (silent type-coercion 防止):
+> 変更行数の `lines_ratio_threshold` 以上、またはファイル数の `count_ratio_threshold` 以上が `doc_file_patterns` に一致するファイルなら doc-heavy と判定する。
 
-YAML パーサーの仕様により `count_ratio_threshold: "0.7"` (quoted string) や `count_ratio_threshold: 1.5` (値域外) が rite-config.yml に書かれた場合、bash/Python 実装次第で `0.7 (number) >= "0.7" (string)` の比較が **type error** または **silent false** になり、Doc-Heavy 判定が黙って失敗する。これを防ぐため、各 config 値の読み込み時に必ず以下を実行する:
+`doc_file_patterns` の定義は [`skills/reviewers/SKILL.md`](../reviewers/SKILL.md#available-reviewers) の Technical Writer 行（File Patterns 列）が SoT。本ステップはそれを参照するのみで値を複製しない。
 
-1. **型チェック**: number 型でなければ default 値に fallback し、`WARNING: review.doc_heavy.{key} の型が number でないため default 値 {default} を使用します` を **stderr に必ず出力** する
-2. **値域チェック**: `(0.0, 1.0]` の範囲外 (例: `0`, `-0.3`, `1.5`) なら default 値に fallback し、`WARNING: review.doc_heavy.{key} の値 {value} が値域外 (0 < x <= 1) のため default 値 {default} を使用します` を stderr に出力
-3. **`max_diff_lines_for_count`**: positive integer (`>= 1`) でなければ default 値に fallback し WARNING を出力
+**Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, `plugins/rite/i18n/**` は分子（doc_lines / doc_files_count）から除外し、分母（total_diff_lines / total_files_count）には含める。これらは prompt-engineer の専管領域、または rite plugin 自身のドッグフーディング artifact であり、rite plugin 自身のメンテナンス PR で意図せず doc-heavy 判定が発火しないようにするため。全変更ファイルがこの除外規則に該当する場合（self-only）は `doc_heavy_pr = false` とし、要約に `"rite plugin self-only (excluded)"` と記す。
 
-**Calculation**:
+**計算例**:
+- `docs/foo.md (+50)` と `commands/bar.md (+50)`（commands/ は除外）→ doc_lines=50 / total=100 → ratio 0.5 (< 0.6) → `doc_heavy_pr = false`
+- `docs/foo.md (+80)` のみ → ratio 1.0 → `doc_heavy_pr = true`
 
-本 ステップ 1.2.7 は **2 つの異なる情報源** を使い分けて計算する。両者は責務が異なり、混同してはならない:
+**Determination**: 上記目的文に基づき `doc_heavy_pr` (boolean) を判断し、3 retained flags を explicit set する:
 
-| 計算対象 | 情報源 | 取得方法 | 理由 |
-|---------|--------|----------|------|
-| **`doc_lines`** / `doc_files_count` / `total_diff_lines` / `total_files_count` (ratio 計算) | **ステップ 1.1 の `files` 配列** (context 保持データ、`additions`/`deletions` フィールド付き) | コンテキストから直接参照 (新規 API call なし) | numstat 失敗の影響を避けるため。同じデータが ステップ 1.1 で取得済み |
-| **`all_files_excluded`** 判定で使う **changed file path 一覧** | **`gh pr view --json files` を再呼び出し** | 下記 bash impl で独立に gh API を呼び出す | bash 配列として retain する仕組みがコンテキスト変数では fragile なため。重複 API call (1 往復) のコストで silent failure リスクを排除 |
+| Flag | 内容 |
+|------|------|
+| `{doc_heavy_pr}` | 判定結果 (boolean) |
+| `{doc_heavy_pr_value}` | `{doc_heavy_pr}` と同値 (ステップ 5.4 表示用) |
+| `{doc_heavy_pr_decision_summary}` | 判断根拠の1行要約 (例: `"doc_lines_ratio=0.72 >= 0.6"` / `"rite plugin self-only (excluded)"` / `"doc_lines_ratio=0.3 < 0.6 かつ doc_files_count_ratio=0.4 < 0.7"`) |
 
-**重要 — 2 情報源の責務分離 (二重定義 drift 防止)**: ratio 計算 (`doc_lines` 等) は **ステップ 1.1 の `files` 配列を再利用**し、`gh pr view --json files` の再呼び出しは `all_files_excluded` 判定用の path 抽出専用とする。 <!-- 分離の理由: references/design-rationale.md#doc-heavy-detection-notes -->
+Retain `{doc_heavy_pr}`, `{doc_heavy_pr_value}`, `{doc_heavy_pr_decision_summary}` in the conversation context for use in ステップ 2.2.1, ステップ 5.1.3, and ステップ 5.4 template expansion. All 3 flags are **explicitly set** in every reachable path.
 
-
-```
-# Doc file patterns — kept in sync across 2 files (this file ステップ 1.2.7 /
-# SKILL.md Reviewers table tech-writer row). 等価性の **invariant 定義と drift 検出ルール**は
-# `skills/pr-review/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
-# (2 ファイル等価性)」に集約されている。drift 検出 lint は
-# `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として実装済み
-# drift-check 系統 1; /rite:lint Phase 3.5 から呼び出される。
-# Do not duplicate the invariant rules here — update internal-consistency.md instead.
-doc_file_patterns = [
- **/*.md (excluding commands/**/*.md, skills/**/*.md, agents/**/*.md),
- **/*.mdx (excluding commands/**/*.mdx, skills/**/*.mdx, agents/**/*.mdx),
- docs/**, documentation/**,
- **/README*, CHANGELOG*, CONTRIBUTING*,
- i18n/**/*.md, i18n/**/*.mdx (excluding plugins/rite/i18n/**),
- *.rst, *.adoc
-]
-
-doc_lines = sum(additions + deletions of files matching doc_file_patterns)
-total_diff_lines = sum(additions + deletions of all changed files)
-doc_files_count = count(files matching doc_file_patterns)
-total_files_count = changedFiles
-
-# Zero-division guards (inline — both divisors must be checked before division)
-# rationale: references/design-rationale.md#doc-heavy-detection-notes
-# 重要: 全ての early-exit 経路で {doc_heavy_pr} / {doc_heavy_pr_value} / {doc_heavy_pr_decision_summary} の 3 つを必ず set する
-if total_diff_lines == 0:
- doc_heavy_pr = false # explicit set (silent undefined 防止)
- doc_heavy_pr_value = false
- doc_heavy_pr_decision_summary = "empty diff (total_diff_lines=0)"
- skip to ステップ 1.3 # ステップ 1.2.7 の残り計算をスキップ
-
-if total_files_count == 0:
- doc_heavy_pr = false # explicit set (Defensive guard)
- doc_heavy_pr_value = false
- doc_heavy_pr_decision_summary = "empty diff (total_files_count=0)"
- skip to ステップ 1.3 # skip condition (changedFiles == 0) で本来到達しない
-
-# doc_lines_ratio = 行数ベース比率 / doc_files_count_ratio = ファイル数ベース比率
-# (config キー名との prefix 非対称の経緯: references/design-rationale.md#doc-heavy-detection-notes)
-doc_lines_ratio = doc_lines / total_diff_lines
-doc_files_count_ratio = doc_files_count / total_files_count
-
-# Self-only judgment: 全変更ファイルが exclusion patterns (plugins/rite/commands/** 等、prefix は
-# bash 実装と同一に保つこと) に該当する場合、"self-only" として ratio 0 と区別して記録する
-# (rationale: references/design-rationale.md#doc-heavy-detection-notes)
-all_files_excluded = (doc_lines == 0
- AND total_diff_lines > 0
- AND 全変更ファイルが exclusion patterns に該当する)
-```
-
-**`all_files_excluded` の bash 実装パターン** (Claude が任意実装する際の標準テンプレート):
-
-
-Doc-Heavy bash impl failure reasons: (`gh_files_stderr_mktemp_failure` / `gh_files_stdout_mktemp_failure` / `gh_pr_view_files_failure` / `mapfile_io_error`)
-
-| reason | Description |
-|--------|-------------|
-| `gh_files_stderr_mktemp_failure` | gh_files_stderr temp file creation failed |
-| `gh_files_stdout_mktemp_failure` | gh_files_stdout temp file creation failed |
-| `gh_pr_view_files_failure` | gh pr view --json files API call failed |
-| `mapfile_io_error` | mapfile read from gh_files_stdout failed |
-
-```bash
-# === all_files_excluded bash impl ===
-# 前提変数 doc_lines / total_diff_lines (ステップ 1.2.7 pseudo-code で計算) は `${var:-0}` で
-# integer リテラル化する (未定義だと `[ "" -eq 0 ]` が非 0 になり AND 条件が常に false 化する)
-doc_lines="${doc_lines:-0}"
-total_diff_lines="${total_diff_lines:-0}"
-
-# Step 1: 変更ファイル一覧 (path 抽出専用) を bash 配列として取得。
-# ratio 計算はステップ 1.1 の files 配列を再利用し、ここでは all_files_excluded 判定用の path 配列のみ
-# gh pr view --json files を再呼び出す (返るパスは repository root 相対形式)。
-# `mapfile -t < <(...)` の process substitution は内側の exit code を受け取れないため、
-# stderr/stdout を一時ファイルに退避 → exit code を明示 check → 成功時のみ mapfile で読む。
-# rationale: references/design-rationale.md#doc-heavy-detection-notes
-# trap + cleanup パターンの canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
-gh_files_stderr=""
-gh_files_stdout=""
-_rite_review_p127_cleanup() {
- rm -f "${gh_files_stderr:-}" "${gh_files_stdout:-}"
-}
-trap 'rc=$?; _rite_review_p127_cleanup; exit $rc' EXIT
-trap '_rite_review_p127_cleanup; exit 130' INT
-trap '_rite_review_p127_cleanup; exit 143' TERM
-trap '_rite_review_p127_cleanup; exit 129' HUP
-
-gh_files_stderr=$(mktemp /tmp/rite-review-gh-files-err-XXXXXX) || {
- echo "ERROR: gh_files_stderr 一時ファイルの作成に失敗" >&2
- echo "[CONTEXT] DOC_HEAVY_TMPFILE_FAILED=1; reason=gh_files_stderr_mktemp_failure" >&2
- exit 1
-}
-gh_files_stdout=$(mktemp /tmp/rite-review-gh-files-out-XXXXXX) || {
- echo "ERROR: gh_files_stdout 一時ファイルの作成に失敗" >&2
- echo "[CONTEXT] DOC_HEAVY_TMPFILE_FAILED=1; reason=gh_files_stdout_mktemp_failure" >&2
- exit 1
-}
-
-if ! gh pr view "{pr_number}" --json files --jq '.files[].path' > "$gh_files_stdout" 2>"$gh_files_stderr"; then
- echo "ERROR: gh pr view --json files が失敗しました (exit != 0)" >&2
- echo "[CONTEXT] DOC_HEAVY_GH_API_FAILED=1; reason=gh_pr_view_files_failure" >&2
- echo " 詳細: $(cat "$gh_files_stderr")" >&2
- echo " 考えられる原因: 認証エラー (gh auth status を確認) / network timeout / PR #{pr_number} の存在を確認" >&2
- echo " 対処: 上記詳細を確認の上、必要に応じて再実行してください。Doc-Heavy 判定の根拠データが取得できないため処理を中止します。" >&2
- exit 1
-fi
-
-# mapfile の exit code を明示 check (IO エラーが空配列 → 誤診断メッセージに流れる silent regression を防ぐ)
-if ! mapfile -t changed_file_paths < "$gh_files_stdout"; then
- echo "ERROR: mapfile が gh_files_stdout からの読み込みに失敗しました: $gh_files_stdout" >&2
- echo "[CONTEXT] DOC_HEAVY_MAPFILE_FAILED=1; reason=mapfile_io_error" >&2
- echo " 考えられる原因: read permission denied / IO error / ファイル破損 / inode 枯渇" >&2
- exit 1
-fi
-
-# 空配列 guard: gh pr view が exit 0 で空 stdout を返した場合、ステップ 1.1 files 配列との不整合
-# race の兆候として 3 retained flag を explicit set して early exit する (undefined のまま
-# Determination block へ流さない)。rationale: references/design-rationale.md#doc-heavy-detection-notes
-if [ ${#changed_file_paths[@]} -eq 0 ]; then
- echo "WARNING: gh pr view --json files が exit 0 で 0 ファイルを返しました。ステップ 1.1 files 配列との不整合 race の可能性。" >&2
- echo " 3 retained flag を doc_heavy_pr=false で explicit set し、ステップ 1.3 へ skip します。" >&2
- all_files_excluded=false
- # 3 retained flag を explicit set (silent undefined 防止) — Determination block には進入しない
- echo "[CONTEXT] doc_heavy_pr=false; doc_heavy_pr_value=false; doc_heavy_pr_decision_summary=inconsistent_files_count_between_phase_1_1_and_1_2_7"
- # 後続 Determination block を skip するため、Claude は本 bash block 終了後に [CONTEXT] 行を
- # 検出した場合 ステップ 1.3 へ直接進む (prose 指示 — Determination block は skip 経路)
-else
- # Step 2: exclusion patterns に該当する変更ファイル数をカウント
- excluded_count=0
- total_count=0
- for f in "${changed_file_paths[@]}"; do
- total_count=$((total_count + 1))
- # rite plugin 配下か判定: prefix 一致時のみ exclusion 候補 (汎用 repo の同名 dir の誤 exclusion 防止)
- if [[ "$f" == plugins/rite/* ]]; then
- f_rel="${f#plugins/rite/}"
- case "$f_rel" in
- # `case` 文の glob `*` は `/` を含む任意文字列にマッチするため `commands/*.md` 1 行で
- # 任意階層をカバーする (rationale: references/design-rationale.md#doc-heavy-detection-notes)
- commands/*.md|commands/*.mdx| \
- skills/*.md|skills/*.mdx| \
- agents/*.md|agents/*.mdx| \
- i18n/*)
- excluded_count=$((excluded_count + 1))
- ;;
- esac
- fi
- # 非 rite-plugin path (例: src/auth.ts, commands/foo.md (汎用 repo)) は excluded にカウントしない
- done
-
- # Step 3: Self-only 判定 (block 冒頭の `${var:-0}` default 確保により未定義でも integer 0 で評価される)
- if [ "$excluded_count" -eq "$total_count" ] && [ "$doc_lines" -eq 0 ] && [ "$total_diff_lines" -gt 0 ]; then
- all_files_excluded=true
- else
- all_files_excluded=false
- fi
-fi
-```
-
-**実装上の注意**:
-- **Path 正規化と rite-plugin scope check**: `if [[ "$f" == plugins/rite/* ]]; then ... fi` で rite plugin 配下か判定したうえで `f_rel="${f#plugins/rite/}"` を実行する。**この check がないと非 rite-plugin repo の `commands/foo.md` 等が誤 exclusion される silent misclassification が発生**するため必須
-- **`doc_file_patterns` 疑似コード (`i18n/**/*.md, i18n/**/*.mdx`) と bash impl `case` (`i18n/*`) の範囲差は意図的** (drift ではない — 前者は tech-writer Activation patterns との等価性用、後者は self-only 判定用で全拡張子を含める)。詳細: [design-rationale.md#doc-heavy-detection-notes](references/design-rationale.md#doc-heavy-detection-notes)
-- **fail-fast guard**: `gh pr view` 失敗 / 空配列のときは `all_files_excluded=false` を explicit set し、WARNING を stderr に出力する。silent false positive (空配列 → 全条件成立 → all_files_excluded=true) を防ぐ
-- alternative 実装: Python script で `pathlib.PurePath` の `match()` を使ってもよい (呼び出し環境で判断)
-
-**Exclusion rule**: rite plugin 自身の `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, および `plugins/rite/i18n/**` は doc-heavy 判定対象から**除外**する。これらのファイルは prompt-engineer の専管領域 (commands/skills/agents) もしくは rite plugin 自身のドッグフーディング artifact (i18n) であり、ステップ 2.2 の priority rule で prompt-engineer に振り分けられる、または rite plugin の自己記述として扱われる。
-
-**除外の計算上の扱い**: `doc_lines` と `doc_files_count` の計算から分子として除外するが、`total_diff_lines` と `total_files_count` は除外せず全体を維持する。つまり **「分子からは除外、分母には含める」** 方式。これにより rite plugin 自身のメンテナンス PR (dogfooding 時) では意図的に doc-heavy 判定が起きにくくなる (ratio の分子が削られて分母が変わらないため)。
-
-**計算例**: [design-rationale.md#doc-heavy-detection-notes](references/design-rationale.md#doc-heavy-detection-notes) 参照。
-
-**Determination**:
+**Mandatory `[CONTEXT]` emission for symmetry**: 判定完了直後、skip 経路・正常経路のどちらでも対称に以下を emit する（非対称 emit は後続 phase の negative inference 依存を生み、前 session の行を誤拾いするリスクがあるため）:
 
 ```
-doc_heavy_pr = (doc_lines_ratio >= lines_ratio_threshold)
- OR (doc_files_count_ratio >= count_ratio_threshold AND total_diff_lines < max_diff_lines_for_count)
-
-# ステップ 5.4 Integrated Report 表示用 retained flags の explicit set (ステップ 5.1.3 Retained flags 節で参照される)
-doc_heavy_pr_value = doc_heavy_pr # boolean 表示用 (ステップ 5.4 template から参照される)
-doc_heavy_pr_decision_summary = <1 行要約文字列>
- # 要約の生成ルール (Claude は以下のテンプレートから実データを埋めて set する。
- # 評価順序は以下の上から下へ、最初にマッチしたケースの文字列を採用する):
- # - doc_heavy_pr == true の場合:
- # lines 方式が発火した (doc_lines_ratio >= lines_ratio_threshold) →
- # "doc_lines_ratio={value} >= {lines_ratio_threshold}"
- # count 方式が発火した (doc_files_count_ratio >= count_ratio_threshold AND total_diff_lines < max_diff_lines_for_count) →
- # "doc_files_count_ratio={value} >= {count_ratio_threshold} AND total_diff_lines={N} < {max_diff_lines_for_count}"
- # - doc_heavy_pr == false の場合 (上から評価して最初にマッチしたケースを採用):
- # (1) all_files_excluded == true (上記で計算済み) →
- # "rite plugin self-only (excluded): all changed files match exclusion patterns"
- # (2) total_diff_lines == 0 or total_files_count == 0 (空 PR) →
- # "empty diff (no changed files)"
- # ※実際にはゼロ除算ガードで早期 exit するためここには到達しないが、防御的に記載
- # (3) それ以外 (ratio 未満) →
- # "doc_lines_ratio={value} < {lines_ratio_threshold} AND doc_files_count_ratio={value} < {count_ratio_threshold}"
+[CONTEXT] doc_heavy_pr={doc_heavy_pr_value}; doc_heavy_pr_value={doc_heavy_pr_value}; doc_heavy_pr_decision_summary={doc_heavy_pr_decision_summary}
 ```
-
-Retain `{doc_heavy_pr}`, `{doc_heavy_pr_value}`, `{doc_heavy_pr_decision_summary}` in the conversation context for use in ステップ 2.2.1, ステップ 5.1.3, and ステップ 5.4 template expansion. All 3 flags are **explicitly set** in every reachable path (including `total_diff_lines == 0` / `total_files_count == 0` early exits above, where `doc_heavy_pr = false` / `doc_heavy_pr_value = false` / `doc_heavy_pr_decision_summary = "empty diff (no changed files)"` must be set before `skip to ステップ 1.3`).
-
-**Mandatory `[CONTEXT]` emission for symmetry**:
-
-Determination block の計算が完了した直後 (上記 3 flag を explicit set した直後)、**正常経路でも skip 経路と対称に必ず以下の `[CONTEXT]` 行を bash block の stdout に echo する**。これは ステップ 2.2.1 / ステップ 5.1.3 / ステップ 5.4 で会話履歴 grep により `{doc_heavy_pr}` 等を読み戻す際の決定論性を保証するための非対称性解消修正である:
-
-```bash
-# 全経路 (正常 / 空 PR / inconsistent files race / 全ファイル excluded) で必ず実行
-# 値は上記 Determination の計算結果 (boolean / string) を embed する
-echo "[CONTEXT] doc_heavy_pr=${doc_heavy_pr_value}; doc_heavy_pr_value=${doc_heavy_pr_value}; doc_heavy_pr_decision_summary=${doc_heavy_pr_decision_summary}"
-```
-
-**理由**: 非対称 emit だと後続 phase が negative inference に依存し、前 session の `[CONTEXT]` 行を誤拾いするリスクを生むため (詳細: [design-rationale.md#doc-heavy-detection-notes](references/design-rationale.md#doc-heavy-detection-notes))。
-
-**Note**: ゼロ除算ガードは疑似コードブロック内にインライン配置済みで、Skip conditions の `changedFiles == 0` と併せて空 PR・分母 0・undefined 参照の三方向を防ぐ多重ガードとなる。ステップ 2.2.1 で `{doc_heavy_pr} == true` を判定する時点で `{doc_heavy_pr}` が必ず boolean として set されている。
 
 ### 1.3 Identify Related Issue
 
@@ -876,7 +671,7 @@ Match changed files against the Available Reviewers table in `skills/reviewers/S
 
 When the PR is doc-heavy, override reviewer selection to ensure documentation quality is rigorously checked against implementation reality:
 
-1. **tech-writer 必須昇格**: ステップ 2.2 で tech-writer が候補に含まれている場合、その selection_type を現在値 (`detected` / `recommended` のいずれか) から `mandatory` に昇格する (昇格パスは ステップ 3.2 selection_type と同じ語彙: `detected → recommended → mandatory`)。含まれていない場合は mandatory として新規追加する (防御的フォールバック — 等価性が保たれている限り到達しない。patterns 等価性は `doc-heavy-patterns-drift-check.sh` が自動検証する)
+1. **tech-writer 必須昇格**: ステップ 2.2 で tech-writer が候補に含まれている場合、その selection_type を現在値 (`detected` / `recommended` のいずれか) から `mandatory` に昇格する (昇格パスは ステップ 3.2 selection_type と同じ語彙: `detected → recommended → mandatory`)。含まれていない場合は mandatory として新規追加する (防御的フォールバック — `doc_file_patterns` が `skills/reviewers/SKILL.md` の Technical Writer 行を SoT として参照する構成のため、等価性は構造的に保たれ通常到達しない)
 2. **code-quality co-reviewer 条件付き追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。**ただし純粋散文 (README 文言修正のみ等) PR で空所見の reviewer がトリガーされノイズ化することを防ぐため、ステップ 2.3 「Code block detection in `.md` files」と同じスキャンロジックを再利用し、diff 内に fenced code block (` ```bash `, ` ```yaml `, ` ```python ` 等) が検出された場合のみ追加する**。
 
  **scan ロジック** (ステップ 2.3 と **同じ fenced code block 検出正規表現** (`^\+[[:space:]]*` + tagged fence `` ``` `` + 言語 tag) を使う。ただし **scope は異なる** — ステップ 2.2.1 は Doc-Heavy PR の性質上 `*.md` 全体を scan 対象とするのに対し、ステップ 2.3 の Code block detection は Prompt Engineer の Activation patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) のみを scan 対象とする。さらに ステップ 2.3 が untyped fence ` ``` ` も検出するのに対し、本 ステップ 2.2.1 では tagged fence のみに限定する。理由は本 phase が code-quality 追加判定の先取りであり、untyped fence は ステップ 2.3 で同じ目的を達成するため。CHANGELOG の "fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.)" 文言とも一致):
@@ -998,7 +793,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
  ERROR: tech-writer-reviewer.md の `## Doc-Heavy PR Mode (Conditional)` セクションから {doc_heavy_mode_instructions} を抽出しましたが、必須キーワード {missing_keywords} が含まれていません。
  tech-writer-reviewer.md の章立てが過去のバージョンから drift しているため、ステップ 5.1.3 Step 2 (件数非依存 META check) が silent fail する恐れがあります。
  Action: tech-writer-reviewer.md の `## Doc-Heavy PR Mode (Conditional)` セクション全体を確認し、必須サブセクションが含まれているか検証してください。
- Note: 本 drift は 系統 2 (canonical category name literal match) に分類される。系統 1 (doc_file_patterns 集合等価性) の drift lint `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` はこの章立て drift は検出しない。章立て drift の自動検出は将来 Issue で追跡。
+ Note: 本 drift は章立て(見出し)の canonical name 一致に関するものであり、doc_file_patterns の集合等価性(SoT 参照化により構造的に drift しない)とは別種。章立て drift の自動検出は将来 Issue で追跡。
  ```
  2. **Retained flag set**: `doc_heavy_post_condition = "error"` を context に明示保持。ステップ 5.4 表示でこの値を `error: tech-writer-reviewer.md の章立て drift により protocol 未伝達 (missing: {missing_keywords})` として表示する
  3. **Overall assessment 強制昇格**: ステップ 5 で計算される overall assessment を `修正必要` に強制 set する (本来 `マージ可` だった場合でも override する)。これにより e2e flow の review-fix loop が必ず再実行される
@@ -2449,7 +2244,7 @@ This phase now performs **two independent outputs**:
 |--------|-------------|
 | `pr_number_placeholder_residue` | ステップ 5.1.2.A (fingerprint, `FINGERPRINT_COMPUTE_FAILED`) で `pr_number` が数値以外のとき emit。ステップ 6.1.a (`review-result-save.sh`, `LOCAL_SAVE_FAILED`) も同名 reason を emit する (下記 6.1.a bullet 参照) |
 
-> **Note**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。`distributed-fix-drift-check.sh` Pattern 2 は「同一ファイル内に `| reason |` table 行があれば同ファイル内で `reason=` emit される」ことを前提とするため、委譲済 reason は **markdown table 行にせず bullet 形式**で列挙する (emit 先が helper へ移ったことを反映)。同じ理由で、委譲済 reason は本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する (`reason=X` 構文は emit-side 検出に拾われ「table にあるが emit されない」逆 drift を誘発するため)。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
+> **Note**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
 
 **ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit、全て **WARNING only / 非ブロッキング**):
 - `pr_number_placeholder_residue`: `--pr` が数値以外 (空文字 / placeholder 残留) のまま渡された (cleanup.md ステップ 6 の numeric gate と対称化し永久 orphan 化を防ぐ)

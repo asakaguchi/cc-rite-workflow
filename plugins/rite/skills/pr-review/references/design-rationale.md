@@ -10,24 +10,16 @@
 
 ステップ 1.0 統合 bash block の設計理由。
 
-- **bash 4+ compat guard**: `mapfile` builtin は bash 4.0 で導入されたため、bash 3.2 (macOS default) ではステップ 1.2.7 の `mapfile -t changed_file_paths < "$gh_files_stdout"` が `command not found` で silent 失敗する。guard で fail-fast させる。Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
+- **bash 4+ compat guard**: `mapfile` builtin は bash 4.0 で導入されたため、bash 3.2 (macOS default) では `command not found` で silent 失敗する。guard で fail-fast させる。Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
 - **config 読取を単一 awk に統合した理由 (C-2)**: `sed | awk | sed | sed | tr | tr` の 6 段 pipeline は pipefail 下で SIGPIPE rc=141 を起こし、fallback branch が config 値を silent に false へ上書きする latent regression を生む。単一 awk はファイルを直接読むため上流コマンドが存在せず、SIGPIPE 経路自体が消える。awk 終了コードは file IO / binary error 以外で 0 を返すため `if ! ...` で捕捉可能。Source: GNU bash manual — Pipelines / POSIX awk exit semantics
 
 ## doc-heavy-detection-notes
 
-ステップ 1.2.7 Doc-Heavy PR Detection の設計理由。
+ステップ 1.2.7 Doc-Heavy PR Detection の設計理由（Issue #1881 で機械比率計算 bash 実装を撤去し、目的文判断 + ステップ 1.1 の既存 `files` 配列の再利用に簡素化した）。
 
-- **変数名と config キー名の prefix 非対称**: lines 方式は変数 `doc_lines_ratio` / config `lines_ratio_threshold` で prefix 統一だが、count 方式は変数 `doc_files_count_ratio` / config `count_ratio_threshold` で prefix が異なる。config 側に "files_" を含めなかったのは、4 語の `files_count_ratio_threshold` より短い 3 語を優先したため。変数名側は計算対象 (file 数 vs 行数) を明示するため "files_count" を保持している。計算対象は疑似コードで明示されているので drift リスクは低い。
-- **Self-only judgment (`all_files_excluded`) を明示フラグにする理由**: 「分子から除外、分母には含める」方式では rite plugin self-only PR でも数学的には doc_lines == 0 (= ratio 0) になり「ratio 未満」と区別不能になるため、明示的なフラグで補完する。疑似コード内の exclusion patterns の prefix `plugins/rite/` は bash 実装 (`[[ "$f" == plugins/rite/* ]]`) と同じ prefix で書く必要がある (汎用 repo で同名 dir を持つ場合の silent misclassification 防止)。anchor 参照 (`# === all_files_excluded bash impl ===`) は drift しやすいハードコード行番号を避けるための措置。
-- **2 情報源の責務分離**: ratio 計算 (`doc_lines` / `doc_files_count` 等) は**ステップ 1.1 の `files` 配列** (context 保持データ) を再利用し、`gh pr view --json files` の再呼び出しは `all_files_excluded` 判定で必要な「path の bash 配列」抽出専用とする。ステップ 1.2.6 Note の「separate API call は不要」原則は ratio 計算に対する宣言であり矛盾しない。再呼び出しの正当化: コンテキスト保持データを bash 配列に再 hydration する仕組みは fragile (改行/特殊文字エスケープ + Claude context 変数が bash session に直接渡らない構造) で、silent failure リスク (未定義変数 → 空配列 → false positive) を排除できる。コストはネットワーク 1 往復のみ。
-- **`case` パターンの glob**: bash の filename expansion ではなく case statement の pattern matching で評価され、POSIX 仕様上 `*` は `/` を含む任意文字列にマッチする。`commands/*.md` 1 行で `commands/foo.md` / `commands/sub/foo.md` / `commands/a/b/c/foo.md` をすべてカバーする (実機検証: `case "skills/sub/sub2/foo.md" in skills/*.md) MATCH ;; esac` → MATCH)。Source: POSIX shell pattern matching (IEEE Std 1003.1)。bash 4+ では `shopt -s globstar` 後に `**/*.md` glob も利用可能だが、互換性のため case 文形式を採用。
-- **`doc_file_patterns` 疑似コード (`i18n/**/*.md, i18n/**/*.mdx`) と bash impl `case` (`i18n/*`) の意図的範囲差**: 前者は tech-writer Activation patterns との等価性を表現するため `.md` / `.mdx` 拡張子に限定する (2 ファイル等価性の系統 1 — internal-consistency.md の Cross-Reference 参照)。後者は rite plugin self-only 判定が目的のため、翻訳ファイル (`i18n/ja.yml` 等) も含めた全拡張子・任意階層を excluded に含める。両者は別の計算経路で使われており drift しない。
-- **空配列 guard の背景**: ステップ 1.1 と 1.2.7 の files 配列の不整合 race (PR 削除 / PR が空になる / files 配列 shrink) のエッジケースで、retained flag が undefined のまま Determination block へ流れると `doc_heavy_pr_decision_summary` が意味不明な値 (NaN / undefined) になる。3 flag を明示 set してから skip すればステップ 5.4 の表示で「inconsistency 発生」として可視化される。
+- **Self-only judgment を明示フラグにする理由**: 「分子から除外、分母には含める」方式では rite plugin self-only PR でも数学的には doc_lines == 0 (= ratio 0) になり「ratio 未満」と区別不能になるため、判定根拠の要約に明示的に記録する。
 - **全経路で `[CONTEXT]` を対称 emit する理由**: skip 経路のみ emit する非対称設計だと、後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) が「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存し、Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路対称 emit なら grep は常に最新行を decisive に拾える。
-- **Zero-division guard を inline に残す理由 (二重防御)**: skip condition (`changedFiles == 0`) は通常 `total_files_count > 0` を保証するが、skip section が将来変更された場合に備えて疑似コード内 inline ガードも残す。
-- **計算例**:
-  - 例 1: `docs/foo.md (+50)` と `commands/bar.md (+50)` の PR → `doc_lines` = 50 (commands/ は除外)、`total_diff_lines` = 100 (両方含む)、ratio = 0.5 (< 0.6) → `doc_heavy_pr = false`
-  - 例 2: `docs/foo.md (+80)` のみの PR → `doc_lines` = 80、`total_diff_lines` = 80、ratio = 1.0 → `doc_heavy_pr = true`
+- **`gh pr view` 再呼び出しを撤去した理由**: 旧実装は `all_files_excluded` 判定用に path 配列を独立取得していたが、目的文判断はステップ 1.1 の `files` 配列（`additions`/`deletions` 付き）のみで完結するため、追加 API 呼び出し・mktemp/trap・bash 配列 hydration が不要になった。
 
 ## code-block-scan-notes
 

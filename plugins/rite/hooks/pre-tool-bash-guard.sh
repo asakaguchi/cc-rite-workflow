@@ -335,11 +335,11 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # reviewer never needs to SET config — "値を設定する git config は一律 deny").
   #
   # `git config` read forms stay allowed via a small allow-list (--list / -l /
-  # --get / --get-all / --get-regexp) — checked on the token immediately after
-  # `config`; every other form denies — no strict option parsing (an exotic
-  # mis-denied read form, or `config`/`remote` with no arg immediately followed
-  # by a fresh `git`, is rare and recoverable via the deny message; strict
-  # parsing would re-open the static-parse churn this hook just removed).
+  # --get / --get-all / --get-regexp) — checked at the first non-flag token after
+  # `config` / `remote`; every other form denies — no strict option parsing (an
+  # exotic mis-denied read form, or `config`/`remote` with no arg immediately
+  # followed by a fresh `git`, is rare and recoverable via the deny message;
+  # strict parsing would re-open the static-parse churn this hook just removed).
   #
   # RESIDUAL (Layer 1 backstop ONLY — same class as the (H) SCOPE limitations):
   #   - env-var config indirection (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/
@@ -404,6 +404,12 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
           # read sub-actions. Everything else — the mutating sub-actions AND any
           # unrecognized/future one — denies (a mutating remote persists
           # `remote.<n>.url = ext::sh -c …` into .git/config → RCE on next fetch).
+          # Trade-off: separators (`|`/`;`/`&`) are collapsed to spaces upstream,
+          # so a read pipe (`git remote -v | grep origin`) tokenizes as `-v grep`
+          # and the `grep` hits `*)` → over-DENY (fail-closed, recoverable — run
+          # bare `git remote -v` / `git remote get-url <n>`, or break the
+          # adjacency). Do NOT "fix" it by re-allowing an unknown token after a
+          # flag: that is exactly the `git remote -v add …` bypass this arm closed.
           case "$_gn_t" in
             -*) : ;;                          # modifier flag (-v/--verbose/…): stay in remarg for the sub-action
             show|get-url) _gn_state=scan ;;   # terminal read sub-action → OK, keep scanning

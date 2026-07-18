@@ -1546,6 +1546,13 @@ assert_subagent_deny_gitdir "git remote --verbose set-url blocked" "git remote -
 echo "TC-127-ALLOW-y8: subagent git remote; git log (bare remote then fresh read) → allow"
 assert_subagent_allow "bare remote then fresh read allowed" "git remote; git log --oneline"
 
+# Accepted over-DENY (documented tradeoff, like TC-127x): a read pipe after
+# `git remote -v` tokenizes as `-v grep` (separators collapse upstream) and
+# denies fail-closed. Pinned so a maintainer sees it is intentional — re-allowing
+# an unknown token after a flag would reopen the `git remote -v add` bypass.
+echo "TC-127y9: subagent git remote -v | grep (read pipe over-DENY — accepted tradeoff) → deny"
+assert_subagent_deny_gitdir "remote -v pipe over-deny accepted" "git remote -v | grep origin"
+
 echo "TC-127-ALLOW-a: subagent git config --list (read) → allow"
 assert_subagent_allow "git config --list allowed" "git config --list"
 

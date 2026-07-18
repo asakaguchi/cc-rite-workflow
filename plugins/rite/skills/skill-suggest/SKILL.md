@@ -100,66 +100,15 @@ Extract the following from each discovered skill file:
 
 ## Phase 3: Skill Matching
 
-### 3.1 Calculate Matching Score
+Phase 1 で収集したコンテキスト（Issue の title / body / labels、ブランチ名、変更ファイル、プロジェクト構成）と Phase 2 のスキル情報（説明・キーワード・適用条件）を突き合わせ、**現在の作業に関連する rite スキルを関連度順に選ぶ**。数値スコアや重み付け表は使わない — 何が今の作業を前に進めるかをコンテキスト全体から判断する（機械スコアの列挙表は #1880 で廃止 — 表にないコンテキストで提案が硬直するため、判断をモデルに返還した）。
 
-For each skill, calculate a score based on the following factors:
+**判断の観点**（ヒントであり網羅ではない — 例えば wiki 作業中・hooks 修正中のような観点表に載らないコンテキストでも、作業内容とスキルの目的が噛み合うなら提案する）:
 
-| Factor | Weight | Description | Source |
-|--------|--------|-------------|--------|
-| Issue title/body keyword match | 3 | Match between Issue content and skill keywords | `## Auto-Activation Keywords` |
-| Changed file types | 2 | File extensions and directory placement | `## File Patterns` or inference (see below) |
-| Label match | 2 | Relevance between Issue labels and skill | Inferred from keywords (see below) |
+- Issue の内容・ラベルとスキルの目的が噛み合うか（キーワードの表面一致ではなく、作業の種類とスキルの守備範囲で判断する）
+- 変更ファイルの種類・場所がスキルの対象領域に入るか（reviewer 系は `skills/reviewers/SKILL.md` の Available Reviewers 表の `Activation` 列が対象領域の SoT）
+- 現在のワークフロー状態（着手前 / 実装中 / レビュー待ち / merge 後 等）でそのスキルを使う局面か
 
-**Retrieving file patterns:**
-
-1. If the skill file has a `## File Patterns` section -> use that list
-2. If the section does not exist -> infer from keywords:
-   - `workflow`, `Issue`, `PR` -> `commands/**/*.md`, `*.yml`
-   - `review`, `lint` -> all files
-   - Reviewer skills (`skills/reviewers/`) -> refer to the Available Reviewers table's `Activation` column in `skills/reviewers/SKILL.md`
-
-**Inferring related labels:**
-
-Infer from skill keywords using the following mapping:
-| Keywords | Related Labels |
-|----------|---------------|
-| `workflow`, `Issue`, `PR` | `enhancement`, `feature` |
-| `review`, `lint` | `review`, `quality` |
-| `documentation` | `documentation`, `docs` |
-
-### 3.2 Matching Decision Logic
-
-```
-各スキルについて:
-  score = 0
-
-  # Issue キーワードマッチ（Auto-Activation Keywords から取得）
-  for keyword in skill.keywords:
-    if keyword in issue.title or keyword in issue.body:
-      score += 3
-
-  # 変更ファイルマッチ（File Patterns セクションまたは推論）
-  for pattern in skill.file_patterns:
-    if any(file matches pattern for file in changed_files):
-      score += 2
-
-  # ラベルマッチ（キーワードから推論した関連ラベル）
-  for label in issue.labels:
-    if label in skill.related_labels:
-      score += 2
-
-  if score >= threshold:
-    suggested_skills.append(skill)
-```
-
-### 3.3 Threshold Settings
-
-| Threshold | Decision |
-|-----------|----------|
-| 5 or above | Strongly recommended (high relevance) |
-| 3-4 | Recommended (possibly relevant) |
-| 1-2 | Reference (weak relevance) |
-| 0 | Hidden |
+**出力の分類**（Phase 4 の表示契約）: 関連度の高い順に並べ、確信を持って勧められるものを【強く推奨】、状況によっては役立つものを【推奨】に分類する。関連が薄いスキルは提案に含めない。各提案には「なぜ今の作業に関連するか」の適用理由を必ず添える（Phase 4 表示の `{reason}` スロット）。
 
 ---
 
@@ -267,17 +216,15 @@ When the Issue number cannot be determined (no `issue-{number}` pattern in branc
 
 ### 5.1 Verbose Mode (`--verbose`)
 
-When `--verbose` or `-v` is specified as an argument, display matching score details:
+When `--verbose` or `-v` is specified as an argument, display the matching rationale for each suggested skill:
 
 ```
 【マッチング詳細】
 
-{skill_name}:
-  総合スコア: 7
-  - Issue キーワード: +3 (workflow, Issue)
-  - 変更ファイル: +2 (*.md)
-  - ラベル: +2 (enhancement)
-  - プロジェクト種別: +0
+{skill_name}: 【強く推奨】
+  - Issue 内容: {Issue の作業種別とスキルの目的がどう噛み合うか}
+  - 変更ファイル: {スキルの対象領域との重なり}
+  - ワークフロー状態: {現在の局面との適合}
 ```
 
 ### 5.2 Filter Mode (`--filter {category}`)

@@ -145,7 +145,7 @@ Records deviations from the implementation plan during Phase 5.1 when using the 
 
 ## Bottleneck Detection Log Section
 
-Records bottleneck detection and Oracle-based re-decomposition events during Phase 5.1. Added after the "計画逸脱ログ" section. See [Bottleneck Detection Reference](../../../references/bottleneck-detection.md) for thresholds and Oracle discovery protocol.
+Records bottleneck detection and Oracle-based re-decomposition events during Phase 5.1. Added after the "計画逸脱ログ" section. See [Bottleneck Detection Reference](../../../references/bottleneck-detection.md) for the detection principle and Oracle discovery.
 
 ```markdown
 ### ボトルネック検出ログ
@@ -416,4 +416,4 @@ Commands that write work memory update the local file first (SoT), then sync to 
 
 - [Phase Mapping](./phase-mapping.md) - Phase definitions
 - [Session Detection](./session-detection.md) - Auto-detection at session start
-- [Bottleneck Detection](../../../references/bottleneck-detection.md) - Thresholds, Oracle discovery, re-decomposition
+- [Bottleneck Detection](../../../references/bottleneck-detection.md) - 行き詰まり判断, Oracle discovery, re-decomposition

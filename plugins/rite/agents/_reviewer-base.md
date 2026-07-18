@@ -345,7 +345,7 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 
 Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
 
-This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see `skills/fix/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`).
+This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`).
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
 
 ### Filter categories

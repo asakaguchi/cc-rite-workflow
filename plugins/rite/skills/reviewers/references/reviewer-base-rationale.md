@@ -36,6 +36,6 @@ Fallbacks hide failures. A `catch (e) { return null }` recommendation that the r
 
 ## why-low-signal-findings-are-filtered
 
-Finding Quality Guardrail は review-fix loop の四つの quality signal のうち Signal 4 を実装する (`skills/fix/references/fix-relaxation-rules.md#four-quality-signals-for-escalation` 参照)。low-signal な指摘は非収束 review-fix loop の支配的な根本原因である: low-signal 指摘 1 件が防御的 fix を誘発し、その防御コードがさらなる low-signal 指摘を呼ぶ。
+Finding Quality Guardrail は review-fix loop の四つの quality signal のうち Signal 4 を実装する (`skills/pr-review/references/finding-cycling.md` の Quality Signal 1-4 の位置付けを参照)。low-signal な指摘は非収束 review-fix loop の支配的な根本原因である: low-signal 指摘 1 件が防御的 fix を誘発し、その防御コードがさらなる low-signal 指摘を呼ぶ。
 
 各 filter category は、reviewer が敵対的質問に対して**自信を持って防御できない**指摘を表す。「これが実際に失敗することをどう検証したか?」と問われて証拠を出せない指摘を blocking として提示すると、fix cycle N が症状に対処し、fix cycle N+1 が追加コードへの新たな bikeshedding を生み、loop は 0 findings に収束できない。

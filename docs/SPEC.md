@@ -158,7 +158,7 @@ rite-workflow/
 │ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
 │ ├── pr-create/ # /rite:pr-create (draft PR 作成) — sub-skill
 │ # --- Issue 管理 ---
-│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / fingerprint-cycling / slug-generation)
+│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation)
 │ ├── issue-list/ # /rite:issue-list
 │ ├── issue-update/ # /rite:issue-update
 │ ├── issue-close/ # /rite:issue-close

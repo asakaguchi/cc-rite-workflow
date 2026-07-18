@@ -564,6 +564,8 @@ git push origin {branch_name}
 ```
 
 > `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。flow-state が `{branch_name}` を常時保持しているため upstream に依存する必要はない。
+>
+> `origin` が SSH host alias 経由（例: `git@github.com-work:...`）の環境で sandbox が有効な場合、`socat` の `Bad Gateway` エラーで push がネットワーク許可リストにブロックされることがある。この場合は当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる)、Issue #1897）。
 
 ### 6.2 PR 作成
 

@@ -210,9 +210,11 @@
 | [統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる](pages/heuristics/consolidation-refactor-layered-follow-up.md) | heuristics | レジストリ統合系 refactor の取りこぼしは層構造で現れる。cycle ごとに全域 grep の除外リスト（凍結ファイル・意図的言及）を明示的に引き継ぎ、凍結コピーは successor 注記 + follow-up Issue で一括追従を明記する。PR #1891 の 4 cycle 収束（5→6→5→4→0）で実測。 | 2026-07-17T21:04:54+09:00 | high |
 | [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語・新規エントリは number-free に保つ](pages/patterns/bilingual-changelog-sync-conventions.md) | patterns | en/ja CHANGELOG の運用 3 慣習: PR 単位の同時更新（リリース時バックフィルではない）、和訳はカテゴリ見出しのみでバージョン見出しは英語維持（release 置換対称性の前提）、新規 [Unreleased] エントリは number-free（number-reference-check、既存節は grandfathered）。PR #1891 で実測。 | 2026-07-17T21:04:54+09:00 | high |
 | [セキュリティ機械ゲートの部分撤去は撤去前 covered set の superset 維持と per-occurrence fail-closed 判定で収束させる](pages/heuristics/security-gate-partial-removal-convergence.md) | heuristics | verb 列挙などの機械ゲートを部分撤去し一部を残すリファクタでは、維持部分を撤去前 covered set の superset にし、allow-list を flatten-substring でなく per-occurrence の deny-by-default FSM で判定し、脅威モデルをユーザーに明示することで review-fix ループを収束させる。PR #1892 の 6 cycle 収束で実測。 | 2026-07-18T11:08:13+09:00 | high |
+| [mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直下ハードコードは sandbox で書き込み拒否される](pages/patterns/mktemp-tmpdir-prefix-for-sandbox-compat.md) | patterns | sandbox 有効環境は書き込み許可を `$TMPDIR` 配下に限定するため、`mktemp /tmp/xxx-XXXXXX` のような `/tmp` 直下ハードコードテンプレートは書き込み拒否される。`mktemp "${TMPDIR:-/tmp}/xxx-XXXXXX"`（GNU/BSD 両対応）へ統一する。PR #1902 で本番コード 21 ファイルを機械的に統一（4 reviewer 指摘 0 件）。 | 2026-07-18T23:38:52Z | high |
+| [セッション worktree + sandbox 環境の 2 つの罠: cwd 相対 write-allowlist によるブロックと `.rite-plugin-root` のブランチ相違](pages/heuristics/worktree-cwd-write-allowlist-and-plugin-root-staleness.md) | heuristics | (1) worktree cwd から main checkout 配下への書き込みは sandbox の write-allowlist（cwd 相対の `.`）でブロックされる（Issue #1896 と同種）。(2) `.rite-plugin-root` をセッション worktree へコピーする際、コピー元ブランチが worktree のブランチと異なると古い `plugins/rite` を指す自己参照の罠がある。PR #1902 の作業中に実測。 | 2026-07-18T23:38:52Z | medium |
 
 ## 統計
 
-- 総ページ数: 185
-- ドメイン別: patterns=62, heuristics=59, anti-patterns=62
-- 最終更新: 2026-07-18T11:08:13+09:00
+- 総ページ数: 187
+- ドメイン別: patterns=63, heuristics=60, anti-patterns=62
+- 最終更新: 2026-07-18T23:38:52Z

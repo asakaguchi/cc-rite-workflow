@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-19T08:38:52+09:00 | create | [セッション worktree + sandbox 環境の 2 つの罠: cwd 相対 write-allowlist によるブロックと `.rite-plugin-root` のブランチ相違](pages/heuristics/worktree-cwd-write-allowlist-and-plugin-root-staleness.md) | raw/reviews/20260718T194343Z-pr-1902.md を新規ページ化 — worktree cwd → main checkout 書き込みブロック（Issue #1896 と同種）と `.rite-plugin-root` のブランチ相違による自己参照リスクの 2 罠を PR #1902 の作業中の実測から抽出 |
+| 2026-07-19T08:38:52+09:00 | create | [mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直下ハードコードは sandbox で書き込み拒否される](pages/patterns/mktemp-tmpdir-prefix-for-sandbox-compat.md) | raw/reviews/20260718T194343Z-pr-1902.md を新規ページ化 — sandbox 書き込み許可リストが $TMPDIR 限定であることに起因する mktemp テンプレートの `/tmp` 直下ハードコード問題と canonical fix を PR #1902（本番コード 21 ファイル・4 reviewer 指摘 0 件）から抽出 |
 | 2026-07-19T02:23:00+09:00 | skip | [raw/reviews/20260718T172300Z-pr-1901.md](raw/reviews/20260718T172300Z-pr-1901.md) | PR #1901 レビュー結果(0 findings)。Cross-Reference partial skipの取り扱いはinternal-consistency.mdに既存文書化済みで新規汎用知見なし。push/fetchポインタ非対称性の推奨事項はIssue #1897のDecision Logへ記録（Wiki化せず） |
 | 2026-07-19T02:38:00+09:00 | lint:warning | — | contradictions=0, stale=11, orphans=0, missing_concept=0, unregistered_raw=267, broken_refs=0 (PR #1901 ingest 後の auto-lint。stale 11 件は pre-existing、unregistered_raw は 266→267 で本 ingest の skip 1 件分増加) |
 | 2026-07-18T23:32:00+09:00 | lint:warning | — | contradictions=0, stale=11, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1898 ingest 後の auto-lint。stale 11 件・unregistered_raw 266 件は pre-existing で本 ingest 由来ではない) |

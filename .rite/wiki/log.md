@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-19T02:23:00+09:00 | skip | [raw/reviews/20260718T172300Z-pr-1901.md](raw/reviews/20260718T172300Z-pr-1901.md) | PR #1901 レビュー結果(0 findings)。Cross-Reference partial skipの取り扱いはinternal-consistency.mdに既存文書化済みで新規汎用知見なし。push/fetchポインタ非対称性の推奨事項はIssue #1897のDecision Logへ記録（Wiki化せず） |
 | 2026-07-18T23:32:00+09:00 | lint:warning | — | contradictions=0, stale=11, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1898 ingest 後の auto-lint。stale 11 件・unregistered_raw 266 件は pre-existing で本 ingest 由来ではない) |
 | 2026-07-18T23:30:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260718T132335Z-pr-1898.md, raw/fixes/20260718T140750Z-pr-1898.md, raw/reviews/20260718T142416Z-pr-1898.md を統合 — sandbox git config書き込み拒否修正PR(2 cycle 収束)で「複数skillに分散したコマンドの一貫修正時、直接変更していない同一ファイル内Error Handling復旧手順への暗黙依存見落とし」sub-patternを追加 |
 | 2026-07-18T20:20:00+09:00 | lint:warning | — | contradictions=0, stale=11, orphans=0, missing_concept=0, unregistered_raw=266, broken_refs=0 (PR #1895 ingest 後の auto-lint。stale 11 件・unregistered_raw 266 件は pre-existing で本 ingest 由来ではない) |

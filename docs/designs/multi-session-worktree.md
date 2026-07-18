@@ -133,7 +133,7 @@ multi_session:
      | worktree 登録済 + branch 一致 | 再利用（resume 相当） |
      | パスは存在するが worktree 未登録（残骸） | `git worktree prune` → 残存なら AskUserQuestion（削除して再作成 / 中止） |
      | branch 存在・worktree なし | `git worktree add {path} {branch}`（`-b` なし） |
-     | branch も worktree もなし | `git worktree add -b {branch} {path} origin/{base}` |
+     | branch も worktree もなし | `git worktree add --no-track -b {branch} {path} origin/{base}`（`--no-track`: sandbox 環境での tracking 書込拒否回避、Issue #1894） |
      | branch が**別の worktree** で checkout 中 | **中止**（他セッション作業中の可能性を表示 — git が構造的に保証する二重着手ガード） |
   3. `.rite-plugin-root` を worktree root へコピー → `EnterWorktree(path: {path})`
   4. **EnterWorktree 不在/失敗時**: **silent fallback はしない**。失敗原因を切り分ける — (A) harness の git 誤判定（`.git` 存在 + `git -C {path} rev-parse` 成功 + 起動コンテキスト git=false / 「not in a git repository」）＝推奨。リポジトリ root から Claude Code を再起動し再実行すれば worktree は `WT_CASE=reuse` で継続（worktree は保持され破壊しない）/ (B) worktree 消失等の別要因＝S8 / `/rite:recover` 再構築経路へ委譲 / (C) 従来 `git switch -c` は recommended にせず、worktree 分離を破棄する明示エスケープとしてのみ残す（併走時の危険を警告）。Bash 永続 cwd 駆動は導入しない。

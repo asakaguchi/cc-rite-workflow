@@ -2654,8 +2654,10 @@ printf '[CONTEXT] FIX_CYCLE_STATE_WRITTEN file=%s cycle=%d\n' "$state_file" "$(j
 When pushing:
 
 ```bash
-git push
+git push origin HEAD
 ```
+
+> upstream 前提の bare `git push` は使わない。sandbox 有効環境では upstream tracking が未設定（open/pr-create が `-u` を使わなくなったため）で bare push が失敗する（Issue #1894）。
 
 ### 3.5 Cycle Branch Cleanup (Post-Push)
 

@@ -556,10 +556,11 @@ skip 発動時に explicit set する 3 retained flags:
 | **`enabled`** | `true` | この Phase の有効/無効 |
 | **`lines_ratio_threshold`** | `0.6` | 行数比率の目安閾値 |
 | **`count_ratio_threshold`** | `0.7` | ファイル数比率の目安閾値 |
+| **`max_diff_lines_for_count`** | `2000` | ファイル数比率判定を有効にする最大 diff 行数(この行数以上の大規模diffでは、ファイル数比率のみでdoc-heavyと判定しない) |
 
 **目的文判断**: ステップ 1.1 で取得済みの `files` 配列（`additions`/`deletions` 付き、再取得不要）を用いて次の目的文で判定する:
 
-> 変更行数の `lines_ratio_threshold` 以上、またはファイル数の `count_ratio_threshold` 以上が `doc_file_patterns` に一致するファイルなら doc-heavy と判定する。
+> 変更行数の `lines_ratio_threshold` 以上、または(総diff行数が `max_diff_lines_for_count` 未満の場合に限り)ファイル数の `count_ratio_threshold` 以上が `doc_file_patterns` に一致するファイルなら doc-heavy と判定する。
 
 `doc_file_patterns` の定義は [`skills/reviewers/SKILL.md`](../reviewers/SKILL.md#available-reviewers) の Technical Writer 行（File Patterns 列）が SoT。本ステップはそれを参照するのみで値を複製しない。
 

@@ -57,6 +57,7 @@ argument-hint: "[--merge] <issue_number>..."
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 
 ---
 
@@ -196,7 +197,7 @@ if [ "$cursor" -ge "$total" ]; then
 else
   current=$(jq -r ".issues[$cursor]" "$queue_file")
   # coarse スキップ: 既に CLOSED の Issue（= 処理済み）は open し直さず cursor を進める
-  state=$(gh issue view "$current" --json state --jq '.state' 2>/dev/null || echo "OPEN")
+  state=$(gh issue view "$current" -R {owner_repo} --json state --jq '.state' 2>/dev/null || echo "OPEN")
   if [ "$state" = "CLOSED" ]; then
     jq '.cursor += 1' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
     echo "[CONTEXT] RUN_NEXT=skip-closed; issue=$current; new_cursor=$((cursor+1)); total=$total; mode=$mode"

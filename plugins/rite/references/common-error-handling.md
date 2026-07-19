@@ -20,10 +20,12 @@ Shared error patterns referenced by command files. When an error occurs, display
 
 ### Entity Not Found (Issue / PR / Branch)
 
+> `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](./gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
+
 | Entity | Message | Recovery |
 |--------|---------|----------|
-| Issue | `エラー: Issue #{number} が見つかりません` | Verify with `gh issue list`, retry with correct number |
-| PR | `エラー: PR #{number} が見つかりません` | Verify with `gh pr list`, retry with correct number |
+| Issue | `エラー: Issue #{number} が見つかりません` | Verify with `gh issue list -R {owner_repo}`, retry with correct number |
+| PR | `エラー: PR #{number} が見つかりません` | Verify with `gh pr list -R {owner_repo}`, retry with correct number |
 | Branch | `エラー: ブランチ {name} が見つかりません` | Verify with `git branch -a`, check spelling |
 
 Common causes: wrong number/name, entity deleted, different repository.

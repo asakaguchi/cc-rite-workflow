@@ -204,8 +204,10 @@ The `trackedIssues.nodes` array (child Issue number, title, state, labels) obtai
 
 ### Step 1: Fetch Issue Information
 
+> `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](./gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
+
 ```bash
-gh issue view {issue_number} --json number,title,body,state,labels,milestone,projectItems
+gh issue view {issue_number} -R {owner_repo} --json number,title,body,state,labels,milestone,projectItems
 ```
 
 ### Step 2: Execute All Detection Methods

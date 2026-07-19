@@ -305,11 +305,13 @@ echo "Pre-PR checks passed: $COMMIT_COUNT commit(s), branch on remote"
 
 ### Error Messages and Their Causes
 
+> `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](./gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
+
 | Error Message | Cause | Fix |
 |--------------|-------|-----|
 | `No commits between X and Y` | Head branch has no new commits vs base | Create and push at least one commit |
 | `Could not resolve to a Ref` | Branch doesn't exist on remote | `git push origin {branch_name}` |
-| `A pull request already exists` | PR for this branch already open | Use `gh pr view` to find existing PR |
+| `A pull request already exists` | PR for this branch already open | Use `gh pr view "$(git branch --show-current)" -R {owner_repo}` to find existing PR |
 | `Base branch is invalid` | Base branch doesn't exist | Verify `rite-config.yml` `branch.base` |
 
 ---
@@ -459,7 +461,7 @@ if [ ! -s "$tmpfile" ]; then
  echo "ERROR: body is empty" >&2
  exit 1
 fi
-gh issue create --title "$TITLE" --body-file "$tmpfile"
+gh issue create -R {owner_repo} --title "$TITLE" --body-file "$tmpfile"
 
 # Projects operation (skippable)
 if [ "$SKIP_PROJECT" != "true" ]; then

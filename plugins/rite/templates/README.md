@@ -21,25 +21,27 @@ Variables use the following formats:
 
 ### Issue Information
 
+> `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
+
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
 | `{number}` | Issue number | Command argument or branch detection | `531` |
 | `#{number}` | Issue number with `#` prefix | Same as `{number}` with formatting | `#531` |
 | `{issue_number}` | Issue number (alias) | Same as `{number}` | `531` |
 | `#{issue_number}` | Issue number with `#` prefix | Same as `#{number}` | `#531` |
-| `{title}` | Issue title | `gh issue view --json title --jq '.title'` | `Fix workflow diagram` |
+| `{title}` | Issue title | `gh issue view -R {owner_repo} --json title --jq '.title'` | `Fix workflow diagram` |
 | `{issue_title}` | Issue title (alias) | Same as `{title}` | `Fix workflow diagram` |
-| `{state}` | Issue state | `gh issue view --json state --jq '.state'` | `OPEN`, `CLOSED` |
+| `{state}` | Issue state | `gh issue view -R {owner_repo} --json state --jq '.state'` | `OPEN`, `CLOSED` |
 
 ### Pull Request Information
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{pr_number}` | PR number | `gh pr create` output or `gh pr view` | `536` |
+| `{pr_number}` | PR number | `gh pr create` output or `gh pr view "$(git branch --show-current)" -R {owner_repo}` | `536` |
 | `#{pr_number}` | PR number with `#` prefix | Same as `{pr_number}` with formatting | `#536` |
-| `{pr_state}` | PR state | `gh pr view --json state --jq '.state'` | `OPEN`, `MERGED`, `CLOSED` |
-| `{pr_url}` | PR URL | `gh pr view --json url --jq '.url'` | `https://github.com/owner/repo/pull/536` |
-| `{isDraft}` | Whether PR is draft | `gh pr view --json isDraft --jq '.isDraft'` | `true`, `false` |
+| `{pr_state}` | PR state | `gh pr view {pr_number} -R {owner_repo} --json state --jq '.state'` | `OPEN`, `MERGED`, `CLOSED` |
+| `{pr_url}` | PR URL | `gh pr view {pr_number} -R {owner_repo} --json url --jq '.url'` | `https://github.com/owner/repo/pull/536` |
+| `{isDraft}` | Whether PR is draft | `gh pr view {pr_number} -R {owner_repo} --json isDraft --jq '.isDraft'` | `true`, `false` |
 
 ### Branch Information
 

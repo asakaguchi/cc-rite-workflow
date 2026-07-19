@@ -27,10 +27,12 @@ git branch --show-current
 # 例: feat/issue-278-skill-suggest → 278
 ```
 
+> `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
+
 If an Issue number can be extracted from the branch name, retrieve Issue information:
 
 ```bash
-gh issue view {issue_number} --json number,title,body,labels
+gh issue view {issue_number} -R {owner_repo} --json number,title,body,labels
 ```
 
 ### 1.2 Collect Changed Files

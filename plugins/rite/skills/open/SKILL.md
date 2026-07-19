@@ -35,6 +35,7 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`（SSH host alias 対応。fallback: `gh repo view --json owner,name`。canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)） |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
 
 > **Note**: 上記 2 行（ステップ 2.4(A) 専用と注記したもの）を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
@@ -100,7 +101,7 @@ echo "[CONTEXT] WORKTREE_REENTRY=$([ -n "$resume_wt" ] && [ "$resume_wt" != "$cu
 ### 1.1 Issue 情報取得
 
 ```bash
-gh issue view {issue_number} --json number,title,body,state,labels,milestone,projectItems
+gh issue view {issue_number} -R {owner_repo} --json number,title,body,state,labels,milestone,projectItems
 ```
 
 State が `closed` の場合は AskUserQuestion で「再オープンして作業 / 中止」を選択。
@@ -587,7 +588,7 @@ skill: rite:pr-create
 
 sub-skill (`rite:pr-create` / `rite:issue-implement` / `rite:lint`) のターンが sentinel を 1 つも emit せず無言で終了した場合、flow-state には直前 phase が保持されているため作業は失われない。orchestrator は以下で回復する:
 
-1. **既存 draft PR の検出**: `gh pr list --head {branch_name} --json number,url,isDraft` で当該ブランチの PR が既に作成済みか確認する。存在すれば実質 `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む (push/PR は冪等に再開可能)
+1. **既存 draft PR の検出**: `gh pr list -R {owner_repo} --head {branch_name} --json number,url,isDraft` で当該ブランチの PR が既に作成済みか確認する。存在すれば実質 `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む (push/PR は冪等に再開可能)
 2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」を提示する。中止時は flow-state の phase が保持されるため `/rite:recover` で本ステップから再開できる旨を案内する
 
 > Phase 3.4 の Write tool 委譲 は Cause B (インライン heredoc / 特殊文字 title による malform 増幅) を除去して発生確率を下げる対策であり、Cause A 自体は消せない。そのため本回復契約が最終的な堅牢化の担保となる。

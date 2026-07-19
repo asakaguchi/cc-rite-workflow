@@ -50,10 +50,12 @@ Execute the following phases in order when this command is invoked.
 
 ### 1.1 Retrieve Issue Information
 
+> `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
+
 Retrieve detailed information for the specified Issue:
 
 ```bash
-gh issue view {issue_number} --json number,title,body,state,labels,projectItems
+gh issue view {issue_number} -R {owner_repo} --json number,title,body,state,labels,projectItems
 ```
 
 ### 1.2 Check Issue State
@@ -76,7 +78,7 @@ Confirm with `AskUserQuestion`.
 **When "Issue を再オープンしてから編集" is selected:**
 
 ```bash
-gh issue reopen {issue_number}
+gh issue reopen {issue_number} -R {owner_repo}
 ```
 
 ### 1.3 Retrieve Projects Fields
@@ -289,12 +291,12 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-gh issue edit {issue_number} --title "{new_title}" --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --title "{new_title}" --body-file "$tmpfile"
 ```
 
 **Title only change:**
 ```bash
-gh issue edit {issue_number} --title "{new_title}"
+gh issue edit {issue_number} -R {owner_repo} --title "{new_title}"
 ```
 
 **Body only change:**
@@ -313,7 +315,7 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 ### 4.2 Update Projects Fields
@@ -435,7 +437,7 @@ URL: {issue_url}
 
 **Retrieve URL:**
 ```bash
-gh issue view {issue_number} --json url --jq '.url'
+gh issue view {issue_number} -R {owner_repo} --json url --jq '.url'
 ```
 
 ---

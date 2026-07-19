@@ -223,6 +223,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     set -o pipefail
     pr_view_err=""
     repo_view_err=""
+    git_remote_err=""
     jq_owner_err=""
     jq_name_err=""
     gql_err=""
@@ -237,7 +238,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # the redirect would let that diagnostic leak into triage and
       # mask real cleanup failures. The guard keeps the cleanup silent
       # regardless.
-      for f in "${pr_view_err:-}" "${repo_view_err:-}" \
+      for f in "${pr_view_err:-}" "${repo_view_err:-}" "${git_remote_err:-}" \
                "${jq_owner_err:-}" "${jq_name_err:-}" \
                "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}" \
                "${reconcile_jq_err:-}" "${reconcile_parse_err:-}"; do
@@ -255,6 +256,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     stderr_capture_disabled=0
     pr_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-pr-err-XXXXXX") || { pr_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for pr_view_err; gh pr view stderr will not be captured" >&2; }
     repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-repo-err-XXXXXX") || { repo_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for repo_view_err; gh repo view stderr will not be captured" >&2; }
+    git_remote_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-git-remote-err-XXXXXX") || { git_remote_err=""; stderr_capture_disabled=1; }
     jq_owner_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-jq-owner-err-XXXXXX") || { jq_owner_err=""; stderr_capture_disabled=1; }
     jq_name_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-jq-name-err-XXXXXX") || { jq_name_err=""; stderr_capture_disabled=1; }
     gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-pc-gql-err-XXXXXX") || { gql_err=""; stderr_capture_disabled=1; }
@@ -278,15 +280,17 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     #
     # git-remote parse first: works even when `origin` is an SSH Host alias
     # unrecognized by gh's host allowlist. Falls through to the existing
-    # `gh repo view` + stderr-attribution path only when no origin remote is
-    # configured at all. Both paths run inside `cd "$STATE_ROOT"` so the
+    # `gh repo view` + stderr-attribution path whenever the parse fails
+    # (no origin remote, unparseable URL, charset-rejected) — its stderr is
+    # captured so a two-sided failure can be attributed on both sides.
+    # Both paths run inside `cd "$STATE_ROOT"` so the
     # resolved repo always matches what `gh api graphql` below operates on —
     # a bare git-remote call in the ambient process cwd would silently
     # resolve a different repository when cwd != STATE_ROOT, bypassing the
     # auth/network cascade guard further down.
     REPO_OWNER=""
     REPO_NAME=""
-    _git_or_line=$(cd "$STATE_ROOT" 2>/dev/null && bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_or_line=""
+    _git_or_line=$(cd "$STATE_ROOT" 2>/dev/null && bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>"${git_remote_err:-/dev/null}") || _git_or_line=""
     if [ -n "$_git_or_line" ]; then
       IFS=$'\t' read -r REPO_OWNER REPO_NAME <<< "$_git_or_line"
     fi
@@ -298,13 +302,23 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # paired with watchdog-status-mismatch; if those two sites diverge in error
       # capture, the same root cause produces asymmetric WARNING details and
       # becomes harder to diagnose.
-      if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
+      #
+      # cd stderr is captured separately (same TOCTOU discrimination as the
+      # `gh pr view` subshell below): a cd failure here would otherwise leave
+      # repo_view_err empty and get misattributed to gh.
+      _ri_cd_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+        "post-compact" \
+        "repo-cd-err" \
+        "TOCTOU cd failure must be distinguished from gh repo view failure inside the same subshell") || _ri_cd_err=""
+      if REPO_INFO=$(cd "$STATE_ROOT" 2>"${_ri_cd_err:-/dev/null}" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
         :
       else
         repo_rc=$?
         repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
+        ri_cd_err_oneline=$(head -c 200 "${_ri_cd_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
         REPO_INFO=""
       fi
+      [ -n "$_ri_cd_err" ] && rm -f "$_ri_cd_err"
       # Capture jq stderr separately so JSON parse failure (gh succeeded but JSON
       # is corrupt or a field is null) gets attributed in the WARNING details.
       REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
@@ -404,7 +418,16 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         [ -n "${jq_owner_err:-}" ] && [ -s "$jq_owner_err" ] && jq_owner_err_oneline=$(head -c 200 "$jq_owner_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)
         [ -n "${jq_name_err:-}" ] && [ -s "$jq_name_err" ] && jq_name_err_oneline=$(head -c 200 "$jq_name_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)
         if [ -z "$REPO_INFO" ]; then
-          echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA}); PR Status reconciliation could not run (post_compact_gh_repo_view_failed)" >&2
+          # git-remote fast path's stderr rides along: when BOTH resolution
+          # paths failed, showing only gh's side would hide why the fast path
+          # bailed (the side most likely to matter under an alias origin).
+          git_remote_err_oneline=""
+          [ -n "${git_remote_err:-}" ] && [ -s "$git_remote_err" ] && git_remote_err_oneline=$(head -c 200 "$git_remote_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)
+          if [ -n "${ri_cd_err_oneline:-}" ]; then
+            echo "[rite] WARNING: post-compact: Issue #$ISSUE — cd STATE_ROOT failed inside gh repo view subshell (rc=${repo_rc:-NA}, stderr=$ri_cd_err_oneline); TOCTOU race between -d check and cd (state_root_toctou_race)" >&2
+          else
+            echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA}, git_remote_stderr=${git_remote_err_oneline:-NA}); PR Status reconciliation could not run (post_compact_gh_repo_view_failed)" >&2
+          fi
         else
           echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh repo view returned null fields (owner=$REPO_OWNER name=$REPO_NAME jq_owner_stderr=$jq_owner_err_oneline jq_name_stderr=$jq_name_err_oneline); PR Status reconciliation could not run (post_compact_gh_repo_view_returned_null)" >&2
         fi

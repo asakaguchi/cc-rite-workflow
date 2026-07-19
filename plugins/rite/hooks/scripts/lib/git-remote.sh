@@ -10,9 +10,9 @@
 # host allowlist entirely: the host segment is discarded regardless of
 # what it says, so an unrecognized alias can never break this path.
 #
-# Usage (standalone only — this file is source-only for functions but the
-# resolver itself is invoked as a subprocess, not sourced, so it cannot
-# perturb a caller's `set -euo pipefail` / trap regime):
+# Usage (standalone subprocess only — callers never source this file;
+# running the resolver as its own process means it cannot perturb a
+# caller's `set -euo pipefail` / trap regime):
 #   line=$(bash lib/git-remote.sh resolve-owner-repo) || fall back
 #   IFS=$'\t' read -r owner repo <<< "$line"
 #
@@ -42,15 +42,19 @@ resolve_owner_repo() {
       ;;
   esac
   path="${path%.git}"
+  # The origin URL itself is deliberately NOT echoed in the ERROR messages
+  # below: protocol-style origins can embed credentials
+  # (https://TOKEN@host/...), and callers may surface this stderr in their
+  # own diagnostics. Inspect with: git config --get remote.origin.url
   case "$path" in
     */*)
       if [ -z "${path%%/*}" ] || [ -z "${path#*/}" ]; then
-        echo "ERROR: git-remote: parsed owner or repo is empty from origin URL: $url" >&2
+        echo "ERROR: git-remote: owner or repo segment is empty in the origin URL path" >&2
         return 1
       fi
       ;;
     *)
-      echo "ERROR: git-remote: could not parse owner/repo from origin URL: $url" >&2
+      echo "ERROR: git-remote: origin URL does not contain an owner/repo path" >&2
       return 1
       ;;
   esac

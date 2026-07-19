@@ -117,12 +117,13 @@ fi
 # gh repo view と gh pr list は別 tempfile (repo_view_err / pr_list_err) に分けて capture し、
 # 前者の non-fatal warning が後者の redirect で truncate されないようにする。
 repo_view_err=""
+git_remote_err=""
 pr_list_err=""
 gql_err=""
 jq_err=""
 reconcile_err=""
 _rite_watchdog_cleanup() {
-  rm -f "${repo_view_err:-}" "${pr_list_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+  rm -f "${repo_view_err:-}" "${git_remote_err:-}" "${pr_list_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
 }
 trap 'rc=$?; _rite_watchdog_cleanup; exit $rc' EXIT
 trap '_rite_watchdog_cleanup; exit 130' INT
@@ -133,10 +134,13 @@ trap '_rite_watchdog_cleanup; exit 129' HUP
 # git-remote parse first: works even when `origin` is an SSH Host alias
 # unrecognized by gh's host allowlist (#1899). Falls through to
 # `gh repo view` (stderr captured to repo_view_err per the 2-site contract
-# declared above) only when no origin remote is configured at all.
+# declared above) whenever the parse fails (no origin remote, unparseable
+# URL, charset-rejected) — its stderr is captured so a two-sided failure
+# can be attributed on both sides.
 REPO_OWNER=""
 REPO_NAME=""
-_git_or_line=$(bash "$PLUGIN_ROOT/hooks/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_or_line=""
+git_remote_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-git-remote-err-XXXXXX") || git_remote_err=""
+_git_or_line=$(bash "$PLUGIN_ROOT/hooks/scripts/lib/git-remote.sh" resolve-owner-repo 2>"${git_remote_err:-/dev/null}") || _git_or_line=""
 if [ -n "$_git_or_line" ]; then
   IFS=$'\t' read -r REPO_OWNER REPO_NAME <<< "$_git_or_line"
 fi
@@ -146,6 +150,9 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
     echo "ERROR: gh repo view failed" >&2
     if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
       head -5 "$repo_view_err" | sed 's/^/  /' >&2
+    fi
+    if [ -n "$git_remote_err" ] && [ -s "$git_remote_err" ]; then
+      head -3 "$git_remote_err" | sed 's/^/  git-remote: /' >&2
     fi
     echo "  対処: gh auth status / network 接続を確認してください" >&2
     exit 1

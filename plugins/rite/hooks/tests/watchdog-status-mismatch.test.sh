@@ -120,6 +120,57 @@ assert_file_contains "$WATCHDOG_SH" 'In Progress' \
   "Script checks Status == 'In Progress'"
 
 echo ""
+echo "[T-9f] Behavioral: git-remote fast path resolves SSH alias origin, --repo threaded into gh pr list (#1899)"
+# Real git repo + SSH Host alias origin + deliberately-broken `gh repo view`:
+# the run only succeeds if the git-remote fast path resolved owner/repo AND
+# `gh pr list` received the exact resolved value via --repo. The shim fails
+# loudly (MOCK ASSERTION FAILED) on a wrong/missing --repo — so a regression
+# back to the shorthand (the #1899 bug) or to a wrong-repo resolution turns
+# into a hard test failure instead of passing silently.
+T9F_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-watchdog-t9f-XXXXXX")
+trap 'rm -rf "$T9F_DIR"' EXIT
+mkdir -p "$T9F_DIR/repo/bin"
+( cd "$T9F_DIR/repo" && git init -q && git remote add origin "git@github.com-work:o/r.git" ) >/dev/null 2>&1
+cat > "$T9F_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+cat > "$T9F_DIR/repo/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view")
+    echo "should not be called - git-remote fast path must resolve first" >&2
+    exit 1 ;;
+  "pr list")
+    if ! printf '%s\n' "$*" | grep -qE -- '--repo o/r( |$)'; then
+      echo "MOCK ASSERTION FAILED: expected --repo o/r, got: $*" >&2
+      exit 1
+    fi
+    echo "[]" ;;
+  *) exit 0 ;;
+esac
+GH_SHIM
+chmod +x "$T9F_DIR/repo/bin/gh"
+set +e
+t9f_out=$(cd "$T9F_DIR/repo" && PATH="$T9F_DIR/repo/bin:$PATH" bash "$WATCHDOG_SH" --dry-run --quiet 2>"$T9F_DIR/stderr.txt")
+t9f_rc=$?
+set -e
+if [ "$t9f_rc" -eq 0 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ run succeeds via git-remote fast path (exit 0)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-9f: expected exit 0, got $t9f_rc; stderr: $(head -c 300 "$T9F_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ run failed (exit $t9f_rc)" >&2
+fi
+if grep -qE 'MOCK ASSERTION FAILED|gh repo view failed' "$T9F_DIR/stderr.txt" 2>/dev/null; then
+  FAIL=$((FAIL + 1)); FAILURES+=("T-9f: wrong --repo value or fallback to gh repo view: $(head -c 300 "$T9F_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ wrong --repo value or gh repo view fallback was hit" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ exact --repo o/r threaded to gh pr list, gh repo view never consulted"
+fi
+
+echo ""
 echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then

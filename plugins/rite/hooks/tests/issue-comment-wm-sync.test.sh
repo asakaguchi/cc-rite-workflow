@@ -175,7 +175,10 @@ dir006="$TEST_DIR/tc006"
 mkdir -p "$dir006/bin"
 echo '{"active":true,"issue_number":42}' > "$dir006/.rite-flow-state"
 GH_SHIM_MARKER6="$dir006/posted.marker"
-# pre-check は空を返し、投稿後の validation は id を返す (marker 存在で切替)
+# pre-check は空を返し、投稿後の validation は id を返す (marker 存在で切替)。
+# "issue comment" は --repo の厳密一致を要求する (#1899 の実修正そのもの):
+# --repo が退行して shorthand に戻ると SSH Host alias origin で再び失敗するが、
+# サブコマンド名だけ見る shim ではその退行を検知できない (mutation で実証済み)。
 cat > "$dir006/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
@@ -183,7 +186,12 @@ case "$1 $2" in
   "api repos/testowner/testrepo/issues/42/comments")
     if [ -f "$GH_SHIM_MARKER" ]; then echo "222"; fi
     exit 0 ;;
-  "issue comment") touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-2"; exit 0 ;;
+  "issue comment")
+    if ! printf '%s\n' "$*" | grep -qE -- '--repo testowner/testrepo( |$)'; then
+      echo "MOCK ASSERTION FAILED: expected --repo testowner/testrepo, got: $*" >&2
+      exit 1
+    fi
+    touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-2"; exit 0 ;;
 esac
 exit 0
 GH_SHIM
@@ -206,7 +214,8 @@ dir007="$TEST_DIR/tc007"
 mkdir -p "$dir007/bin"
 echo '{"active":true,"issue_number":42}' > "$dir007/.rite-flow-state"
 GH_SHIM_MARKER7="$dir007/posted.marker"
-# pre-check (marker 不在) は gh api 失敗 (exit 1 + stderr)、投稿後の validation (marker 存在) は id を返す
+# pre-check (marker 不在) は gh api 失敗 (exit 1 + stderr)、投稿後の validation (marker 存在) は id を返す。
+# "issue comment" の --repo 厳密一致は TC-006 shim と同じ理由 (#1899 退行検知)。
 cat > "$dir007/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
@@ -214,7 +223,12 @@ case "$1 $2" in
   "api repos/testowner/testrepo/issues/42/comments")
     if [ -f "$GH_SHIM_MARKER" ]; then echo "333"; exit 0; fi
     echo "HTTP 500: Internal Server Error" >&2; exit 1 ;;
-  "issue comment") touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-3"; exit 0 ;;
+  "issue comment")
+    if ! printf '%s\n' "$*" | grep -qE -- '--repo testowner/testrepo( |$)'; then
+      echo "MOCK ASSERTION FAILED: expected --repo testowner/testrepo, got: $*" >&2
+      exit 1
+    fi
+    touch "$GH_SHIM_MARKER"; echo "https://github.com/testowner/testrepo/issues/42#issuecomment-3"; exit 0 ;;
 esac
 exit 0
 GH_SHIM

@@ -116,18 +116,21 @@ FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 # 「owner/repo 取得不能 = Issue comment 経路の機能停止」が silent に発生する。stderr を
 # tempfile capture して、失敗時に WARNING で根本原因を expose する。
 get_owner_repo() {
-  local _err _rc=0 _out _git_line _git_owner _git_repo
+  local _err _rc=0 _out _git_err _git_or_line _git_owner _git_repo
   # git-remote parse first: works even when `origin` is an SSH Host alias
   # unrecognized by gh's host allowlist (#1899). Falls through to
-  # `gh repo view` below only when no origin remote is configured at all.
+  # `gh repo view` below whenever the parse fails (no origin remote,
+  # unparseable URL, charset-rejected).
   # Anchored to `cd "$STATE_ROOT"` (same as post-compact.sh) so this resolves
   # the intended repo rather than whatever git repo the ambient process cwd
   # happens to sit in — `cd` here is subshell-scoped via the `$(...)` this
   # function is always called through, so it cannot affect the caller's cwd.
-  _git_line=$(cd "$STATE_ROOT" 2>/dev/null && bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_line=""
-  if [ -n "$_git_line" ]; then
-    IFS=$'\t' read -r _git_owner _git_repo <<< "$_git_line"
+  _git_err=$(mktemp 2>/dev/null) || _git_err=""
+  _git_or_line=$(cd "$STATE_ROOT" 2>/dev/null && bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>"${_git_err:-/dev/null}") || _git_or_line=""
+  if [ -n "$_git_or_line" ]; then
+    IFS=$'\t' read -r _git_owner _git_repo <<< "$_git_or_line"
     if [ -n "$_git_owner" ] && [ -n "$_git_repo" ]; then
+      [ -n "$_git_err" ] && rm -f "$_git_err"
       printf '%s/%s' "$_git_owner" "$_git_repo"
       return
     fi
@@ -146,9 +149,16 @@ get_owner_repo() {
     if [ -n "$_err" ] && [ -s "$_err" ]; then
       head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
+    # Both resolution paths failed at this point — also surface why the
+    # git-remote fast path bailed, or this WARNING would show only the
+    # fallback's side of a two-sided failure.
+    if [ -n "$_git_err" ] && [ -s "$_git_err" ]; then
+      head -3 "$_git_err" | neutralize_ctrl --keep-newline | sed 's/^/  git-remote: /' >&2
+    fi
     _out=""
   fi
   [ -n "$_err" ] && rm -f "$_err"
+  [ -n "$_git_err" ] && rm -f "$_git_err"
   printf '%s' "$_out"
 }
 

@@ -47,7 +47,11 @@ resolve_in() {
 
 # --- Accept: URL formats resolve_owner_repo must parse (owner/repo regardless
 #     of host string — this is the whole point: the alias case must parse
-#     identically to the canonical github.com case) --------------------------
+#     identically to the canonical github.com case). Each case asserts the
+#     exact "owner<TAB>repo" value, not just "2 non-empty fields" — a parser
+#     regression that leaks the host/port into the owner field (e.g. the
+#     protocol-style branch stripping `:port` instead of the host) would
+#     still produce 2 non-empty fields and slip past a structural-only check.
 declare -A urls=(
   ["scp-like SSH Host alias (the #1899 repro case)"]="git@github.com-work:asakaguchi/cc-rite-workflow.git"
   ["scp-like SSH canonical host"]="git@github.com:asakaguchi/cc-rite-workflow.git"
@@ -57,6 +61,15 @@ declare -A urls=(
   ["ssh:// with explicit port"]="ssh://git@github.com:22/asakaguchi/cc-rite-workflow.git"
   ["https on a GitHub Enterprise host"]="https://github.mycompany.com/org/repo.git"
 )
+declare -A expected=(
+  ["scp-like SSH Host alias (the #1899 repro case)"]="asakaguchi/cc-rite-workflow"
+  ["scp-like SSH canonical host"]="asakaguchi/cc-rite-workflow"
+  ["https with .git suffix"]="asakaguchi/cc-rite-workflow"
+  ["https without .git suffix"]="asakaguchi/cc-rite-workflow"
+  ["ssh:// with explicit user"]="asakaguchi/cc-rite-workflow"
+  ["ssh:// with explicit port"]="asakaguchi/cc-rite-workflow"
+  ["https on a GitHub Enterprise host"]="org/repo"
+)
 
 sbx=$(make_sandbox) && cleanup_dirs+=("$sbx") || { echo "ERROR: make_sandbox failed, aborting" >&2; exit 1; }
 
@@ -65,8 +78,8 @@ for label in "${!urls[@]}"; do
   ( cd "$sbx" && git remote remove origin >/dev/null 2>&1; git remote add origin "$url" ) >/dev/null 2>&1
   out=$(resolve_in "$sbx") ; rc=$?
   assert "$label: exit 0" "0" "$rc"
-  assert "$label: parses to asakaguchi/cc-rite-workflow or org/repo" "1" \
-    "$(printf '%s' "$out" | awk -F'\t' 'NF==2 && $1!="" && $2!="" {print 1; exit} {print 0}')"
+  owner_repo=$(printf '%s' "$out" | awk -F'\t' 'NF==2 {print $1 "/" $2; exit}')
+  assert "$label: parses to exact ${expected[$label]}" "${expected[$label]}" "$owner_repo"
 done
 
 # Spot-check one exact value end-to-end (owner and repo both correct, not just non-empty).

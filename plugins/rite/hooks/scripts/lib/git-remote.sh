@@ -43,7 +43,12 @@ resolve_owner_repo() {
   esac
   path="${path%.git}"
   case "$path" in
-    */*) : ;;
+    */*)
+      if [ -z "${path%%/*}" ] || [ -z "${path#*/}" ]; then
+        echo "ERROR: git-remote: parsed owner or repo is empty from origin URL: $url" >&2
+        return 1
+      fi
+      ;;
     *)
       echo "ERROR: git-remote: could not parse owner/repo from origin URL: $url" >&2
       return 1

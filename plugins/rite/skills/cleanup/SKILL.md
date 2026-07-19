@@ -855,5 +855,5 @@ bash {plugin_root}/hooks/flow-state.sh set --phase "cleanup" --next "none" --act
 | Branch Deletion Failure | `git branch` でブランチ一覧を確認; base ブランチに切替後再実行 |
 | Network Error | [共通パターン](../../references/common-error-handling.md) |
 | Issue Not Found | [共通パターン](../../references/common-error-handling.md) |
-| Issue Close Failure | `gh issue view {issue_number}` で状態確認; 手動で `gh issue close {issue_number}` |
+| Issue Close Failure | `gh issue view {issue_number} -R {owner_repo}` で状態確認; 手動で `gh issue close {issue_number} -R {owner_repo}` |
 | Incomplete Task Issue Creation Failure | クリーンアップは続行; タスクを手動で Issue 化 |

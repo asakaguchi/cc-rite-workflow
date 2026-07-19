@@ -3301,7 +3301,7 @@ failure mode being blocked here.
 
 | Error | Action |
 |--------|------|
-| PR not found | Check with `gh pr list` and re-run with the correct number |
+| PR not found | Check with `gh pr list -R {owner_repo}` and re-run with the correct number |
 | Skill file load failure | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection (WARNING を stderr に出力) |
 | Review execution error | Choose skip/retry/cancel (skip 時は WARNING を stderr に出力) |
 | Comment post failure | Display review results as text (WARNING を stderr に出力) |

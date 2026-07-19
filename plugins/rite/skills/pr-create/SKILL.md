@@ -980,7 +980,7 @@ URL: {pr_url}
 | Error | Resolution |
 |--------|------|
 | Push failure | Check network -> `gh auth status` -> `git pull --rebase origin {branch_name}` -> retry |
-| PR creation failure | Check existing PRs with `gh pr list` -> verify permissions -> retry |
+| PR creation failure | Check existing PRs with `gh pr list -R {owner_repo}` -> verify permissions -> retry |
 | Issue not found | Choose: create without Issue / specify different Issue / cancel |
 ## Language Support
 

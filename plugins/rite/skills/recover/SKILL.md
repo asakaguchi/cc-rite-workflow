@@ -504,8 +504,8 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 
 | 状況 | 対応 |
 |------|------|
-| Issue not found | エラー終了、`gh issue list` で確認するよう案内 |
-| Branch 不在 | `gh issue develop` で再生成するよう案内 |
+| Issue not found | エラー終了、`gh issue list -R {owner_repo}` で確認するよう案内 |
+| Branch 不在 | `gh issue develop -R {owner_repo}` で再生成するよう案内 |
 | flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:open {issue_arg}` を提案 |
 | 矛盾検出 (phase vs commit/PR) | AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」 |
 | migrate 失敗 | WARNING 表示後、cross-check で実態推定して続行 |

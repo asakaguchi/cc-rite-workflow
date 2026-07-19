@@ -494,7 +494,7 @@ If some child Issues are still OPEN:
 理由: {reason}
 
 手動でクローズする場合:
-gh issue close {parent_issue_number}
+gh issue close {parent_issue_number} -R {owner_repo}
 ```
 
 **Note**: Failure to auto-close the parent Issue does not block the entire cleanup process. Display a warning and continue.

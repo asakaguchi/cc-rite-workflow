@@ -111,7 +111,7 @@ If the Issue is not found:
 エラー: Issue #{number} が見つかりません
 
 対処:
-1. `gh issue list` で Issue 一覧を確認
+1. `gh issue list -R {owner_repo}` で Issue 一覧を確認
 2. 正しい Issue 番号を指定して再実行
 ```
 

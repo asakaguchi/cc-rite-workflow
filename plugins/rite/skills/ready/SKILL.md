@@ -318,7 +318,7 @@ Proceed to the next phase.
 - PR が既にクローズされている
 
 対処:
-1. `gh pr view {number}` で PR の状態を確認
+1. `gh pr view {number} -R {owner_repo}` で PR の状態を確認
 2. GitHub Web UI から直接変更を試す
 ```
 

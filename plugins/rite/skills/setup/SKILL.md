@@ -75,8 +75,20 @@ and exit.
 
 ### 1.4 Retrieve Repository Information
 
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) — 下記 snippet の `git-remote.sh` 呼び出しで使用する（未解決のまま実行すると git-remote.sh 経路が silent に失敗し、SSH host alias 環境で fallback の `gh repo view` も失敗する）。
+
 ```bash
-gh repo view --json owner,name,id,url
+# owner/repo は SSH host alias 環境でも解決できる git-remote.sh を優先し、
+# id/url は解決済み repo を明示指定した gh repo view で取得する（明示指定なら alias 環境でも動く。
+# canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+if [ -n "$owner" ] && [ -n "$repo" ]; then
+  gh repo view "$owner/$repo" --json owner,name,id,url
+else
+  gh repo view --json owner,name,id,url
+fi
 ```
 
 If not a Git repository or not a GitHub repository, show:
@@ -242,7 +254,7 @@ If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: 
 
 ### 4.1 Generate rite-config.yml
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing any steps in Phase 4.1. This resolved path is used by 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing any steps in Phase 4.1. This resolved path is used by 1.4 (repository information retrieval — 通常は 1.4 到達時点で解決済み), 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
 
 #### 4.1.1 Check for Existing Configuration
 

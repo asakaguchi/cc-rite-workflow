@@ -633,6 +633,38 @@ jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
 
 ---
 
+## Owner/Repo Resolution (SSH Host Alias Safe)
+
+`gh repo view` / `gh issue create` など **`--repo`/`-R` 未指定の gh コマンド**は、origin remote が
+SSH host alias（例: `git@github.com-work:owner/repo.git`）のとき
+`none of the git remotes configured for this repository point to a known GitHub host` で失敗する。
+`{owner}` / `{repo}` プレースホルダの解決には、remote URL を直接パースする
+`hooks/scripts/lib/git-remote.sh`（#1899 で導入。host 名に依存しない）を優先し、
+`gh repo view` は fallback に回すこと。
+
+```bash
+# ✅ SAFE: git-remote.sh 優先で owner/repo を解決（SSH host alias 環境でも動く）
+# 出力契約: 成功時 "owner<TAB>repo" の 1 行。失敗時は空 → gh repo view に fallback
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
+
+# 🚫 PROHIBITED: gh repo view 単独での owner/repo 解決（SSH host alias 環境で失敗する）
+# owner=$(gh repo view --json owner --jq '.owner.login')
+# WHY: gh は remote URL の host 部（github.com-work 等）を GitHub host として解決できない
+```
+
+解決した `$owner/$repo` があれば、repo コンテキスト依存の gh コマンドにも明示指定できる
+（`gh issue view N -R "$owner/$repo"` / `gh repo view "$owner/$repo" --json id,url` 等 —
+明示指定なら alias 環境でも動く）。内部スクリプトでの実装例:
+`scripts/watchdog-status-mismatch.sh`（git-remote.sh → gh repo view の 2 段 fallback + 診断 stderr）。
+
+---
+
 ## Extended References
 
 For error pattern catalog, see: [`gh-cli-error-catalog.md`](./gh-cli-error-catalog.md)

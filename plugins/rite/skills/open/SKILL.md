@@ -34,7 +34,7 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
-| `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'` |
+| `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`（SSH host alias 対応。fallback: `gh repo view --json owner,name`。canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)） |
 | `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
 
 > **Note**: 上記 2 行（ステップ 2.4(A) 専用と注記したもの）を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。

@@ -90,8 +90,15 @@ issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[
 **Fallback (local file missing/corrupt)**: If the local file does not exist or is corrupt, fall back to the Issue comment API:
 
 ```bash
-owner=$(gh repo view --json owner --jq '.owner.login')
-repo=$(gh repo view --json name --jq '.name')
+# SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body'

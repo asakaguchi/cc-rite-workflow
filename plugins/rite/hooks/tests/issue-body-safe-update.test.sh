@@ -274,7 +274,9 @@ cat > "$mock_bin6/mktemp" <<'EOF'
 #!/bin/bash
 for arg in "$@"; do
   case "$arg" in
-    /tmp/rite-issue-body-apply-err-*) exit 1 ;;
+    # 本番は ${TMPDIR:-/tmp}/rite-issue-body-apply-err-XXXXXX を渡すため、
+    # sandbox (TMPDIR 設定) 環境でも intercept できるよう両形にマッチさせる
+    /tmp/rite-issue-body-apply-err-*|"${TMPDIR:-/tmp}"/rite-issue-body-apply-err-*) exit 1 ;;
   esac
 done
 exec /usr/bin/mktemp "$@"
@@ -448,7 +450,7 @@ rm -rf "$mock_bin10"
 # accidentally tightens the regex to `[0-9]+` matching anywhere would let
 # `10abc` slip through and produce arithmetic-eval errors downstream.
 for invalid_val in "10abc" " 5 " "5e3"; do
-  mock_bin_25g=$(mktemp -d /tmp/rite-mock-bin-25g.XXXXXX)
+  mock_bin_25g=$(mktemp -d "${TMPDIR:-/tmp}/rite-mock-bin-25g.XXXXXX")
   cat > "$mock_bin_25g/gh" <<'GHEOF'
 #!/bin/sh
 exit 0

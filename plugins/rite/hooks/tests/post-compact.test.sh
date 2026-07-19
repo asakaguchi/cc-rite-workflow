@@ -412,7 +412,9 @@ cat > "$recon_dir/bin/mktemp" <<'EOF'
 #!/bin/bash
 for arg in "$@"; do
   case "$arg" in
-    /tmp/rite-pc-pr-err-*) exit 1 ;;
+    # 本番は ${TMPDIR:-/tmp}/rite-pc-pr-err-XXXXXX を渡すため、
+    # sandbox (TMPDIR 設定) 環境でも intercept できるよう両形にマッチさせる
+    /tmp/rite-pc-pr-err-*|"${TMPDIR:-/tmp}"/rite-pc-pr-err-*) exit 1 ;;
   esac
 done
 exec /usr/bin/mktemp "$@"

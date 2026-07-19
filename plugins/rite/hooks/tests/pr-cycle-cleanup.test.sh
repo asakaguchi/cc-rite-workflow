@@ -66,7 +66,7 @@ trap '_cleanup_all_test_repos; exit 129' HUP
 # The workdir tests (T-06+) populate this directory explicitly. `mktemp -d
 # /tmp/...` and make_temp_repo both use explicit /tmp paths, so they are
 # unaffected by the TMPDIR export below.
-WORKDIR_SCAN_TMP=$(mktemp -d /tmp/rite-pr-cleanup-tmpdir-XXXXXX)
+WORKDIR_SCAN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/rite-pr-cleanup-tmpdir-XXXXXX")
 TEST_REPOS+=("$WORKDIR_SCAN_TMP")
 export TMPDIR="$WORKDIR_SCAN_TMP"
 
@@ -107,7 +107,7 @@ if [ "$(id -u)" = "0" ]; then IS_ROOT=1; fi
 # Returns the absolute path on stdout.
 make_temp_repo() {
   local tmp
-  tmp=$(mktemp -d /tmp/rite-pr-cleanup-test-XXXXXX)
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-pr-cleanup-test-XXXXXX")
   TEST_REPOS+=("$tmp")
   (
     cd "$tmp"
@@ -449,7 +449,7 @@ echo "T-10: find wholesale 失敗が silent でない"
 if [ "$IS_ROOT" = "1" ]; then
   skip "T-10: root では perms がバイパスされ強制失敗にならないためスキップ"
 else
-  T10_NOREAD_BASE=$(mktemp -d /tmp/rite-pr-cleanup-noread-XXXXXX) || T10_NOREAD_BASE=""
+  T10_NOREAD_BASE=$(mktemp -d "${TMPDIR:-/tmp}/rite-pr-cleanup-noread-XXXXXX") || T10_NOREAD_BASE=""
   if [ -z "$T10_NOREAD_BASE" ]; then
     fail "T-10: mktemp -d による no-read base 作成に失敗"
   else
@@ -560,7 +560,7 @@ else
   # letting `mkdir -p "$LOCKED_BASE/..."` target the filesystem root
   # (`/rite-pr-create-victim`). Matches the sibling `|| var=""` convention in
   # pr-cycle-cleanup.sh.
-  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX) || LOCKED_BASE=""
+  LOCKED_BASE=$(mktemp -d "${TMPDIR:-/tmp}/rite-pr-cleanup-locked-XXXXXX") || LOCKED_BASE=""
   if [ -z "$LOCKED_BASE" ]; then
     fail "T-13: mktemp -d による locked base 作成に失敗"
   else
@@ -666,7 +666,7 @@ else
   # `|| LOCKED_BASE=""` — see T-13's note: a plain `VAR=$(cmd)` propagates the
   # command-substitution exit status under `set -e`, so the `||` keeps a failed
   # mktemp from aborting the suite and lets the guard fail this test instead.
-  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-mut-locked-XXXXXX) || LOCKED_BASE=""
+  LOCKED_BASE=$(mktemp -d "${TMPDIR:-/tmp}/rite-pr-cleanup-mut-locked-XXXXXX") || LOCKED_BASE=""
   if [ -z "$LOCKED_BASE" ]; then
     fail "T-16: mktemp -d による locked base 作成に失敗"
   else

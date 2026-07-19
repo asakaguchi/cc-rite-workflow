@@ -72,7 +72,7 @@ OTHER_SID="22222222-2222-2222-2222-222222222222"
 # `SBX=$(make_sandbox); cleanup_dirs+=("$SBX")`.
 mktemp_legacy() {
   local f
-  f=$(mktemp /tmp/rite-cross-session-test-XXXXXX) || { echo "ERROR: mktemp failed" >&2; exit 1; }
+  f=$(mktemp "${TMPDIR:-/tmp}/rite-cross-session-test-XXXXXX") || { echo "ERROR: mktemp failed" >&2; exit 1; }
   echo "$f"
 }
 

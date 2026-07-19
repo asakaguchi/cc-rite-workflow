@@ -163,7 +163,7 @@ stderr を tempfile に退避し、**stderr pattern matching** で legitimate ab
 # (lint.md ステップ 6.0 の委譲先 wiki-lint-skipped-refs.sh の log_err mktemp 失敗 WARNING 部と同じ defense-in-depth — silent fallback 禁止)。
 # 知らないエラー (mktemp 失敗で stderr 取得不能) を silent に absence と誤認するより、
 # WARNING で可視化して io_error 経路に流す方が正しい。
-log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null) || {
+log_err=$(mktemp "${TMPDIR:-/tmp}/rite-XXXXXX" 2>/dev/null) || {
  echo "WARNING: log_err の stderr 退避用 tempfile の mktemp に失敗しました" >&2
  echo " 対処: /tmp の空き容量 / permission / inode 枯渇を確認してください" >&2
  echo " 影響: stderr pattern match が実行不能になり、legitimate absence / io_error の区別が付かなくなるため io_error 側に倒します" >&2

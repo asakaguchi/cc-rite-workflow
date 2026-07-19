@@ -15,16 +15,16 @@
 #     bash issue-comment-wm-sync.sh update --issue 42 \
 #       --transform update-progress \
 #       --impl-status "✅ 完了" --test-status "⬜ 未着手" --doc-status "⬜ 未着手" \
-#       --changed-files-file /tmp/files.md
+#       --changed-files-file "${TMPDIR:-/tmp}/files.md"
 #
 #     bash issue-comment-wm-sync.sh update --issue 42 \
-#       --transform append-section --section "品質チェック履歴" --content-file /tmp/lint.md
+#       --transform append-section --section "品質チェック履歴" --content-file "${TMPDIR:-/tmp}/lint.md"
 #
 #     bash issue-comment-wm-sync.sh update --issue 42 \
-#       --transform append-eof --content-file /tmp/completion.md
+#       --transform append-eof --content-file "${TMPDIR:-/tmp}/completion.md"
 #
 #     bash issue-comment-wm-sync.sh update --issue 42 \
-#       --transform merge-checklist --section 進捗 --content-file /tmp/items.md
+#       --transform merge-checklist --section 進捗 --content-file "${TMPDIR:-/tmp}/items.md"
 #
 # Options:
 #   --issue          Issue number (required)
@@ -521,8 +521,9 @@ if ! py_err_tmp=$(mktemp 2>/dev/null); then
   echo "[rite] WARNING: issue-comment-wm-sync: update mode py_err_tmp mktemp 失敗。skip." >&2
   exit 0
 fi
-# Backup は失敗時の post-mortem 用。/tmp に蓄積した場合は `rm -f /tmp/rite-wm-backup-*` で手動清掃。
-backup_file="/tmp/rite-wm-backup-${ISSUE}-$(date +%s).md"
+# Backup は失敗時の post-mortem 用。蓄積した場合は `rm -f "${TMPDIR:-/tmp}"/rite-wm-backup-*` で手動清掃。
+# /tmp 直書きは sandbox 環境で読み込み専用のため set -euo pipefail 下で即死する (Issue #1904)。
+backup_file="${TMPDIR:-/tmp}/rite-wm-backup-${ISSUE}-$(date +%s).md"
 
 # Capture gh stderr so that auth expiry / rate limit / 404 / network failure are
 # distinguishable in the operator log instead of collapsing into an empty body.

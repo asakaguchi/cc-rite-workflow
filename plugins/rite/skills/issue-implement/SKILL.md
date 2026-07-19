@@ -757,8 +757,8 @@ echo "tmpfile_write=$tmpfile_write"
 
 ```bash
 # Set paths output by mktemp in Step 1 (shell variables do not carry over between Bash tool calls, so directly write the actual paths from Step 1 output)
-tmpfile_read="/tmp/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output
-tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output
+tmpfile_read="${TMPDIR:-/tmp}/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output (literal path)
+tmpfile_write="${TMPDIR:-/tmp}/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output (literal path)
 original_length=XXXXX                # ← Replace with the original_length= value from Step 1 output
 
 # Validate update content before applying

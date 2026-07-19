@@ -200,7 +200,7 @@ if [[ ! -f "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file '$CONTENT_FILE' does not exist or is not a regular file" >&2
   exit 1
 fi
-# Path containment: $PWD 配下または /tmp/rite-* のみ許可。realpath 失敗時は
+# Path containment: $PWD 配下・/tmp/rite-*・$TMPDIR/rite-* のみ許可。realpath 失敗時は
 # fail-fast にして silent bypass (resolved path 不明のまま allowlist 判定が
 # skip される経路) を塞ぐ。
 resolved_content=$(realpath -- "$CONTENT_FILE") || {
@@ -211,15 +211,31 @@ resolved_content=$(realpath -- "$CONTENT_FILE") || {
 # /tmp/* → /tmp/rite-* に限定して exfiltration 経路を縮小。macOS では realpath が
 # /tmp → /private/tmp に symlink 解決するため /private/tmp/rite-* も同じ信頼境界
 # (owner-managed /tmp/rite-* namespace) として allowlist に含める。
+# sandbox 有効環境では /tmp 直下が読み込み専用で書込先が $TMPDIR (session-scoped,
+# owner-managed) になるため、$TMPDIR/rite-* も realpath 解決後の実パス比較で同じ
+# 信頼境界として受理する (Issue #1904。TMPDIR 未設定時は追加 arm なし = 従来挙動)。
+resolved_tmpdir=""
+if [[ -n "${TMPDIR:-}" ]]; then
+  resolved_tmpdir=$(realpath -- "$TMPDIR" 2>/dev/null) || {
+    # fail-closed (arm 縮小方向) だが、silent 無効化だと後段の rejection message が
+    # 「$TMPDIR/rite-* も受容」と誤誘導するため診断用 WARNING を残す
+    echo "WARNING: realpath on TMPDIR failed — \$TMPDIR/rite-* arm disabled" >&2
+    resolved_tmpdir=""
+  }
+fi
 case "$resolved_content" in
   "$PWD"/*|/tmp/rite-*|/private/tmp/rite-*)
     : # allowed ($PWD 配下 / /tmp/rite-* / /private/tmp/rite-* — 後者は macOS realpath 解決後)
     ;;
   *)
-    echo "ERROR: --content-file must be under \$PWD or /tmp/rite-* (macOS: /private/tmp/rite-*)" >&2
-    echo "  resolved path: $resolved_content" >&2
-    echo "  hint: copy the file into the project directory first" >&2
-    exit 1
+    if [[ -n "$resolved_tmpdir" ]] && [[ "$resolved_content" == "${resolved_tmpdir%/}"/rite-* ]]; then
+      : # allowed ($TMPDIR/rite-* — sandbox 環境の session-scoped tmp namespace)
+    else
+      echo "ERROR: --content-file must be under \$PWD, /tmp/rite-*, or \$TMPDIR/rite-* (macOS: /private/tmp/rite-*)" >&2
+      echo "  resolved path: $resolved_content" >&2
+      echo "  hint: copy the file into the project directory first" >&2
+      exit 1
+    fi
     ;;
 esac
 if [[ ! -s "$CONTENT_FILE" ]]; then

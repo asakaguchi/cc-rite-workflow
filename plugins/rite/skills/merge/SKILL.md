@@ -66,7 +66,7 @@ trap '_rite_merge_cleanup; exit 130' INT
 trap '_rite_merge_cleanup; exit 143' TERM
 trap '_rite_merge_cleanup; exit 129' HUP
 
-if gh_err=$(mktemp /tmp/rite-merge-gh-err-XXXXXX 2>/dev/null); then
+if gh_err=$(mktemp "${TMPDIR:-/tmp}/rite-merge-gh-err-XXXXXX" 2>/dev/null); then
   :
 else
   mktemp_gh_err_rc=$?

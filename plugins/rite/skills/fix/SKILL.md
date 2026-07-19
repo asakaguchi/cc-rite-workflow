@@ -470,11 +470,11 @@ bash {plugin_root}/scripts/review-findings-maps.sh \
 
 ```bash
 # pr_review_comment_body を tempfile から読み出す (ステップ 1.2 Broad Retrieval bash block が
-# /tmp/rite-fix-pr-comment-${pr_number}.txt に書き出している前提)。
+# ${TMPDIR:-/tmp}/rite-fix-pr-comment-${pr_number}.txt に書き出している前提)。
 # block 冒頭で pr_number を literal substitute してから ${pr_number} で参照する (置換忘れを fail-fast 検出)。
 # rationale: references/design-rationale.md#pr-comment-raw-json-extraction
 pr_number="{pr_number}"
-pr_comment_body_file="/tmp/rite-fix-pr-comment-${pr_number}.txt"
+pr_comment_body_file="${TMPDIR:-/tmp}/rite-fix-pr-comment-${pr_number}.txt"
 _rite_fix_p3_cleanup() {
   rm -f "${pr_comment_body_file:-}"
 }
@@ -496,7 +496,7 @@ if [ -f "$pr_comment_body_file" ]; then
     exit 1
   fi
   # cat の exit code を if-else で独立 capture する (IO エラーの silent 空文字列化を防ぐ)
-  cat_err=$(mktemp /tmp/rite-fix-cat-err-XXXXXX 2>/dev/null) || cat_err=""
+  cat_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-cat-err-XXXXXX" 2>/dev/null) || cat_err=""
   if pr_review_comment_body=$(cat "$pr_comment_body_file" 2>"${cat_err:-/dev/null}"); then
     :
   else
@@ -602,7 +602,7 @@ else
       # accept list 3 値は Priority 0/2/3 の 3 sites で完全同期 (review-result-schema.md Schema Version SoT 契約)
       # commit_sha stale detection: mismatch は WARNING のみで continue
       # rationale: references/design-rationale.md#schema-normalization-mirror
-      json_commit_sha_err=$(mktemp /tmp/rite-fix-p3-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
+      json_commit_sha_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-commit-sha-err-XXXXXX" 2>/dev/null) || json_commit_sha_err=""
       if json_commit_sha=$(printf '%s' "$raw_json" | jq -r '.commit_sha // empty' 2>"${json_commit_sha_err:-/dev/null}"); then
         :
       else
@@ -676,7 +676,7 @@ else
       fi
 
       # jq exit code を if-else で明示捕捉 (失敗時は legacy Markdown parser へ明示 fallthrough)
-      p3_jq_err=$(mktemp /tmp/rite-fix-p3-smap-err-XXXXXX 2>/dev/null) || p3_jq_err=""
+      p3_jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-smap-err-XXXXXX" 2>/dev/null) || p3_jq_err=""
       # line nullable sentinel 正規化 (Priority 2 severity_map と同じ処理)
       if severity_map_json=$(printf '%s' "$raw_json" | jq -c '[.findings[] | {key: (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end)), value: .severity}] | from_entries' 2>"${p3_jq_err:-/dev/null}"); then
         :
@@ -778,7 +778,7 @@ exit 1
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (ステップ 5.1 評価順 1 で `[fix:error]` に昇格) |
 | `user_file_path_invalid` | Interactive fallback の「ファイルパス指定」で再実行した path でもレビュー結果を取得できなかった (one-shot、retry ループなし、`[fix:error]` 昇格) |
 | `review_file_path_empty_value` | ステップ 1.0.1 で値を持たない `--review-file` が指定された。Pattern 1 (equals style: `--review-file=`) と Pattern 2 (space style: `--review-file <末尾>`) の両方で検出される。`flag_style=equals` / `flag_style=space` として retained flag に付記される |
-| `comment_body_tempfile_empty` | ステップ 1.2.0 Priority 3 で `/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空) |
+| `comment_body_tempfile_empty` | ステップ 1.2.0 Priority 3 で `${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空) |
 | `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
@@ -799,7 +799,7 @@ exit 1
 > **Note**: Priority 0/2 (file-based) の severity_map build / normalization の reason は委譲先 helper `scripts/review-findings-maps.sh` が emit する (SoT は helper docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason は fix flow 上で従来どおり観測される。
 
 **review-findings-maps.sh reasons** (helper が `[CONTEXT] REVIEW_SOURCE_*` / `FIX_FALLBACK_FAILED` を emit。normalization 系 4 reason — `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `low_current_pr_demoted_to_nit_noted` / `jq_mutation_failed` — は Priority 3 鏡像も同名 emit するため上の table 行にも存在する):
-- `mktemp_failure_norm_tmp`: schema 1.1.0 normalization 用 tempfile (`/tmp/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する
+- `mktemp_failure_norm_tmp`: schema 1.1.0 normalization 用 tempfile (`${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する
 - `jq_duplicate_check_failed`: Priority 0/2 で重複 file:line 検出用 jq が失敗 (silent data loss 検出を skip、非ブロッキング)
 - `severity_map_build_failed`: Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `findings_maps_build_failed` + `[fix:error]` に昇格)
 - `scope_map_build_failed`: Priority 0/2 (file-based) で scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
@@ -823,13 +823,13 @@ When `{target_comment_id}` has been extracted from a comment URL argument, retri
 # 設計順序 (パス先行宣言 → trap 先行設定 → mktemp → gh api) と confidence_override 無条件 truncate の配置
 # (統合 trap setup より前、trap 保護対象外) の理由: references/design-rationale.md#fast-path-block-design
 # specific path 必須 (並列セッション破壊防止)。truncate 失敗は warning のみで継続。
-: > "/tmp/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
-  echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
+: > "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
+  echo "WARNING: ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
 
-raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
-intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
-intermediate_author="/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
-intermediate_skip="/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
+raw_json="${TMPDIR:-/tmp}/rite-fix-raw-{pr_number}-{target_comment_id}.json"
+intermediate_body="${TMPDIR:-/tmp}/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
+intermediate_author="${TMPDIR:-/tmp}/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
+intermediate_skip="${TMPDIR:-/tmp}/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
 
 gh_api_err=""
 jq_err=""
@@ -850,7 +850,7 @@ trap '_rite_fix_blockA_cleanup; exit 129' HUP
 # mktemp で gh_api_err を作成 (trap セットアップ後)
 # 注: gh api の stderr は専用一時ファイルに退避し 2>&1 で stdout に混入させない (invalid JSON 化防止)
 # rationale: references/design-rationale.md#fast-path-block-design
-gh_api_err=$(mktemp /tmp/rite-fix-gh-api-err-XXXXXX) || {
+gh_api_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-gh-api-err-XXXXXX") || {
   echo "エラー: gh_api_err 一時ファイルの作成に失敗しました" >&2
   echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_gh_api_err" >&2
   exit 1
@@ -883,7 +883,7 @@ if ! printf '%s' "$target_comment" > "$raw_json"; then
 fi
 
 # jq_err mktemp (jq stderr 退避用)
-jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
+jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-jq-err-XXXXXX") || {
   echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
   echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_jq_late_err" >&2
   exit 1
@@ -960,10 +960,10 @@ echo "[CONTEXT] BLOCK_A_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 # .issue_url post-condition で「コメント ID が別 PR/Issue に属する」silent misclassification を検出する
 # (背景: references/design-rationale.md#fast-path-block-design)。
 
-raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
-intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
-intermediate_author="/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
-intermediate_skip="/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
+raw_json="${TMPDIR:-/tmp}/rite-fix-raw-{pr_number}-{target_comment_id}.json"
+intermediate_body="${TMPDIR:-/tmp}/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
+intermediate_author="${TMPDIR:-/tmp}/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
+intermediate_skip="${TMPDIR:-/tmp}/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
 
 jq_err=""
 
@@ -989,7 +989,7 @@ if [ ! -s "$raw_json" ]; then
   exit 1
 fi
 
-jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX) || {
+jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-jq-err-XXXXXX") || {
   echo "エラー: jq エラー一時ファイルの作成に失敗しました" >&2
   echo "[CONTEXT] FASTPATH_FETCH_FAILED=1; reason=mktemp_failed_jq_block_b" >&2
   _rite_fix_blockB_invalidate_upstream
@@ -1046,14 +1046,14 @@ echo "[CONTEXT] BLOCK_B_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 # raw_json は存在 check のみ参照し内容は consume しない (trap cleanup 対象には含める)。
 # rationale: references/design-rationale.md#fast-path-block-design
 
-raw_json="/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json"
-intermediate_body="/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
-intermediate_author="/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
-intermediate_skip="/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
+raw_json="${TMPDIR:-/tmp}/rite-fix-raw-{pr_number}-{target_comment_id}.json"
+intermediate_body="${TMPDIR:-/tmp}/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt"
+intermediate_author="${TMPDIR:-/tmp}/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt"
+intermediate_skip="${TMPDIR:-/tmp}/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt"
 
-body_file="/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
-author_file="/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
-skip_file="/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
+body_file="${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
+author_file="${TMPDIR:-/tmp}/rite-fix-target-author-{pr_number}-{target_comment_id}.txt"
+skip_file="${TMPDIR:-/tmp}/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt"
 
 handoff_committed=0
 _rite_fix_blockC_cleanup() {
@@ -1123,12 +1123,17 @@ fi
 # ステップ 1.5 / Fast Path Cancel exit / Step C error exit — で明示的に削除する)
 handoff_committed=1
 
-# Block 境界 sentinel emit (observability / debugging trail)
-echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={target_comment_id}" >&2
+# Block 境界 sentinel emit (observability / debugging trail)。body_file= / author_file= /
+# skip_file= は後続 phase の Read tool 参照用の実パス (sandbox 環境で $TMPDIR 配下となるため、
+# リテラル /tmp 前提で読めない。handoff 3 本すべてを surface する — 片方だけの marker 化は
+# sibling の取り残しになる)
+echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={target_comment_id}; body_file=$body_file; author_file=$author_file; skip_file=$skip_file" >&2
 ```
 
 
 **Parsing rule**:
+
+> `$target_body` の実体は Block C が書き出した body_file であり、Claude は **Block C の `[CONTEXT] BLOCK_C_COMPLETE` marker の `body_file=` 値をリテラル使用して Read tool で読む**（Read tool は `${TMPDIR:-/tmp}` を展開できないため documented path 形式では読めない。specific path 必須、wildcard glob 禁止）。
 
 1. If `$target_body` contains `## 📜 rite レビュー結果`: **ステップ 1.2.1 で定義された table パースロジック** (`### 全指摘事項` を起点に reviewer サブセクションごとの table を解析し `severity_map` を構築する手順) を `$target_body` に対して適用する。**ステップ 1.2.1 のコメント取得処理 (broad retrieval) は実行しない** — 対象コメントは既に取得済みのため
 2. Otherwise (外部ツール: `/verified-review` skill、`pr-review-toolkit:review-pr` plugin、手動コメント等): **best-effort parse**
@@ -1208,15 +1213,15 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
    # Cancel / Re-run / Step C error 共通: ハンドオフ 3 + raw_json + intermediate 3 + confidence_override + pr-comment tempfile (合計 9 本) を削除してから exit する
    # Fast Path bash block 外なので変数は失われている → specific path で直接削除する
    # (wildcard glob は並列セッション破壊のため絶対禁止。rm -f は idempotent なので二重削除でも副作用なし)
-   rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
-         "/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
-         "/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
-         "/tmp/rite-fix-pr-comment-{pr_number}.txt"
+   rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
+         "${TMPDIR:-/tmp}/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
+         "${TMPDIR:-/tmp}/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
+         "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
+         "${TMPDIR:-/tmp}/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
+         "${TMPDIR:-/tmp}/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
+         "${TMPDIR:-/tmp}/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
+         "${TMPDIR:-/tmp}/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
+         "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
    ```
 
    この cleanup を実行する 3 つの経路:
@@ -1301,12 +1306,12 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 
 | Flag | 型 | 初期値 | 永続化先 |
 |------|---|--------|---------|
-| **`confidence_override_count`** | int | `0` | `wc -l < /tmp/rite-fix-confidence-override-{pr_number}.txt` の出力 (空ファイル → `0`) |
-| **`confidence_override_findings`** | list[str] (`"file:line"` の配列) | `[]` | `/tmp/rite-fix-confidence-override-{pr_number}.txt` の各行 (1 行 1 finding) |
+| **`confidence_override_count`** | int | `0` | `wc -l < ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` の出力 (空ファイル → `0`) |
+| **`confidence_override_findings`** | list[str] (`"file:line"` の配列) | `[]` | `${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` の各行 (1 行 1 finding) |
 
 **Tempfile lifecycle** (specific path 必須、wildcard glob 禁止):
 
-- **Path**: `/tmp/rite-fix-confidence-override-{pr_number}.txt` ({pr_number} は ステップ 1.0 で正規化済み)
+- **Path**: `${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` ({pr_number} は ステップ 1.0 で正規化済み)
 - **作成タイミング**: ステップ 1.2 best-effort parse で最初の override 候補が出現した時点で **truncate 付きで作成** (`: > {path}` または `printf '' > {path}`)。`touch` は既存ファイルを truncate しないため使用禁止 (理由: [design-rationale.md#confidence-gate-notes](references/design-rationale.md#confidence-gate-notes))。
 - **追記タイミング**: AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに `printf '%s\n' "{file}:{line}" >> {path}`
 - **読み出しタイミング**: ステップ 4.6 / 4.5.3 / 4.3.4 で `wc -l < {path}` (件数) / `cat {path}` (本文) で取得
@@ -1315,18 +1320,18 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
   - **Standalone flow**: ステップ 5 は skip されるため、ステップ 4.6 の completion report 出力後に明示的 cleanup bash block を実行する
   - **ステップ 1.4 cancel 経路**: 既存の Fast Path 一時ファイル cleanup bash block に追加 (同一 block 内で削除)
   - **ステップ 1.2 best-effort parse error 経路**: Cancel/Re-run cleanup に追加
-- **並列セッション分離**: `{pr_number}` suffix で specific path とすることで、並列 fix 実行時の他セッション破壊を防ぐ。`/tmp/rite-fix-confidence-override-*.txt` のような wildcard glob は **絶対に使わない**
+- **並列セッション分離**: `{pr_number}` suffix で specific path とすることで、並列 fix 実行時の他セッション破壊を防ぐ。`${TMPDIR:-/tmp}/rite-fix-confidence-override-*.txt` のような wildcard glob は **絶対に使わない**
 
 **Claude による retain と再注入の手順** (data flow の具体化、ファイル永続化版):
 
-1. **H-1 修正**: ステップ 1.2 進入時 (Fast Path / Broad Retrieval bash block 冒頭の両方) で `: > /tmp/rite-fix-confidence-override-{pr_number}.txt` を **無条件 truncate** する。これにより、SIGINT/SIGTERM/SIGHUP で前セッションの override file が orphan として残った場合でも、次回起動時の混入を決定論的に防ぐ。また、ステップ 1.2 best-effort parse で最初の override 候補が出現した時点でも追加で truncate してよい (defense-in-depth、害なし)
-2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、bash block 内で `printf '%s\n' "{file}:{line}" >> /tmp/rite-fix-confidence-override-{pr_number}.txt` を実行 (追記、`>>` で append)
+1. **H-1 修正**: ステップ 1.2 進入時 (Fast Path / Broad Retrieval bash block 冒頭の両方) で `: > ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` を **無条件 truncate** する。これにより、SIGINT/SIGTERM/SIGHUP で前セッションの override file が orphan として残った場合でも、次回起動時の混入を決定論的に防ぐ。また、ステップ 1.2 best-effort parse で最初の override 候補が出現した時点でも追加で truncate してよい (defense-in-depth、害なし)
+2. AskUserQuestion で「Confidence 70 のままバイパス」が選択されるたびに、bash block 内で `printf '%s\n' "{file}:{line}" >> ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` を実行 (追記、`>>` で append)
 3. ステップ 4.6 / 4.5.3 / 4.3.4 の placeholder 展開時、bash block で以下を実行して値を取得 (会話履歴 grep に依存しない、`2>/dev/null` の silent IO suppression も撤廃):
    ```bash
-   override_path="/tmp/rite-fix-confidence-override-{pr_number}.txt"
+   override_path="${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt"
    if [ -f "$override_path" ]; then
      # wc -l の stderr を独立退避 (IO エラーの silent count=0 化で監査トレースが drop するのを防ぐ)
-     override_err=$(mktemp /tmp/rite-fix-confidence-override-err-XXXXXX) || {
+     override_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-confidence-override-err-XXXXXX") || {
        echo "ERROR: override_err mktemp 失敗" >&2
        echo "[CONTEXT] CONFIDENCE_OVERRIDE_READ_FAILED=1; reason=mktemp_failed_override_err" >&2
        exit 1
@@ -1354,7 +1359,7 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
    ```
 4. fix ループ中に他のフェーズから上記ファイルを上書きしない (append-only)
 5. 終了経路の明示的削除:
-   - **E2E flow (ステップ 5.1)**: `rm -f /tmp/rite-fix-confidence-override-{pr_number}.txt`
+   - **E2E flow (ステップ 5.1)**: `rm -f ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt`
    - **Standalone flow (ステップ 5.2)**: ステップ 4.6 の completion report 出力後に明示的 cleanup bash block で削除
    - **ステップ 1.4 cancel 経路**: Fast Path ハンドオフ cleanup bash block 内で同時に削除 (下記 Cancel cleanup block 参照)
    - **ステップ 1.2 best-effort parse cancel/error 経路**: 「Cancel/Re-run 経路でのハンドオフ cleanup 義務」bash block 内で同時に削除
@@ -1383,8 +1388,8 @@ When the standard flow is active (no `target_comment_id`), retrieve PR review co
 ```bash
 # confidence_override tempfile の orphan 防止: Fast Path 経路と同様、ステップ 1.2 進入時に
 # **無条件 truncate** (specific path 必須 — wildcard glob は絶対に使わない)
-: > "/tmp/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
-  echo "WARNING: /tmp/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
+: > "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" 2>/dev/null || \
+  echo "WARNING: ${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt の truncate に失敗しました (read-only / permission denied?)" >&2
 
 # Broad Retrieval 経路の exit code check (Fast Path と同じ fail-fast + stderr 退避 + canonical 4 行 trap)
 gh_api_err=""
@@ -1396,7 +1401,7 @@ trap '_rite_fix_broad_retrieval_cleanup; exit 130' INT
 trap '_rite_fix_broad_retrieval_cleanup; exit 143' TERM
 trap '_rite_fix_broad_retrieval_cleanup; exit 129' HUP
 
-gh_api_err=$(mktemp /tmp/rite-fix-broad-retrieval-err-XXXXXX) || {
+gh_api_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-broad-retrieval-err-XXXXXX") || {
   echo "エラー: Broad Retrieval stderr 一時ファイルの作成に失敗しました" >&2
   echo "[CONTEXT] COMMENT_FETCH_FAILED=1; reason=mktemp_failed_gh_api_err" >&2
   exit 1
@@ -1434,8 +1439,8 @@ echo "$pr_comments" | jq '.[] | {id: .id, body: .body, author: .author.login, cr
 # pr_review_comment_body は tempfile 経由で Priority 3 block へ hand-off する (specific path 必須)。
 # 書き出し失敗時は WARNING で continue (tempfile が無ければ Priority 3 が fail-fast する)。
 # rationale: references/design-rationale.md#pr-comment-raw-json-extraction
-pr_comment_body_file="/tmp/rite-fix-pr-comment-{pr_number}.txt"
-jq_broad_err=$(mktemp /tmp/rite-fix-broad-jq-err-XXXXXX 2>/dev/null) || jq_broad_err=""
+pr_comment_body_file="${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
+jq_broad_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-broad-jq-err-XXXXXX" 2>/dev/null) || jq_broad_err=""
 if rite_review_body=$(printf '%s' "$pr_comments" | jq -r '
   [.[] | select(.body | contains("## 📜 rite レビュー結果"))]
   | sort_by(.createdAt) | last | .body // empty
@@ -1481,7 +1486,7 @@ trap '_rite_fix_broad_graphql_cleanup; exit 130' INT
 trap '_rite_fix_broad_graphql_cleanup; exit 143' TERM
 trap '_rite_fix_broad_graphql_cleanup; exit 129' HUP
 
-gh_api_err=$(mktemp /tmp/rite-fix-broad-retrieval-err-XXXXXX) || {
+gh_api_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-broad-retrieval-err-XXXXXX") || {
   echo "エラー: Broad Retrieval stderr 一時ファイルの作成に失敗しました" >&2
   exit 1
 }
@@ -1700,15 +1705,15 @@ PR #{number} のレビューコメント
 # ステップ 1.4 「キャンセル」選択時の cleanup (silent orphan ファイル防止)
 # Fast Path bash block 外なので変数は失われている → specific path で直接削除する
 # (wildcard glob 絶対禁止。Broad Retrieval 経路ではファイル不在のため rm -f は silent no-op)
-rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
-      "/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
-      "/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-pr-comment-{pr_number}.txt"
+rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
+      "${TMPDIR:-/tmp}/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
 **FINALIZE handoff の設定 (E2E flow 時のみ)**: `[fix:cancelled-by-user]` は終了 sentinel のため、`/rite:iterate` ステップ5 中断通知を構造的に強制する FINALIZE handoff をセットする。`[fix:cancelled-by-user]` は本ステップ (ステップ 1.4 cancel) の早期 exit で emit され Step 5.1 を経由しないため、handoff は**ここで**セットする。**E2E flow の場合のみ** (ステップ 5 Flow detection 表と同一判定: `rite:fix` が Skill 経由で invoke された / work memory に `コマンド: /rite:open`) 下記 bash を `[fix:cancelled-by-user]` 出力の直前に実行する。standalone 実行 (ユーザーが `/rite:fix` を直接入力) では実行しない (`--if-exists` も二次的に gate するが、prose 判定が primary = AC-4)。
@@ -1748,12 +1753,12 @@ Terminate processing.
 
 ### 1.5 Fast Path Handoff File Cleanup (ステップ 1 終端)
 
-**Execution condition**: Fast Path 経由で一時ファイル (`/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成し、かつ ステップ 1.4 を「キャンセル以外」(= 「すべての指摘に対応」「CRITICAL/HIGH のみ対応」「特定の指摘を選択」のいずれか) で完走した場合のみ実行する。Broad Comment Retrieval 経路 (Fast Path 未経由) や ステップ 1.4 「キャンセル」経路ではこれらのファイルは存在しないか別経路 (ステップ 1.4 「キャンセル」Behavior block) で削除済みのため、`rm -f` は silent no-op となる。
+**Execution condition**: Fast Path 経由で一時ファイル (`${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成し、かつ ステップ 1.4 を「キャンセル以外」(= 「すべての指摘に対応」「CRITICAL/HIGH のみ対応」「特定の指摘を選択」のいずれか) で完走した場合のみ実行する。Broad Comment Retrieval 経路 (Fast Path 未経由) や ステップ 1.4 「キャンセル」経路ではこれらのファイルは存在しないか別経路 (ステップ 1.4 「キャンセル」Behavior block) で削除済みのため、`rm -f` は silent no-op となる。
 
 **Purpose**: ステップ 1.2 Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を明示的に削除する。**ステップ 1.5 として独立に実行する** (ステップ 1 の最終サブフェーズ、ステップ 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
 
 **Important — specific path 必須** (並列 fix 実行の他セッション破壊防止):
-- wildcard glob (`/tmp/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
+- wildcard glob (`${TMPDIR:-/tmp}/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
 - 必ず `{pr_number}-{target_comment_id}` suffix を含む specific path で削除する
 
 ```bash
@@ -1763,14 +1768,14 @@ Terminate processing.
 # {pr_number} / {target_comment_id} は Claude が ステップ 1.0 の parse 結果で事前置換済み。
 # 注: confidence_override tempfile はここでは削除しない (fix ループ全体で参照。削除は ステップ 5.1 /
 # ステップ 4.6 後)。
-rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
-      "/tmp/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
-      "/tmp/rite-fix-pr-comment-{pr_number}.txt"
+rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-target-author-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-raw-{pr_number}-{target_comment_id}.json" \
+      "${TMPDIR:-/tmp}/rite-fix-intermediate-body-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-intermediate-author-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
 **Idempotency**: `rm -f` は対象ファイルが存在しない場合でも exit 0 で成功するため、Broad Retrieval 経路でも安全に実行できる。また再実行時 (同一 pr_number + target_comment_id で再度 /rite:fix を実行) でも古いファイルが確実に削除される。
@@ -1846,7 +1851,7 @@ Confirm the fix approach for each finding (only for findings whose scope is NOT 
 | Fast Path 経由 かつ `target_author_mention_skip == "false"` | `@{target_author}` | `@{target_author}` |
 | Fast Path 経由 かつ `target_author_mention_skip == "true"` | `(不明なレビュアー)` | `(unknown reviewer)` |
 
-Claude は ステップ 1 末尾で `/tmp/rite-fix-target-author-skip-{pr_number}-{target_comment_id}.txt` を Read tool で読み (specific path 必須、wildcard glob は並列セッション破壊のため絶対禁止)、`"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
+Claude は ステップ 1 末尾で skip_file を、`{target_author}` が必要な箇所では author_file を、それぞれ Read tool で読む (パスは Block C の `[CONTEXT] BLOCK_C_COMPLETE` marker の `skip_file=` / `author_file=` / `body_file=` 値をリテラル使用する — Read tool は `${TMPDIR:-/tmp}` を展開できないため、handoff 3 本すべて marker 値経由で読む。specific path 必須、wildcard glob は並列セッション破壊のため絶対禁止)。skip_file が `"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
 
 **複数 reviewer 時の `{reviewer_display_N}` 展開ルール** (ステップ 3.2 trailer / ステップ 4.2 PR comment 報告で使用):
 
@@ -1974,7 +1979,7 @@ if ! mkdir -p "$state_dir" 2>/dev/null; then
   exit 0
 fi
 
-if ! tmpfile=$(mktemp /tmp/rite-fix-accept-fp-${pr_number}-XXXXXX 2>/dev/null); then
+if ! tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-fix-accept-fp-${pr_number}-XXXXXX" 2>/dev/null); then
   echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=mktemp_failed" >&2
   exit 0
 fi
@@ -2064,20 +2069,20 @@ When "コードを修正する" is selected:
    # 形式で捕捉する (bang pipeline は then-branch 内で $? が常に 0 を返すため使用禁止)
    if git grep -nE "\\b${target_symbol}\\b" -- \
      '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.rb' '*.go' '*.rs' \
-     '*.sh' '*.bash' '*.md' '*.yml' '*.yaml' '*.json' > /tmp/rite-fix-impact-scan-$$.txt 2>/tmp/rite-fix-impact-scan-err-$$.txt; then
+     '*.sh' '*.bash' '*.md' '*.yml' '*.yaml' '*.json' > "${TMPDIR:-/tmp}/rite-fix-impact-scan-$$.txt" 2>"${TMPDIR:-/tmp}/rite-fix-impact-scan-err-$$.txt"; then
      :  # match あり (rc=0) — 結果は tmpfile に展開済、Step 2 へ
    else
      rc=$?
      case "$rc" in
        1) : ;; # match なし (期待動作)、空の影響範囲として Step 2 へ
        128|*)
-         echo "WARNING: git grep failed (rc=$rc): $(cat /tmp/rite-fix-impact-scan-err-$$.txt 2>/dev/null)" >&2
+         echo "WARNING: git grep failed (rc=$rc): $(cat "${TMPDIR:-/tmp}/rite-fix-impact-scan-err-$$.txt" 2>/dev/null)" >&2
          echo "[CONTEXT] IMPACT_SCAN_DEGRADED=1; reason=git_grep_rc_$rc" >&2
          echo "  Claude は thought-process verbalize 義務を継続し、grep 不可の影響範囲を手動推定すること" >&2
          ;;
      esac
    fi
-   rm -f /tmp/rite-fix-impact-scan-$$.txt /tmp/rite-fix-impact-scan-err-$$.txt
+   rm -f "${TMPDIR:-/tmp}/rite-fix-impact-scan-$$.txt" "${TMPDIR:-/tmp}/rite-fix-impact-scan-err-$$.txt"
    ```
 
    **symbol 不在ケースの fallback** (finding が file:line のみで symbol を含まない場合):
@@ -2319,7 +2324,7 @@ case "$pr_number" in
 esac
 
 # Step 2: acknowledged_nit_count tempfile の defense-in-depth truncate (confidence-override tempfile と同型)
-nit_count_file="/tmp/rite-fix-acknowledged-nit-${pr_number}.txt"
+nit_count_file="${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-${pr_number}.txt"
 : > "$nit_count_file" 2>/dev/null || echo "WARNING: nit_count_file の truncate に失敗しました ($nit_count_file)" >&2
 
 # Step 3: 既投稿 reply の comment_id set を生成 (冪等性 — Replied-only respect)
@@ -2346,7 +2351,7 @@ for_each_nit_noted_finding() {
 
   # Step 4a: reply body 構築 (固定文言 + 元コメント preview)
   local reply_tmpfile
-  reply_tmpfile=$(mktemp /tmp/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md) || {
+  reply_tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md") || {
     echo "[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=mktemp_failed" >&2
     return 1
   }
@@ -2400,7 +2405,7 @@ EOF
 | Flag | reason | Description |
 |------|--------|-------------|
 | `NIT_NOTED_REPLY_SKIPPED` | `already_replied` | 既に `nit、認知済 (scope=nit-noted` を含む reply が当該 comment に投稿済 (冪等性 — Replied-only respect)。`acknowledged_nit_count` 集計対象外 |
-| `NIT_NOTED_REPLY_FAILED` | `mktemp_failed` | reply body 用 tempfile (`/tmp/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md`) の mktemp が失敗 (disk full / inode 枯渇 / permission denied)。non-blocking、当該 finding は skip して次へ進む |
+| `NIT_NOTED_REPLY_FAILED` | `mktemp_failed` | reply body 用 tempfile (`${TMPDIR:-/tmp}/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md`) の mktemp が失敗 (disk full / inode 枯渇 / permission denied)。non-blocking、当該 finding は skip して次へ進む |
 | `NIT_NOTED_REPLY_FAILED` | `gh_api_post_failure` | `jq -n --rawfile body | gh api POST` の pipe が pipefail で exit 非ゼロ (network / auth / rate-limit / `in_reply_to` 不正値)。non-blocking、当該 finding は skip して次へ進む |
 
 **Eval-order enumeration** (ステップ 2.4.N 独立 namespace、ステップ 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
@@ -2854,7 +2859,7 @@ fi
 # grep は pipeline 化せず独立 if-else で実行し rc を直接 case 分岐すること
 # (pipefail は rightmost non-zero を返すため先頭 grep の rc=2 を捕捉できない)。
 # rationale: references/design-rationale.md#work-memory-update-rationale
-pr_body_grep_err=$(mktemp /tmp/rite-fix-pr-body-grep-err-XXXXXX) || {
+pr_body_grep_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-pr-body-grep-err-XXXXXX") || {
   echo "ERROR: pr_body_grep_err 一時ファイルの作成に失敗" >&2
   echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
   echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_grep_err" >&2
@@ -2897,7 +2902,7 @@ fi
 # git branch は pipeline 化せず if-else で rc を直接捕捉する (pipefail 罠回避、同上 rationale)。
 # wm_emit_done guard: IO error 経路で emit 済みなら branch fallback を skip する
 if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
-  branch_grep_err=$(mktemp /tmp/rite-fix-branch-grep-err-XXXXXX) || {
+  branch_grep_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-branch-grep-err-XXXXXX") || {
     echo "ERROR: branch_grep_err 一時ファイルの作成に失敗" >&2
     echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
     echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_branch_grep_err" >&2
@@ -3183,7 +3188,7 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 | ステップ 2.4.N nit-noted-reply で 0 件投稿 (scope=nit-noted finding なし、または全件 already_replied skip) | `0` |
 | ステップ 2.4.N nit-noted-reply で N 件投稿成功 | `{N}` |
 
-**読み出し方法**: `nit_count_file="/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"` の行数を `wc -l < "$nit_count_file"` で取得する (ステップ 2.4.N で各成功投稿で `echo "$comment_id" >> "$nit_count_file"` により append されている)。tempfile 不在の場合は `0` を表示。ステップ 5.1 cleanup で本 tempfile も削除する。
+**読み出し方法**: `nit_count_file="${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"` の行数を `wc -l < "$nit_count_file"` で取得する (ステップ 2.4.N で各成功投稿で `echo "$comment_id" >> "$nit_count_file"` により append されている)。tempfile 不在の場合は `0` を表示。ステップ 5.1 cleanup で本 tempfile も削除する。
 
 **重要**: `acknowledged_nit_count == 0` の場合でも本行は省略せず常に表示する (M2 受け流し経路の動作観測のため、ゼロ件であることを明示)。本 metric は `/rite:pr-review` ステップ 5.3 評価では使われない (nit-noted は `overall_assessment` に影響せず、mergeable 判定の countdown 対象外 — [`assessment-rules.md`](./references/assessment-rules.md) §5.3.1 参照)。fix loop 内で `acknowledged_nit_count > 0` の場合、`プッシュ: 未実行` かつ 本 cycle 内で accept 決定なし (判定条件はステップ 5.1 Output Pattern テーブル row 4/5 参照) かつ `全指摘 == 対応指摘` であれば re-review はトリガーされず、本 cycle で finalize する (AC-1: nit-only PR の 2 cycle 即収束)。
 
@@ -3265,10 +3270,10 @@ The fix content includes: PR number, findings addressed, fix strategies used, an
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
-# ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下 または /tmp/rite-* prefix のみを受容する
-# mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
-tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
-trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
+# ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下・/tmp/rite-*・$TMPDIR/rite-* prefix のみを受容する
+# mktemp デフォルトの ${TMPDIR:-/tmp}/tmp.* では trigger が exit 1 で silent fail する
+tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX")
+trigger_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-err-XXXXXX") || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
 content_write_failed=0  # heredoc write 失敗フラグ (Step 3 で genuine trigger 失敗と区別するため carry-forward)
@@ -3369,7 +3374,7 @@ trap 'rm -f "${commit_err:-}"' EXIT INT TERM HUP
 # mktemp failure must NOT silently swallow wiki-ingest-commit.sh stderr (review / fix / close で対称)。
 # rc 捕捉は `if cmd; then :; else rc=$?; fi` 形式 (「!」否定は $? を反転するため使用禁止)
 # rationale: references/design-rationale.md#wiki-ingest-notes
-if commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
+if commit_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-commit-err-XXXXXX" 2>/dev/null); then
   : # mktemp 成功 — commit_err は valid path
 else
   mktemp_commit_err_rc=$?
@@ -3530,7 +3535,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 ```bash
 # hook stderr を tempfile に退避し、lock failure と他 failure を区別して分岐する
 # rationale: references/design-rationale.md#output-pattern-notes
-hook_err=$(mktemp /tmp/rite-fix-hook-err-XXXXXX) || {
+hook_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-hook-err-XXXXXX") || {
   echo "WARNING: hook_err mktemp 失敗 — local work memory hook を skip します (E2E flow 続行)" >&2
   hook_err=""
 }
@@ -3645,7 +3650,7 @@ comm -23 \
 | `pr_number_mismatch` | ステップ 1.2 | コメントの所属 PR と指定 pr_number が一致しない (silent misclassification) |
 | `reply_tmpfile_empty` | ステップ 2.4 | reply body の tmpfile が cat 成功だが空 |
 | `wc_io_error` | ステップ 1.3 | `wc -l` が IO エラーで失敗 |
-| `raw_json_write_failed` | ステップ 1.2 Fast Path Block A | Block A の raw JSON 中間ファイル (`/tmp/rite-fix-raw-{pr}-{cid}.json`) への printf 書き出しが IO エラーで失敗 |
+| `raw_json_write_failed` | ステップ 1.2 Fast Path Block A | Block A の raw JSON 中間ファイル (`${TMPDIR:-/tmp}/rite-fix-raw-{pr}-{cid}.json`) への printf 書き出しが IO エラーで失敗 |
 | `jq_author_extract_failed` | ステップ 1.2 Fast Path Block A | Block A の `jq -r '.user.login // empty'` が exit != 0 で失敗 (jq バイナリ異常 / OOM / parse error) |
 | `raw_json_missing_at_block_b` | ステップ 1.2 Fast Path Block B | Block B 進入時に Block A の raw JSON 中間ファイルが存在しない or 空 (Block A 失敗 / 並列実行で削除 / orchestrator 異常終了で Block B 未到達) |
 | `mktemp_failed_jq_block_b` | ステップ 1.2 Fast Path Block B | Block B の jq stderr 退避用 tempfile の mktemp が失敗 |
@@ -3671,11 +3676,11 @@ comm -23 \
 # fix ループ全体で append されてきたファイルを終了時に削除する。
 # rationale: references/design-rationale.md#confidence-gate-notes
 # pr-comment tempfile も追加 (Broad Retrieval が書き出した
-# /tmp/rite-fix-pr-comment-{pr_number}.txt の正常時 cleanup)。Fast Path 経路では存在しないため
+# ${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt の正常時 cleanup)。Fast Path 経路では存在しないため
 # silent no-op となる。
-rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
-      "/tmp/rite-fix-pr-comment-{pr_number}.txt" \
-      "/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"
+rm -f "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"
 ```
 
 > **Note (work memory backup)**: work memory body の backup (生成・成功時削除・失敗時 preserve) は `issue-comment-wm-sync.sh` が内部で完結させる (helper の Step 3/6 参照)。本コマンドの caller 側では backup を生成・cleanup しないため、ステップ 5.1 の output pattern に応じた手動 backup cleanup も行わない。
@@ -3702,16 +3707,16 @@ For standalone execution, ステップ 5 is not executed. The completion report 
 
 **Confidence override tempfile cleanup** (Standalone 経路の orphan 防止):
 
-Standalone 実行では ステップ 5 が skip されるため、ステップ 4.6 の completion report 出力**直後**に明示的な cleanup bash block を実行して confidence_override tempfile を削除する。これを忘れると `/tmp/rite-fix-confidence-override-{pr_number}.txt` が orphan として永続残留し、次回同 PR 実行時に `touch` ではなく `: >` truncate を入れていても、何らかの経路で truncate 呼び出しが skip された場合に stale データが混入するリスクがある (defense-in-depth)。
+Standalone 実行では ステップ 5 が skip されるため、ステップ 4.6 の completion report 出力**直後**に明示的な cleanup bash block を実行して confidence_override tempfile を削除する。これを忘れると `${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` が orphan として永続残留し、次回同 PR 実行時に `touch` ではなく `: >` truncate を入れていても、何らかの経路で truncate 呼び出しが skip された場合に stale データが混入するリスクがある (defense-in-depth)。
 
 ```bash
 # ステップ 5.2 Standalone 経路: confidence_override + pr-comment + acknowledged-nit tempfile の明示的 cleanup
 # 実行タイミング: ステップ 4.6 の completion report を表示した直後
 # {pr_number} は Claude が ステップ 1.0 の parse 結果で事前置換済み
 # pr-comment tempfile + acknowledged-nit tempfile も追加
-rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
-      "/tmp/rite-fix-pr-comment-{pr_number}.txt" \
-      "/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"
+rm -f "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt" \
+      "${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"
 ```
 
 **Idempotency**: override tempfile が作成されなかった経路 (confidence override 発動なし) では `rm -f` は silent no-op となり安全。

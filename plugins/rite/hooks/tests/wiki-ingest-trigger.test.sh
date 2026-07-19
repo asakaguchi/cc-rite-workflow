@@ -686,6 +686,7 @@ echo ""
 
 # ==========================================================================
 # Phase: regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
+#        + $TMPDIR/rite-* arm (Issue #1904 sandbox 対応)
 # ==========================================================================
 
 # /tmp 外ファイルの明示 cleanup (review F-04: TEST_DIR 外は main cleanup() の対象外)
@@ -775,6 +776,86 @@ if [ $rc -eq 1 ]; then
 else
   fail "Expected exit 1 for mktemp default, got rc=$rc, stderr=$(cat "$dir36b/err.log")"
 fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036c: Content-file in $TMPDIR/rite-* → exit 0 (Issue #1904 sandbox arm)
+# --------------------------------------------------------------------------
+# sandbox 有効環境では /tmp 直下が読み込み専用のため、caller は
+# mktemp "${TMPDIR:-/tmp}/rite-...-XXXXXX" で $TMPDIR 配下に content-file を作る。
+# 本 TC は realpath 解決後の $TMPDIR/rite-* 受理 arm (正例) を pin する。
+# content-file は $PWD 外・/tmp/rite-* 外に置き、新 arm だけが受理経路になるようにする。
+echo "TC-036c: Content-file in \$TMPDIR/rite-* → exit 0 (sandbox arm)"
+dir36c="$TEST_DIR/tc36c"
+mkdir -p "$dir36c"
+cat > "$dir36c/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+tmpdir36c=$(mktemp -d)
+echo "review body" > "$tmpdir36c/rite-content-1904.md"
+( cd "$dir36c" && TMPDIR="$tmpdir36c" bash "$HOOK" --type reviews --source-ref pr-1904 --content-file "$tmpdir36c/rite-content-1904.md" > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  target_path36c=$(head -1 "$dir36c/out.log" | tr -d '[:space:]')
+  if [ -n "$target_path36c" ] && [ -f "$dir36c/$target_path36c" ]; then
+    pass "\$TMPDIR/rite-* content-file → exit 0 + raw file created"
+  else
+    fail "\$TMPDIR/rite-* → rc=0 but output file not found (path='$target_path36c')"
+  fi
+else
+  fail "Expected rc=0 for \$TMPDIR/rite-* arm, got rc=$rc, stderr=$(cat "$dir36c/err.log")"
+fi
+rm -rf "$tmpdir36c"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036d: Content-file in $TMPDIR but not rite-* prefix → exit 1 (負例)
+# --------------------------------------------------------------------------
+# 新 arm は $TMPDIR 全体を開けるのではなく rite-* namespace に限定する。
+# prefix 制約が落ちると任意の $TMPDIR ファイルが wiki 公開経路に乗るため、
+# 負例で prefix-glob (`${resolved_tmpdir%/}"/rite-*`) の縮小を pin する。
+echo "TC-036d: Content-file in \$TMPDIR without rite-* prefix → exit 1"
+dir36d="$TEST_DIR/tc36d"
+mkdir -p "$dir36d"
+cat > "$dir36d/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+tmpdir36d=$(mktemp -d)
+echo "x" > "$tmpdir36d/other-content.md"
+( cd "$dir36d" && TMPDIR="$tmpdir36d" bash "$HOOK" --type reviews --source-ref pr-1904 --content-file "$tmpdir36d/other-content.md" >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must be under' "$dir36d/err.log"; then
+  pass "\$TMPDIR non-rite file → exit 1 (prefix constraint enforced)"
+else
+  fail "Expected exit 1 with 'must be under', got rc=$rc, stderr=$(cat "$dir36d/err.log")"
+fi
+rm -rf "$tmpdir36d"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036e: TMPDIR realpath 失敗 → arm 無効化 (fail-closed) + WARNING + exit 1
+# --------------------------------------------------------------------------
+# TMPDIR が解決不能なとき arm は silent に開かず縮小方向に倒れる (fail-closed)。
+# 同時に診断 WARNING (`$TMPDIR/rite-* arm disabled`) を stderr へ残す契約を pin する
+# (WARNING が消えると rejection message の「$TMPDIR/rite-* も受容」が誤誘導になる)。
+echo "TC-036e: TMPDIR realpath failure → arm disabled + WARNING + exit 1"
+dir36e="$TEST_DIR/tc36e"
+mkdir -p "$dir36e"
+cat > "$dir36e/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+tmpdir36e=$(mktemp -d)
+echo "x" > "$tmpdir36e/rite-content-1904.md"
+( cd "$dir36e" && TMPDIR="/nonexistent/rite-tmpdir-1904" bash "$HOOK" --type reviews --source-ref pr-1904 --content-file "$tmpdir36e/rite-content-1904.md" >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] \
+   && grep -q 'arm disabled' "$dir36e/err.log" \
+   && grep -q 'must be under' "$dir36e/err.log"; then
+  pass "unresolvable TMPDIR → fail-closed reject + diagnostic WARNING"
+else
+  fail "Expected exit 1 with 'arm disabled' WARNING + rejection, got rc=$rc, stderr=$(cat "$dir36e/err.log")"
+fi
+rm -rf "$tmpdir36e"
 echo ""
 
 # ==========================================================================

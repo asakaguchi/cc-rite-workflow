@@ -36,7 +36,7 @@ Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase
 # pipefail を有効化して pipeline 途中の失敗も捕捉する。
 set -o pipefail
 pr_number="{pr_number}"
-gh_err=$(mktemp /tmp/rite-fc-gh-err-XXXXXX 2>/dev/null) || gh_err=""
+gh_err=$(mktemp "${TMPDIR:-/tmp}/rite-fc-gh-err-XXXXXX" 2>/dev/null) || gh_err=""
 if ! comments=$(gh api --paginate --slurp repos/{owner}/{repo}/issues/${pr_number}/comments 2>"${gh_err:-/dev/null}" \
     | jq 'add | [.[] | select(.body | contains("📜 rite レビュー結果"))] | .[-2:]'); then
   echo "WARNING: gh api による PR コメント取得または jq filter に失敗。cycling check を skip します (fail-open)" >&2

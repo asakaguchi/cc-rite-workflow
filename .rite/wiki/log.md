@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-19T15:20:00+09:00 | lint:warning | — | contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=267, broken_refs=0 |
 | 2026-07-19T15:00:00+09:00 | create | [機械的一括置換は同一リテラルの役割差を無視すると load-bearing fixture を壊す](pages/anti-patterns/bulk-substitution-ignores-literal-role.md) | raw/reviews/20260719T051605Z-pr-1910.md ほか計 3 件を新規ページ化 — スクラッチ/load-bearing fixture/export 後評価/文字列リテラル内の 4 役割で置換可否が分かれる判別基準を PR #1910（3 reviewer 独立 HIGH 指摘）から抽出 |
 | 2026-07-19T15:00:00+09:00 | create | [再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する](pages/heuristics/guard-script-contract-calibration.md) | raw/reviews/20260719T030534Z-pr-1909-c3.md ほか計 4 件を新規ページ化 — regex と宣言意図の乖離・Known boundary 節の完全列挙・opt-in flag の実装と配線の同一コミット化を PR #1909 cycle 3-5 から抽出 |
 | 2026-07-19T15:00:00+09:00 | create | [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) | raw/reviews/20260719T022247Z-pr-1909.md ほか計 2 件を新規ページ化 — 最新兄弟の防御継承と sweep 検証の表現形式横断を PR #1909 cycle 1 から抽出 |

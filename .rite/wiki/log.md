@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-19T10:30:00+09:00 | lint:warning | — | contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=267, broken_refs=0 |
 | 2026-07-19T10:25:00+09:00 | update | [セッション worktree + sandbox 環境の 2 つの罠: cwd 相対 write-allowlist によるブロックと `.rite-plugin-root` のブランチ相違](pages/heuristics/worktree-cwd-write-allowlist-and-plugin-root-staleness.md) | raw/reviews/20260719T011000Z-pr-1908.md を統合 — Issue #1896 の正典文書化（git-worktree-patterns.md 症状/原因/対処 subsection + open 2.3-W / batch-run への薄いポインタ、#1901 同型）と付随知見（日本語見出しアンカーの byte 一致事前確認・密段落末尾ポインタの salience 低下）を罠 1 の対処へ追記 |
 | 2026-07-19T08:38:52+09:00 | create | [セッション worktree + sandbox 環境の 2 つの罠: cwd 相対 write-allowlist によるブロックと `.rite-plugin-root` のブランチ相違](pages/heuristics/worktree-cwd-write-allowlist-and-plugin-root-staleness.md) | raw/reviews/20260718T194343Z-pr-1902.md を新規ページ化 — worktree cwd → main checkout 書き込みブロック（Issue #1896 と同種）と `.rite-plugin-root` のブランチ相違による自己参照リスクの 2 罠を PR #1902 の作業中の実測から抽出 |
 | 2026-07-19T08:38:52+09:00 | create | [mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直下ハードコードは sandbox で書き込み拒否される](pages/patterns/mktemp-tmpdir-prefix-for-sandbox-compat.md) | raw/reviews/20260718T194343Z-pr-1902.md を新規ページ化 — sandbox 書き込み許可リストが $TMPDIR 限定であることに起因する mktemp テンプレートの `/tmp` 直下ハードコード問題と canonical fix を PR #1902（本番コード 21 ファイル・4 reviewer 指摘 0 件）から抽出 |

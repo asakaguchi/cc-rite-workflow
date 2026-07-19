@@ -216,7 +216,12 @@ resolved_content=$(realpath -- "$CONTENT_FILE") || {
 # 信頼境界として受理する (Issue #1904。TMPDIR 未設定時は追加 arm なし = 従来挙動)。
 resolved_tmpdir=""
 if [[ -n "${TMPDIR:-}" ]]; then
-  resolved_tmpdir=$(realpath -- "$TMPDIR" 2>/dev/null) || resolved_tmpdir=""
+  resolved_tmpdir=$(realpath -- "$TMPDIR" 2>/dev/null) || {
+    # fail-closed (arm 縮小方向) だが、silent 無効化だと後段の rejection message が
+    # 「$TMPDIR/rite-* も受容」と誤誘導するため診断用 WARNING を残す
+    echo "WARNING: realpath on TMPDIR failed — \$TMPDIR/rite-* arm disabled" >&2
+    resolved_tmpdir=""
+  }
 fi
 case "$resolved_content" in
   "$PWD"/*|/tmp/rite-*|/private/tmp/rite-*)

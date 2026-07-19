@@ -13,7 +13,8 @@
 #   caller (pr-review.md ステップ 6.1.a) は以下を行う:
 #     1. review-result-schema.md に従う JSON body を生成し、`"timestamp"` フィールドに
 #        literal sentinel "__RITE_TS_PLACEHOLDER_7f3a9b2c__" を書き込んだ上で **Write tool** で
-#        tmpfile (例: /tmp/rite-review-result-<pr>.json) に保存する。
+#        tmpfile (例: ${TMPDIR:-/tmp}/rite-review-result-<pr>.json — 実パスは
+#        caller が [CONTEXT] REVIEW_TMP_DIR marker 値で解決する) に保存する。
 #     2. `bash review-result-save.sh --pr <pr> --content-file <tmp>` を実行する。
 #   本 helper が timestamp 算出 / sentinel 注入 / schema validation / collision 回避 /
 #   atomic mv を担う。

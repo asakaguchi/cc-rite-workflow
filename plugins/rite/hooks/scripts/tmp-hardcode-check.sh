@@ -9,24 +9,29 @@
 # (#1894 -> #1900 -> #1902 -> #1904), so this check pins all of them:
 #
 #   P1: mktemp with a /tmp-prefixed template
-#       regex: mktemp[[:space:]]+/tmp/
+#       regex: mktemp + optional flags (-d 等) + optional quote + /tmp/
 #       Fails under sandbox with "read-only file system". Safe form:
 #         mktemp "${TMPDIR:-/tmp}/rite-...-XXXXXX"
-#       The safe form contains no `mktemp /tmp/` substring, so it never matches.
+#       The safe form never places `/tmp/` directly after the (optionally
+#       quoted) template start — the parameter expansion `${TMPDIR:-` always
+#       interposes — so it never matches even in quoted / flagged variants.
 #
 #   P2: fixed /tmp path hardcode (assignment / redirect / -file option)
-#       regex: ="/tmp/  |  >[[:space:]]*/tmp/  |  -file[[:space:]]+/tmp/
+#       regex: =["']?/tmp/  |  >[[:space:]]*["']?/tmp/  |  -file[[:space:]]+["']?/tmp/
 #       Direct writes to /tmp-fixed paths die under sandbox; option guidance
 #       (`--content-file /tmp/...`) steers callers into the same failure.
-#       Safe form: "${TMPDIR:-/tmp}/rite-..." (never matches — the literal
-#       substrings above do not occur in the parameter-expansion form).
+#       Quoted variants (="/tmp/..., ='/tmp/...') and unquoted (=/tmp/...) are
+#       all matched. Safe form: "${TMPDIR:-/tmp}/rite-..." (never matches —
+#       `/tmp/` never directly follows the =/>/-file + optional quote position
+#       in the parameter-expansion form).
 #
-#   P3: git push with upstream tracking (-u)
-#       literal: "git push -u"
-#       The -u upstream write hits the always-denied .git/config protection and
+#   P3: git push with upstream tracking (-u / --set-upstream)
+#       regex: git push + optional interposed flags + (-u | --set-upstream)
+#       The upstream write hits the always-denied .git/config protection and
 #       makes an otherwise-successful push exit non-zero. `git stash push -u`
 #       (include-untracked stash) is a different command and does NOT match:
-#       the interposed "stash" word breaks the `git push -u` token sequence.
+#       the interposed "stash" word breaks the `git push` token sequence.
+#       Known boundary: combined short flags (`-qu`) are not detected.
 #
 # Scan scope: plugins/rite/**/*.{md,sh} plus docs/**/*.md when present.
 # Exclusions:
@@ -145,19 +150,20 @@ check_file() {
     echo "WARNING: target not found: $file" >&2
     return 0
   fi
-  # P1: mktemp + /tmp template
-  grep -nE 'mktemp[[:space:]]+/tmp/' "$file" 2>/dev/null | while IFS=: read -r ln _; do
+  # P1: mktemp + /tmp template (flag 介在・quote 付きバリアントも検出)。
+  # ${TMPDIR:-/tmp} 形式は quote 直後が `/tmp/` にならないため構造的に除外される
+  grep -nE 'mktemp[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*["'"'"']?/tmp/' "$file" 2>/dev/null | while IFS=: read -r ln _; do
     printf '[tmp-hardcode][P1] %s:%s: mktemp /tmp template (sandbox read-only) — use mktemp "${TMPDIR:-/tmp}/..."\n' "$file" "$ln"
   done >> "$FINDINGS_FILE"
-  # P2: fixed /tmp path (assignment / redirect / -file option)。${TMPDIR:-/tmp} 形式は
-  # 下記リテラルを含まないため構造的に除外される
-  grep -nE '="/tmp/|>[[:space:]]*/tmp/|-file[[:space:]]+/tmp/' "$file" 2>/dev/null | while IFS=: read -r ln _; do
+  # P2: fixed /tmp path (assignment / redirect / -file option)。quote 有無の両形を検出。
+  # ${TMPDIR:-/tmp} 形式は =/>/-file + optional quote の直後に `/tmp/` が来ないため除外される
+  grep -nE '=["'"'"']?/tmp/|>[[:space:]]*["'"'"']?/tmp/|-file[[:space:]]+["'"'"']?/tmp/' "$file" 2>/dev/null | while IFS=: read -r ln _; do
     printf '[tmp-hardcode][P2] %s:%s: fixed /tmp path hardcode (sandbox read-only) — use "${TMPDIR:-/tmp}/..."\n' "$file" "$ln"
   done >> "$FINDINGS_FILE"
-  # P3: git push -u (upstream 書込は .git/config 保護で常時拒否)。
-  # `git stash push -u` は token 列が異なりマッチしない
-  grep -nE 'git push -u' "$file" 2>/dev/null | while IFS=: read -r ln _; do
-    printf '[tmp-hardcode][P3] %s:%s: git push -u (upstream write denied under sandbox) — drop -u\n' "$file" "$ln"
+  # P3: git push -u / --set-upstream (upstream 書込は .git/config 保護で常時拒否)。
+  # flag 介在形 (git push --force -u 等) も検出。`git stash push -u` は token 列が異なりマッチしない
+  grep -nE 'git push[[:space:]]+(-[a-zA-Z-]+[[:space:]]+)*(-u|--set-upstream)([[:space:]]|$)' "$file" 2>/dev/null | while IFS=: read -r ln _; do
+    printf '[tmp-hardcode][P3] %s:%s: git push -u/--set-upstream (upstream write denied under sandbox) — drop it\n' "$file" "$ln"
   done >> "$FINDINGS_FILE"
 }
 

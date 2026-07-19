@@ -45,11 +45,12 @@ set -euo pipefail
 # named template for debug traceability and collision safety.
 #
 # Note on mktemp template naming: The repository's phase-scoped callers (skills/*/SKILL.md)
-# use a 3-segment form `/tmp/rite-<phase(review|fix)>-<purpose>-XXXXXX` to preserve origin
-# traceability when many phases share /tmp. This reviewer example is a generic pattern not
-# tied to a specific phase, so we use the simpler 2-segment form `/tmp/rite-<purpose>-XXXXXX`.
-# When adapting this example into a phase-scoped script, extend the template to match
-# (for example, `/tmp/rite-review-gh-api-err-XXXXXX` inside skills/pr-review/SKILL.md).
+# use a 3-segment form `${TMPDIR:-/tmp}/rite-<phase(review|fix)>-<purpose>-XXXXXX` to preserve
+# origin traceability when many phases share the tmp namespace. This reviewer example is a
+# generic pattern not tied to a specific phase, so we use the simpler 2-segment form
+# `${TMPDIR:-/tmp}/rite-<purpose>-XXXXXX`. When adapting this example into a phase-scoped
+# script, extend the template to match
+# (for example, `${TMPDIR:-/tmp}/rite-review-gh-api-err-XXXXXX` inside skills/pr-review/SKILL.md).
 gh_err=""
 _pa_cleanup() { rm -f "${gh_err:-}"; }
 trap 'rc=$?; _pa_cleanup; exit $rc' EXIT

@@ -4,10 +4,12 @@ title: "セッション worktree + sandbox 環境の 2 つの罠: cwd 相対 wri
 domain: "heuristics"
 description: "(1) worktree cwd から main checkout 配下（`.rite/review-results/` 等）への書き込みは sandbox の write-allowlist（cwd 相対の `.`）でブロックされる。(2) `.rite-plugin-root` をセッション worktree へコピーする際、コピー元（main checkout）のブランチが worktree のブランチと異なると古い `plugins/rite` を指す自己参照の罠がある。"
 created: "2026-07-18T23:38:52Z"
-updated: "2026-07-18T23:38:52Z"
+updated: "2026-07-19T01:25:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260718T194343Z-pr-1902.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260719T011000Z-pr-1908.md"
 tags: ["multi-session", "worktree", "sandbox", "plugin-root", "write-allowlist"]
 confidence: medium
 ---
@@ -28,6 +30,8 @@ confidence: medium
 sandbox の書き込み許可リストは cwd（`.`）を基準に解決される。セッション worktree（`.rite/worktrees/issue-{N}` 配下）から main checkout 配下のパス（例: main checkout の `.rite/review-results/{pr}.json`）へ絶対パス・相対パスいずれで書き込もうとしても、cwd が worktree 側にある限り「cwd 相対の `.`」には含まれず拒否される。既知の Issue #1896 と同種の事象。
 
 **対処**: state 書き込み先は `state-path-resolve.sh` 等の共有 root 解決 helper で解決し、cwd 依存を明示的に解消してから書き込む。単純に相対パスを組み立てるだけでは worktree/main checkout どちらの cwd から呼ばれても正しく解決されない。
+
+**正典文書化（PR #1908、Issue #1896 対応）**: 本制約は helper 側では構造回避できない（sandbox の write-allowlist はプラグイン外の環境設定）ため、`git-worktree-patterns.md` に正典 subsection（症状/原因/対処。恒久対処 = sandbox write 許可リストへ main checkout root の**絶対パス**を追加、都度対処 = 拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行・確認不要）として文書化され、open 2.3-W / batch-run の run-queue 書込に薄いポインタが置かれた。この「正典 subsection + 入口 skill への薄いポインタ」型（#1901 SSH host alias と同型）は、アンカー整合・文体整合・配置タイミングの全レビュー観点で一発 mergeable になった実績があり、環境制約の文書化に有効。付随知見 2 点: (a) 日本語見出しの GitHub アンカーは slugger 算出値とポインタ埋め込み値の byte 一致を事前確認するとレビュー往復を防げる。(b) 密な段落末尾に追記した actionable 指示は独立 blockquote より LLM 実行時の発火確度（salience）が下がる — ポインタは blockquote 等で視覚的に分離するのが望ましい。
 
 ### 罠 2: `.rite-plugin-root` のブランチ相違による自己参照
 

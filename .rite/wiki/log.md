@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-19T21:05:00+09:00 | lint:warning | — | contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=267, broken_refs=0 |
 | 2026-07-19T20:55:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260719T111449Z-pr-1917.md + raw/reviews/20260719T113448Z-pr-1917.md + raw/fixes/20260719T111834Z-pr-1917.md を統合 — canonical snippet 複製スイープの前提注記落ち + cut vs IFS read 慣用句分裂の変種を追加（PR #1917、2 cycle 収束） |
 | 2026-07-19T15:20:00+09:00 | lint:warning | — | contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=267, broken_refs=0 |
 | 2026-07-19T15:00:00+09:00 | create | [機械的一括置換は同一リテラルの役割差を無視すると load-bearing fixture を壊す](pages/anti-patterns/bulk-substitution-ignores-literal-role.md) | raw/reviews/20260719T051605Z-pr-1910.md ほか計 3 件を新規ページ化 — スクラッチ/load-bearing fixture/export 後評価/文字列リテラル内の 4 役割で置換可否が分かれる判別基準を PR #1910（3 reviewer 独立 HIGH 指摘）から抽出 |

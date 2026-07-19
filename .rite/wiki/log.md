@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-19T23:10:00+09:00 | lint:warning | — | contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=267, broken_refs=0 |
 | 2026-07-19T23:01:00+09:00 | update | [再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する](pages/heuristics/guard-script-contract-calibration.md) | raw/reviews/20260719T120555Z-pr-1909.md + raw/fixes/20260719T121530Z-pr-1909.md + raw/reviews/20260719T122934Z-pr-1909.md を統合 — 失敗形 4（guard 自体のテスト欠落 → 同一 PR で fixture pin 同梱）と mutation 視点の再レビュー収束確認・guard --all 0 findings 自己検査を追加（PR #1909 resume cycle、1 cycle 収束） |
 | 2026-07-19T23:01:00+09:00 | update | [形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする](pages/heuristics/allowlist-gate-hardening-checklist.md) | raw/reviews/20260719T120555Z-pr-1909.md + raw/fixes/20260719T121530Z-pr-1909.md を統合 — チェック項目 5（allowlist 新 arm の per-arm テスト pin: 正例・負例・fallback fail-closed の 3 点セット）を追加（PR #1909、2 reviewer 独立検出） |
 | 2026-07-19T21:05:00+09:00 | lint:warning | — | contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=267, broken_refs=0 |

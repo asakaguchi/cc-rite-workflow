@@ -89,6 +89,15 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
+# 明示 --target の存在検査 (usage の「2 = Invocation error (bad args, missing files)」契約
+# に実装を一致させる)。この時点の TARGETS は明示 --target 値のみ (--all の find 追加は後段で、
+# find(1) は不在エントリを生成しない)。check_file 内の [ ! -f ] は TOCTOU backstop として残す。
+if [ "${#TARGETS[@]}" -gt 0 ]; then
+  for t in "${TARGETS[@]}"; do
+    [ -f "$t" ] || { echo "ERROR: target not found: $t" >&2; exit 2; }
+  done
+fi
+
 SELF_REL="plugins/rite/hooks/scripts/tmp-hardcode-check.sh"
 
 if [ "$USE_ALL" -eq 1 ]; then
@@ -159,7 +168,9 @@ done
 
 if [ -s "$FINDINGS_FILE" ]; then
   cat "$FINDINGS_FILE"
-  total=$(wc -l < "$FINDINGS_FILE")
+  # BSD/macOS の wc -l は先頭空白パディングを付けるため正規化する (lint 側の
+  # count-line regex `findings: (\d+)` が padding で不一致になるのを防ぐ)
+  total=$(wc -l < "$FINDINGS_FILE" | tr -d '[:space:]')
 else
   total=0
 fi

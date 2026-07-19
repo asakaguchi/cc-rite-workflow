@@ -206,7 +206,7 @@ printf '%s' "$backup" > "${TMPDIR:-/tmp}/rite-backups/wm-backup.md"
 | Directory | Purpose |
 |-----------|---------|
 | `.rite-work-memory/` | Local work memory files |
-| `/tmp/rite-backups/` | Work memory backup files |
+| `${TMPDIR:-/tmp}/rite-backups/` | Work memory backup files |
 | `docs/designs/` | Design documents |
 
 ---

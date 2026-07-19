@@ -268,6 +268,17 @@ echo "TC-008: get_owner_repo() fast path resolves via SSH Host alias origin, byp
 dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008/bin"
 ( cd "$dir008" && git init -q && git remote add origin "git@github.com-work:o8/r8.git" )
+# Decoy repo with a DIFFERENT origin, used as the process cwd below. The
+# invocation deliberately runs with cwd != STATE_ROOT so the exact-value
+# assertion also guards the `cd "$STATE_ROOT"` anchor (the cycle-2 CRITICAL
+# invariant): if the anchor is dropped, the fast path resolves the ambient
+# cwd's repo (decoy/wrong) instead of STATE_ROOT's (o8/r8) and this fails.
+# Running from inside STATE_ROOT would make the anchor a no-op and let an
+# anchor regression pass silently (post-compact's TC-RECON-09 discriminates
+# the same invariant for its sibling site).
+dir008_decoy="$TEST_DIR/tc008-decoy"
+mkdir -p "$dir008_decoy"
+( cd "$dir008_decoy" && git init -q && git remote add origin "git@github.com-work:decoy/wrong.git" )
 cat > "$dir008/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
@@ -276,7 +287,7 @@ esac
 exit 0
 GH_SHIM
 chmod +x "$dir008/bin/gh"
-out008=$(cd "$dir008" && PATH="$dir008/bin:$PATH" bash -c "
+out008=$(cd "$dir008_decoy" && PATH="$dir008/bin:$PATH" bash -c "
   SCRIPT_DIR='$SCRIPT_DIR/..'
   STATE_ROOT='$dir008'
   source \"\$SCRIPT_DIR/control-char-neutralize.sh\"
@@ -284,7 +295,7 @@ out008=$(cd "$dir008" && PATH="$dir008/bin:$PATH" bash -c "
   get_owner_repo
 ")
 if [ "$out008" = "o8/r8" ]; then
-  pass "TC-008: fast path resolved o8/r8 from alias origin, bypassing broken gh repo view"
+  pass "TC-008: fast path resolved o8/r8 from STATE_ROOT's alias origin (not the ambient cwd's decoy/wrong)"
 else
   fail "TC-008: expected 'o8/r8', got '$out008'"
 fi

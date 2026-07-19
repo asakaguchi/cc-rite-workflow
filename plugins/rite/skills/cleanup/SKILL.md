@@ -80,8 +80,8 @@ PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャ
 # SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
 # (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
 owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
-owner=$(printf '%s' "$owner_repo" | cut -f1)
-repo=$(printf '%s' "$owner_repo" | cut -f2)
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
 [ -n "$owner" ] && [ -n "$repo" ] || {
   owner=$(gh repo view --json owner --jq '.owner.login')
   repo=$(gh repo view --json name --jq '.name')

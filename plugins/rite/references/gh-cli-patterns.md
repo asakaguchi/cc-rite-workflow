@@ -646,8 +646,8 @@ SSH host alias（例: `git@github.com-work:owner/repo.git`）のとき
 # ✅ SAFE: git-remote.sh 優先で owner/repo を解決（SSH host alias 環境でも動く）
 # 出力契約: 成功時 "owner<TAB>repo" の 1 行。失敗時は空 → gh repo view に fallback
 owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
-owner=$(printf '%s' "$owner_repo" | cut -f1)
-repo=$(printf '%s' "$owner_repo" | cut -f2)
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
 [ -n "$owner" ] && [ -n "$repo" ] || {
   owner=$(gh repo view --json owner --jq '.owner.login')
   repo=$(gh repo view --json name --jq '.name')

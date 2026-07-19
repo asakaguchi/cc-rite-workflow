@@ -707,28 +707,37 @@ trap '_rite_issue518_cleanup; cleanup' EXIT
 # pr/pr-review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
 # 呼ぶときに tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX) でファイル生成する必要がある。
 # この TC は /tmp/rite-* prefix でのファイルが正常に受容され、fix が正しく動作することを保証する。
+# NOTE: content-file の /tmp/rite-* literal は被テスト hook の path-containment allowlist
+# ($PWD/* | /tmp/rite-* | /private/tmp/rite-*) に一致させる load-bearing fixture であり、
+# ${TMPDIR:-/tmp} 化してはならない (TMPDIR≠/tmp の環境で hook が正しく拒否し偽 FAIL する)。
+# /tmp 直下が書込不可な sandbox 環境では本 TC は検証不能のため明示 skip する。
 echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (regression)"
-dir36a="$TEST_DIR/tc36a"
-mkdir -p "$dir36a"
-cat > "$dir36a/rite-config.yml" <<'EOF'
+if _probe36a=$(mktemp /tmp/rite-probe-XXXXXX 2>/dev/null); then
+  rm -f "$_probe36a"
+  dir36a="$TEST_DIR/tc36a"
+  mkdir -p "$dir36a"
+  cat > "$dir36a/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
 EOF
-# Create content-file using /tmp/rite-* prefix (pr-review.md / fix.md / close.md と同パターン)
-tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
-_rite_issue518_tmps+=("$tmp_in_rite")
-echo "review body" > "$tmp_in_rite"
-( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 0 ]; then
-  # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
-  target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
-  if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
-    pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
+  # Create content-file using /tmp/rite-* prefix (pr-review.md / fix.md / close.md と同パターン)
+  tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
+  _rite_issue518_tmps+=("$tmp_in_rite")
+  echo "review body" > "$tmp_in_rite"
+  ( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
+  if [ $rc -eq 0 ]; then
+    # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
+    target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
+    if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
+      pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
+    else
+      fail "/tmp/rite-* prefix → rc=0 but output file not found (path='$target_path36a')"
+    fi
   else
-    fail "/tmp/rite-* prefix → rc=0 but output file not found (path='$target_path36a')"
+    fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
 else
-  fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
+  echo "  SKIP: TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
 fi
 echo ""
 
@@ -901,7 +910,7 @@ echo ""
 # --------------------------------------------------------------------------
 
 echo "[TC-043] chmod 000 rite-config.yml → sed extraction fail → exit 2"
-dir43=$(mktemp -d /tmp/rite-wiki-test-tc043-XXXXXX)
+dir43=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc043-XXXXXX")
 cat > "$dir43/rite-config.yml" <<EOF
 wiki:
   enabled: true
@@ -923,7 +932,7 @@ rm -rf "$dir43"
 echo ""
 
 echo "[TC-044] binary garbage in wiki section → awk fail → exit 2"
-dir44=$(mktemp -d /tmp/rite-wiki-test-tc044-XXXXXX)
+dir44=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc044-XXXXXX")
 # NUL byte handling differs by platform, so this case may pass-through the
 # tr/sed pipeline. Either outcome is acceptable as long as raw is not silently
 # created when the parser bails: that is the invariant the assertion enforces.
@@ -950,7 +959,7 @@ rm -rf "$dir44"
 echo ""
 
 echo "[TC-045] wiki.enabled normalization happy path (negative control)"
-dir45=$(mktemp -d /tmp/rite-wiki-test-tc045-XXXXXX)
+dir45=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc045-XXXXXX")
 # Negative control: ensure the strict guards above don't accidentally break
 # the success path. A regression here would mean the safe-default became
 # fail-closed for valid configs too.
@@ -974,7 +983,7 @@ echo "[TC-046] wiki.enabled: TRUE (uppercase) → normalize lowercase → exit 0
 # Without `tr '[:upper:]' '[:lower:]'` the uppercase value would land in the
 # typo-reject arm and exit 2; the TC pins that the normalization step survives
 # future refactors.
-dir46=$(mktemp -d /tmp/rite-wiki-test-tc046-XXXXXX)
+dir46=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc046-XXXXXX")
 cat > "$dir46/rite-config.yml" <<EOF
 wiki:
   enabled: TRUE
@@ -992,7 +1001,7 @@ echo ""
 echo "[TC-047] wiki.enabled: False (MixedCase) → normalize lowercase → exit 2"
 # Symmetric to TC-046 for the false path. A regression that drops the
 # normalize step would let MixedCase typos bypass the disable guard.
-dir47=$(mktemp -d /tmp/rite-wiki-test-tc047-XXXXXX)
+dir47=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc047-XXXXXX")
 cat > "$dir47/rite-config.yml" <<EOF
 wiki:
   enabled: False
@@ -1011,7 +1020,7 @@ echo "[TC-048] wiki.enabled: tru (typo) → exit 2 + recognised-boolean WARNING"
 # The typo-reject arm (`*)` in the case statement) is the security-net for
 # silent typo-induced enable. Without this TC, future refactors could weaken
 # the arm to no-op and the safety net would vanish silently.
-dir48=$(mktemp -d /tmp/rite-wiki-test-tc048-XXXXXX)
+dir48=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc048-XXXXXX")
 cat > "$dir48/rite-config.yml" <<EOF
 wiki:
   enabled: tru

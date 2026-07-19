@@ -13,7 +13,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/../wiki-query-inject.sh"
-TEST_DIR=$(mktemp -d /tmp/rite-wiki-query-test-XXXXXX)
+TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-query-test-XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT
 
 PASS=0

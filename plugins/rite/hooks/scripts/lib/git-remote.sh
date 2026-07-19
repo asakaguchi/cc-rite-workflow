@@ -54,7 +54,20 @@ resolve_owner_repo() {
       return 1
       ;;
   esac
-  printf '%s\t%s\n' "${path%%/*}" "${path#*/}"
+  local owner="${path%%/*}" repo="${path#*/}"
+  # Reject charset outside GitHub's owner/repo alphabet and, critically, any
+  # embedded `/` left in $repo (a 3+ segment origin path, e.g.
+  # `host:a/b/c.git`). Callers pass this value straight into `gh ... --repo`,
+  # which re-parses `[HOST/]OWNER/REPO` — an unrejected extra segment would
+  # make gh treat the first segment as a HOST, redirecting the call to a
+  # different GitHub instance chosen by whatever `origin` happens to contain.
+  case "$owner$repo" in
+    *[!A-Za-z0-9._-]*)
+      echo "ERROR: git-remote: owner/repo contains characters outside the allowed set: $owner/$repo" >&2
+      return 1
+      ;;
+  esac
+  printf '%s\t%s\n' "$owner" "$repo"
 }
 
 # -----------------------------------------------------------------------

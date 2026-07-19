@@ -94,6 +94,17 @@ out=$(resolve_in "$sbx_noremote" 2>/dev/null); rc=$?
 assert "no origin remote: non-zero exit" "1" "$( [ "$rc" -ne 0 ] && echo 1 || echo 0 )"
 assert "no origin remote: empty stdout" "" "$out"
 
+# --- Reject: owner or repo segment parses to empty (degenerate URL) ---------
+( cd "$sbx" && git remote remove origin >/dev/null 2>&1; git remote add origin "git@github.com-work:/onlyrepo.git" ) >/dev/null 2>&1
+out=$(resolve_in "$sbx" 2>/dev/null); rc=$?
+assert "empty owner segment: non-zero exit" "1" "$( [ "$rc" -ne 0 ] && echo 1 || echo 0 )"
+assert "empty owner segment: empty stdout" "" "$out"
+
+( cd "$sbx" && git remote remove origin >/dev/null 2>&1; git remote add origin "https://github.com/onlyowner/" ) >/dev/null 2>&1
+out=$(resolve_in "$sbx" 2>/dev/null); rc=$?
+assert "empty repo segment: non-zero exit" "1" "$( [ "$rc" -ne 0 ] && echo 1 || echo 0 )"
+assert "empty repo segment: empty stdout" "" "$out"
+
 # --- Reject: not a git repository at all (mirrors the bare `mkdir .git`
 #     fixture pattern used by post-compact.test.sh's _setup_recon_env — the
 #     4-site fallback design depends on this failing cleanly so it falls

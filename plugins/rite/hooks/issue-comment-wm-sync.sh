@@ -120,7 +120,11 @@ get_owner_repo() {
   # git-remote parse first: works even when `origin` is an SSH Host alias
   # unrecognized by gh's host allowlist (#1899). Falls through to
   # `gh repo view` below only when no origin remote is configured at all.
-  _git_line=$(bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_line=""
+  # Anchored to `cd "$STATE_ROOT"` (same as post-compact.sh) so this resolves
+  # the intended repo rather than whatever git repo the ambient process cwd
+  # happens to sit in — `cd` here is subshell-scoped via the `$(...)` this
+  # function is always called through, so it cannot affect the caller's cwd.
+  _git_line=$(cd "$STATE_ROOT" 2>/dev/null && bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_line=""
   if [ -n "$_git_line" ]; then
     IFS=$'\t' read -r _git_owner _git_repo <<< "$_git_line"
     if [ -n "$_git_owner" ] && [ -n "$_git_repo" ]; then

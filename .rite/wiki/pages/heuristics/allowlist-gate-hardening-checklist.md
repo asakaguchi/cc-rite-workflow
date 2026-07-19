@@ -2,7 +2,7 @@
 title: "形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする"
 domain: "heuristics"
 created: "2026-06-10T10:10:00+09:00"
-updated: "2026-06-10T10:10:00+09:00"
+updated: "2026-07-19T23:01:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260609T223122Z-pr-1330.md"
@@ -12,6 +12,10 @@ sources:
     ref: "raw/fixes/20260609T224734Z-pr-1330-c3.md"
   - type: "reviews"
     ref: "raw/reviews/20260609T225247Z-pr-1330-c4.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260719T120555Z-pr-1909.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260719T121530Z-pr-1909.md"
 tags: []
 confidence: high
 ---
@@ -33,6 +37,8 @@ PR #1330 (review-comment-post.sh の iso_timestamp gate denylist → ISO 8601 al
 
 検証面では、test reviewer の worktree-only mutation (gate 無効化 / anchor 除去 / grep 復帰 / degraded 分岐除去) が 4 cycle 全てで新規テストの non-vacuity を実証しており、gate 強化 PR のテストは「旧実装に戻すと FAIL する」ことの mutation 確認が収束の決定打になる。
 
+5. **新 arm 追加時の per-arm テスト pin (PR #1909 resume cycle, MEDIUM ×2 reviewer 独立検出)**: exfiltration 境界などの allowlist gate に新しい受理 arm を追加するときは、per-arm のテスト pin — **正例 (受理) + 負例 (拒否) + fallback 経路 (realpath 失敗時の fail-closed + 診断 WARNING)** — の 3 点セットを同一 PR で追加する。実装が正しくてもテスト無しでは受理経路の drift と診断消失の回帰から守れない (test + security の 2 reviewer が独立検出)。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -43,3 +49,5 @@ PR #1330 (review-comment-post.sh の iso_timestamp gate denylist → ISO 8601 al
 - [PR #1330 fix cycle 2 (テストコメントの journal token 除去)](../../raw/fixes/20260609T223943Z-pr-1330-c2.md)
 - [PR #1330 fix cycle 3 (degraded 値 unknown の専用診断 + stale gsub コメント是正)](../../raw/fixes/20260609T224734Z-pr-1330-c3.md)
 - [PR #1330 review cycle 4 mergeable (5 reviewer 0 件、mutation 検証で non-vacuity 実証)](../../raw/reviews/20260609T225247Z-pr-1330-c4.md)
+- [PR #1909 review results (resume cycle — allowlist 新 arm の per-arm pin 欠落指摘)](../../raw/reviews/20260719T120555Z-pr-1909.md)
+- [PR #1909 fix results (per-arm 3 点セット pin の追加)](../../raw/fixes/20260719T121530Z-pr-1909.md)

@@ -473,6 +473,31 @@ push/fetch だけ失敗する非対称な挙動になる。
 — 既知の環境制約、Issue #1897）。sandbox のネットワーク許可リストはプラグイン外の環境設定のため、
 rite 側の設定変更では解消できない。SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
 
+### worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる
+
+sandbox が有効な環境で `EnterWorktree` によりセッション worktree（`.rite/worktrees/issue-{N}`）へ
+cwd が移った後、main checkout 配下（`.rite/sessions/` の flow-state、`.rite/state/` の run-queue /
+issue claim 等）を更新する hook / script が失敗することがある。
+
+**症状**: `mktemp` / `mv` / リダイレクト書き込みが「読み込み専用ファイルシステムです」（Read-only
+file system）で失敗する。`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` /
+run-queue の `jq` 書込等、state root（main checkout）配下へ書き込むあらゆる呼び出しが該当する。
+worktree 内への書き込みは成功するため、worktree 入場後に state 書込だけが失敗する非対称な挙動に
+なり、sandbox 起因と気付きにくい。
+
+**原因**: sandbox の write 許可リストはセッションのプロジェクトディレクトリを相対パス `.`（cwd
+依存）で許可する構成が既定のため、`EnterWorktree` で cwd がセッション worktree に切り替わると
+`.` が worktree を指し、main checkout root が許可リストから外れる。rite の state root は
+`state-path-resolve.sh` により main checkout へ統一されている（linked worktree 間の state 共有・
+flock 排他の前提）ため、worktree cwd からの state 書込は構造的にすべて拒否される。
+
+**対処**: 恒久対処は、sandbox の write 許可リストへ main checkout root の**絶対パス**を追加する
+こと（`/sandbox` コマンド / settings の sandbox 設定。プラグイン外の環境設定のため rite 側の
+変更では解消できない）。追加できない場合は、拒否された当該 hook / script 呼び出しのみ
+`dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、
+Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響を受けないため、sandbox 有効のまま
+実行する。
+
 > **Canonical spec**: This file documents the operational *patterns*; the canonical
 > runtime specification for the session-worktree layer (lifecycle, claim, reap,
 > shared-state-root resolution, crash recovery) lives in

@@ -265,11 +265,11 @@ echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest reason=${reason:-<run>
 
 `reason` が非空なら Step 2 / Phase 4.4.W.2 をスキップして Phase 4.5 へ。
 
-**Step 2**: Issue コンテキストから retrospective Raw Source を生成する。`wiki-ingest-trigger.sh` は `--content-file` に `$PWD` 配下または `/tmp/rite-*` prefix のみを受容する（mktemp デフォルトの `/tmp/tmp.*` では silent fail する）:
+**Step 2**: Issue コンテキストから retrospective Raw Source を生成する。`wiki-ingest-trigger.sh` は `--content-file` に `$PWD` 配下・`/tmp/rite-*`・`$TMPDIR/rite-*` prefix のみを受容する（mktemp デフォルトの `${TMPDIR:-/tmp}/tmp.*` では silent fail する）:
 
 ```bash
-tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
-trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
+tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX")
+trigger_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-err-XXXXXX") || trigger_stderr=/dev/null
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
 
 # heredoc content write 失敗ガード (pr-review.md 6.5.W / fix.md 4.6.W と対称、Issue #1522)。
@@ -332,7 +332,7 @@ fi
 **Condition**: `wiki_enabled=true` AND `auto_ingest=true` AND `trigger_exit=0` の場合のみ実行。満たさなければスキップして Phase 4.5 へ。
 
 ```bash
-commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null) || commit_err=/dev/null
+commit_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-commit-err-XXXXXX" 2>/dev/null) || commit_err=/dev/null
 trap 'rm -f "${commit_err:-}"' EXIT INT TERM HUP
 commit_rc=0
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then

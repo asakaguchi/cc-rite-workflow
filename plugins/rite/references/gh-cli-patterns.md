@@ -366,8 +366,8 @@ echo "tmpfile_write=$tmpfile_write"
 
 ```bash
 # Set paths output by mktemp in Step 1 (shell variables do not carry over between Bash tool calls, so directly write the actual paths from Step 1 output)
-tmpfile_read="/tmp/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output
-tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output
+tmpfile_read="${TMPDIR:-/tmp}/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output (literal path)
+tmpfile_write="${TMPDIR:-/tmp}/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output (literal path)
 
 # Validate update content before applying
 if [ ! -s "$tmpfile_write" ]; then
@@ -574,7 +574,7 @@ gh pr create \
 ```bash
 # Backup current content before any modification
 # backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+backup_file="${TMPDIR:-/tmp}/rite-wm-backup-${issue_number}-$(date +%s).md"
 printf '%s' "$current_body" > "$backup_file"
 ```
 

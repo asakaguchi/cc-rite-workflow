@@ -56,7 +56,7 @@ trap 'rc=$?; _pa_cleanup; exit $rc' EXIT
 trap '_pa_cleanup; exit 130' INT
 trap '_pa_cleanup; exit 143' TERM
 trap '_pa_cleanup; exit 129' HUP
-gh_err=$(mktemp /tmp/rite-gh-api-err-XXXXXX) || { echo "ERROR: mktemp failed" >&2; exit 1; }
+gh_err=$(mktemp "${TMPDIR:-/tmp}/rite-gh-api-err-XXXXXX") || { echo "ERROR: mktemp failed" >&2; exit 1; }
 
 if repo_info=$(gh api repos/owner/repo 2>"$gh_err"); then
   # Success path: surface any stderr warnings (deprecation, rate-limit notices)

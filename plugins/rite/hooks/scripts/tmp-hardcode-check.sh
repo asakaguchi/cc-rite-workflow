@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# tmp-hardcode-check.sh
+#
+# Detect sandbox-incompatible patterns in rite plugin markdown / shell sources
+# (Issue #1904 recurrence guard). Under the Claude Code bash sandbox, writes are
+# restricted to $TMPDIR (e.g. /tmp/claude-<uid>/...) and /tmp itself is mounted
+# read-only, while `.git/config` writes are always denied (harness built-in
+# protection). Three pattern families regressed repeatedly across sweeps
+# (#1894 -> #1900 -> #1902 -> #1904), so this check pins all of them:
+#
+#   P1: mktemp with a /tmp-prefixed template
+#       regex: mktemp[[:space:]]+/tmp/
+#       Fails under sandbox with "read-only file system". Safe form:
+#         mktemp "${TMPDIR:-/tmp}/rite-...-XXXXXX"
+#       The safe form contains no `mktemp /tmp/` substring, so it never matches.
+#
+#   P2: fixed /tmp path hardcode (assignment / redirect / -file option)
+#       regex: ="/tmp/  |  >[[:space:]]*/tmp/  |  -file[[:space:]]+/tmp/
+#       Direct writes to /tmp-fixed paths die under sandbox; option guidance
+#       (`--content-file /tmp/...`) steers callers into the same failure.
+#       Safe form: "${TMPDIR:-/tmp}/rite-..." (never matches — the literal
+#       substrings above do not occur in the parameter-expansion form).
+#
+#   P3: git push with upstream tracking (-u)
+#       literal: "git push -u"
+#       The -u upstream write hits the always-denied .git/config protection and
+#       makes an otherwise-successful push exit non-zero. `git stash push -u`
+#       (include-untracked stash) is a different command and does NOT match:
+#       the interposed "stash" word breaks the `git push -u` token sequence.
+#
+# Scan scope: plugins/rite/**/*.{md,sh} plus docs/**/*.md when present.
+# Exclusions:
+#   - */tests/* : test harnesses run outside the sandbox (tracked as #1903)
+#   - references/gh-cli-error-catalog.md : intentional error-illustration examples
+#   - this script itself (pattern definitions would self-match)
+#
+# Usage:
+#   tmp-hardcode-check.sh [--all] [--target FILE]... [--repo-root DIR] [--quiet]
+#                         [--skip-if-no-target]
+#
+# Exit codes: 0 = clean (or not-applicable skip), 1 = pattern detected,
+#             2 = invocation error.
+
+set -uo pipefail
+
+REPO_ROOT=""
+QUIET=0
+declare -a TARGETS=()
+USE_ALL=0
+SKIP_IF_NO_TARGET=0
+
+usage() {
+  cat <<'EOF'
+Usage: tmp-hardcode-check.sh [options]
+
+Options:
+  --all              Scan plugins/rite/**/*.{md,sh} and docs/**/*.md
+  --target FILE      Check FILE (repeatable). Path relative to repo root.
+  --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
+  --quiet            Suppress progress/summary log lines on stderr
+  --skip-if-no-target
+                     With --all, exit 0 (not 2) when no scan directory exists
+                     under the repo root (consumer-repo marketplace install).
+  -h, --help         Show this help
+
+Exit codes:
+  0  No sandbox-incompatible pattern detected (or not-applicable skip)
+  1  Pattern detected
+  2  Invocation error (bad args, missing files)
+EOF
+}
+
+log() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*" >&2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --all) USE_ALL=1; shift ;;
+    --target) TARGETS+=("$2"); shift 2 ;;
+    --repo-root) REPO_ROOT="$2"; shift 2 ;;
+    --quiet) QUIET=1; shift ;;
+    --skip-if-no-target) SKIP_IF_NO_TARGET=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [ -z "$REPO_ROOT" ]; then
+  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
+cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
+
+SELF_REL="plugins/rite/hooks/scripts/tmp-hardcode-check.sh"
+
+if [ "$USE_ALL" -eq 1 ]; then
+  declare -a scan_dirs=()
+  for d in "plugins/rite" "docs"; do
+    if [ -d "$d" ]; then
+      scan_dirs+=("$d")
+    else
+      echo "WARNING: $d not found under $REPO_ROOT (skipped)" >&2
+    fi
+  done
+  # docs/ だけの環境 (plugins/rite 不在) は gate 対象の rite ソースが無い
+  if [ ! -d "plugins/rite" ]; then
+    if [ "$SKIP_IF_NO_TARGET" -eq 1 ]; then
+      echo "[tmp-hardcode] not applicable: no plugins/rite under $REPO_ROOT — clean skip (--skip-if-no-target)" >&2
+      exit 0
+    fi
+    echo "ERROR: --all requested but plugins/rite does not exist under $REPO_ROOT" >&2
+    echo "  Likely cause: invoked outside the rite plugin repo (e.g. marketplace install)" >&2
+    echo "  Recovery: run from the rite plugin source tree, pass --target FILE, or pass --skip-if-no-target" >&2
+    exit 2
+  fi
+  while IFS= read -r f; do
+    case "$f" in
+      */tests/*) continue ;;
+      plugins/rite/references/gh-cli-error-catalog.md) continue ;;
+      "$SELF_REL") continue ;;
+    esac
+    TARGETS+=("$f")
+  done < <(find "${scan_dirs[@]}" -type f \( -name '*.md' -o -name '*.sh' \) 2>/dev/null | sort)
+fi
+
+if [ "${#TARGETS[@]}" -eq 0 ]; then
+  echo "ERROR: no targets specified (use --all or --target FILE)" >&2
+  usage >&2
+  exit 2
+fi
+
+FINDINGS_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
+trap 'rm -f "$FINDINGS_FILE"' EXIT
+
+check_file() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo "WARNING: target not found: $file" >&2
+    return 0
+  fi
+  # P1: mktemp + /tmp template
+  grep -nE 'mktemp[[:space:]]+/tmp/' "$file" 2>/dev/null | while IFS=: read -r ln _; do
+    printf '[tmp-hardcode][P1] %s:%s: mktemp /tmp template (sandbox read-only) — use mktemp "${TMPDIR:-/tmp}/..."\n' "$file" "$ln"
+  done >> "$FINDINGS_FILE"
+  # P2: fixed /tmp path (assignment / redirect / -file option)。${TMPDIR:-/tmp} 形式は
+  # 下記リテラルを含まないため構造的に除外される
+  grep -nE '="/tmp/|>[[:space:]]*/tmp/|-file[[:space:]]+/tmp/' "$file" 2>/dev/null | while IFS=: read -r ln _; do
+    printf '[tmp-hardcode][P2] %s:%s: fixed /tmp path hardcode (sandbox read-only) — use "${TMPDIR:-/tmp}/..."\n' "$file" "$ln"
+  done >> "$FINDINGS_FILE"
+  # P3: git push -u (upstream 書込は .git/config 保護で常時拒否)。
+  # `git stash push -u` は token 列が異なりマッチしない
+  grep -nE 'git push -u' "$file" 2>/dev/null | while IFS=: read -r ln _; do
+    printf '[tmp-hardcode][P3] %s:%s: git push -u (upstream write denied under sandbox) — drop -u\n' "$file" "$ln"
+  done >> "$FINDINGS_FILE"
+}
+
+log "Scanning ${#TARGETS[@]} file(s)..."
+for t in "${TARGETS[@]}"; do
+  check_file "$t"
+done
+
+if [ -s "$FINDINGS_FILE" ]; then
+  cat "$FINDINGS_FILE"
+  total=$(wc -l < "$FINDINGS_FILE")
+else
+  total=0
+fi
+log "==> Total tmp-hardcode findings: ${total}"
+
+if [ "$total" -gt 0 ]; then
+  exit 1
+fi
+exit 0

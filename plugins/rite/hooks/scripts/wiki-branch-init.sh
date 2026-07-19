@@ -51,7 +51,7 @@ done
 
 # --- Leading-dash fail-fast gate ---
 # wiki_branch は rite-config.yml の wiki.branch_name 由来 (開発者管理) だが、leading-`-` の
-# 値は `git push -u origin` で refspec ではなく option として解釈される (例: `--force`; 実測)。
+# 値は `git push origin` で refspec ではなく option として解釈される (例: `--force`; 実測)。
 # `git checkout --orphan` 側は git 自身の branch name validation で fail するため実害はないが、
 # エラー文言が本 helper の契約外経路になる。両 call site への到達前にここで引数異常として
 # 統一的に fail-fast する (wiki-lint-skipped-refs.sh の placeholder residue gate と同型)。
@@ -118,7 +118,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     exit 1
   }
 
-  git push -u origin "$wiki_branch" || {
+  git push origin "$wiki_branch" || {
     echo "ERROR: git push failed for branch '$wiki_branch'" >&2
     echo "  対処: gh auth status / ネットワーク接続 / リモートリポジトリの権限を確認してください" >&2
     exit 1

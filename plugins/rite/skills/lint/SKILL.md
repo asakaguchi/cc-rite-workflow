@@ -457,6 +457,7 @@ Run every rite-workflow internal quality check listed in the check table below t
 | 13 | Projects board drift check | `hooks/scripts/projects-board-drift-check.sh --quiet` | `projects_board_drift` | `Total projects-board-drift findings: (\d+)` |
 | 14 | Number reference check | `hooks/scripts/number-reference-check.sh --all` | `number_ref` | `Total number-ref findings: (\d+)` |
 | 15 | Sentinel contract check | `hooks/scripts/sentinel-contract-check.sh --all` | `sentinel_contract` | `Total sentinel-contract findings: (\d+)` |
+| 16 | Tmp hardcode check | `hooks/scripts/tmp-hardcode-check.sh --all` | `tmp_hardcode` | `Total tmp-hardcode findings: (\d+)` |
 
 **Execution loop** — for each table row, run (`{script}` = Invocation column path, `{args}` = Invocation column args, `{prefix}` = Vars prefix column):
 

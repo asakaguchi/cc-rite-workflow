@@ -92,11 +92,15 @@ Extract the Issue number from the current branch and retrieve work memory:
 # ブランチ名から Issue 番号を抽出
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 
-# リポジトリ情報を取得（1回で owner と repo を両方取得）
-# 注: echo ... | jq -r はスタンドアロン jq コマンドに依存（GitHub CLI の --jq オプションとは別）
-owner_repo=$(gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}')
-owner=$(echo "$owner_repo" | jq -r '.owner')
-repo=$(echo "$owner_repo" | jq -r '.repo')
+# リポジトリ情報を取得（SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback。
+# canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=$(printf '%s' "$owner_repo" | cut -f1)
+repo=$(printf '%s' "$owner_repo" | cut -f2)
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 # 作業メモリを取得
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
@@ -313,14 +317,18 @@ echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 
 After ステップ 1.0 has extracted `{pr_number}` (and optionally `{target_comment_id}`), retrieve repository information:
 
-- **Within end-to-end flow**: `{owner}` and `{repo}` are already available from ステップ 0.2. Reuse them — no additional `gh repo view` call needed.
+- **Within end-to-end flow**: `{owner}` and `{repo}` are already available from ステップ 0.2. Reuse them — no additional owner/repo resolution needed.
 - **Standalone execution**: ステップ 0 was not executed. Retrieve them here:
 
 ```bash
 # ステップ 0.2 と同一パターン（スタンドアロン実行時のみ使用。e2e フローでは ステップ 0.2 の値を再利用）
-owner_repo=$(gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}')
-owner=$(echo "$owner_repo" | jq -r '.owner')
-repo=$(echo "$owner_repo" | jq -r '.repo')
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=$(printf '%s' "$owner_repo" | cut -f1)
+repo=$(printf '%s' "$owner_repo" | cut -f2)
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 ```
 
 When PR number is specified as an argument:

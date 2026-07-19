@@ -76,7 +76,17 @@ and exit.
 ### 1.4 Retrieve Repository Information
 
 ```bash
-gh repo view --json owner,name,id,url
+# owner/repo は SSH host alias 環境でも解決できる git-remote.sh を優先し、
+# id/url は解決済み repo を明示指定した gh repo view で取得する（明示指定なら alias 環境でも動く。
+# canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=$(printf '%s' "$owner_repo" | cut -f1)
+repo=$(printf '%s' "$owner_repo" | cut -f2)
+if [ -n "$owner" ] && [ -n "$repo" ]; then
+  gh repo view "$owner/$repo" --json owner,name,id,url
+else
+  gh repo view --json owner,name,id,url
+fi
 ```
 
 If not a Git repository or not a GitHub repository, show:

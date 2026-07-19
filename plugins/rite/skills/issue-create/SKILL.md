@@ -24,7 +24,7 @@ argument-hint: "<title or description>"
 
 | Placeholder | Source |
 |-------------|--------|
-| `{owner}`, `{repo}` | `gh repo view --json owner,name` |
+| `{owner}`, `{repo}` | ステップ 1.1（git-remote.sh 優先 + `gh repo view` fallback。SSH host alias 対応） |
 | `{project_number}` | `rite-config.yml` の `github.projects.project_number` |
 | `{field_name_status}`, `{field_name_priority}`, `{field_name_complexity}` | `rite-config.yml` の `github.projects.fields.{status,priority,complexity}.name`（任意。未設定は空文字 = helper 内蔵の英日エイリアスで解決） |
 | `{language}` | `rite-config.yml` の `language`（`ja` / `en` / `auto`、未設定 `auto`） |
@@ -37,7 +37,15 @@ argument-hint: "<title or description>"
 ### 1.1 リポジトリと Project 設定取得
 
 ```bash
-gh repo view --json owner,name
+# SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=$(printf '%s' "$owner_repo" | cut -f1)
+repo=$(printf '%s' "$owner_repo" | cut -f2)
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 ```
 
 Project 番号は `rite-config.yml` の `github.projects.project_number` を最優先。未設定なら `gh api graphql` でリポジトリの `projectsV2(first:10)` を取得して最も関連するものを選択。Project が見つからない場合は warning + Projects 追加を skip。
@@ -523,7 +531,7 @@ Decompose path も完了レポートの最終 2 行は `<!-- skill return signal
 
 ## Error Handling
 
-- `gh repo view` 失敗 → エラー、認証確認を案内
+- owner/repo 解決失敗（git-remote.sh + `gh repo view` fallback とも失敗）→ エラー、認証・remote 設定確認を案内
 - Projects 未設定 → warning、Projects 追加を skip
 - Issue 作成失敗 → AskUserQuestion で「再試行 / 手動作成 / 中止」
 - 親-子リンク失敗 → warning、後で手動リンクを案内

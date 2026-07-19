@@ -95,9 +95,15 @@ Extract the Issue number from the current branch and retrieve work memory:
 # ブランチ名から Issue 番号を抽出
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 
-# リポジトリ情報を取得
-owner=$(gh repo view --json owner --jq '.owner.login')
-repo=$(gh repo view --json name --jq '.name')
+# リポジトリ情報を取得（SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback。
+# canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=$(printf '%s' "$owner_repo" | cut -f1)
+repo=$(printf '%s' "$owner_repo" | cut -f2)
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 # 作業メモリを取得
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments \

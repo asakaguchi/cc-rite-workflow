@@ -15,9 +15,9 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{owner}` | Repository owner (user or organization) | `gh repo view --json owner --jq '.owner.login'` | `asakaguchi` |
-| `{repo}` | Repository name | `gh repo view --json name --jq '.name'` | `cc-rite-workflow` |
-| `{default_branch}` | Repository default branch | `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | `main` or `develop` |
+| `{owner}` | Repository owner (user or organization) | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json owner --jq '.owner.login'`) | `asakaguchi` |
+| `{repo}` | Repository name | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json name --jq '.name'`) | `cc-rite-workflow` |
+| `{default_branch}` | Repository default branch | `gh repo view "$owner/$repo" --json defaultBranchRef --jq '.defaultBranchRef.name'`（`$owner/$repo` は上記 2 行で解決済みの値。明示指定なら SSH host alias 環境でも動く） | `main` or `develop` |
 
 ### Issue Information
 
@@ -129,12 +129,20 @@ Variables are replaced at runtime by the command that reads the template:
 
 ### Replacement Implementation
 
-Commands use these methods to replace variables:
+Commands use these methods to replace variables (`{plugin_root}` is resolved per
+[Plugin Path Resolution](../references/plugin-path-resolution.md)):
 
 ```bash
 # Example: Replace {owner} and {repo}
-owner=$(gh repo view --json owner --jq '.owner.login')
-repo=$(gh repo view --json name --jq '.name')
+# SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=$(printf '%s' "$owner_repo" | cut -f1)
+repo=$(printf '%s' "$owner_repo" | cut -f2)
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 # Read template and replace
 sed -e "s/{owner}/$owner/g" \

@@ -77,7 +77,15 @@ PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャ
 ### 1.4 リポジトリ情報取得
 
 ```bash
-gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'
+# SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=$(printf '%s' "$owner_repo" | cut -f1)
+repo=$(printf '%s' "$owner_repo" | cut -f2)
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 ```
 
 ---
@@ -168,7 +176,7 @@ incomplete=$(printf '%s\n' "$comment_body" | sed -n '/### 進捗/,/### /p' \
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` (boolean) | `true` |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
 | `{owner}` | `rite-config.yml` → `github.projects.owner` | `asakaguchi` |
-| `{repo}` | ステップ 1.4 で取得した `gh repo view --json owner,name` の `.name` | `cc-rite-workflow` |
+| `{repo}` | ステップ 1.4 で取得した `$repo`（git-remote.sh 優先 + gh repo view fallback） | `cc-rite-workflow` |
 
 **Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):
 

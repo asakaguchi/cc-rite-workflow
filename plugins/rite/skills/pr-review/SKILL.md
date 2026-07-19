@@ -114,7 +114,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 **Placeholder legend:**
 - `{pr_number}`: PR number (obtained from argument or `gh pr view` result)
-- `{owner}`, `{repo}`: Repository information (obtained via `gh repo view --json owner,name`)
+- `{owner}`, `{repo}`: Repository information (obtained via `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`, fallback `gh repo view --json owner,name` — SSH host alias safe; canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe))
 - `{post_comment_mode}`: Final decision whether to post PR comment (`true`/`false`), computed in ステップ 1.0 from flags + config
 - Other `{variable}` formats: Values obtained from command execution results or previous phases
 

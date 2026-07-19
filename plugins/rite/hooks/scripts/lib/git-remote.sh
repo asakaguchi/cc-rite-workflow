@@ -22,23 +22,12 @@
 # expected to fall back to `gh repo view` in that case, not treat it as fatal.
 
 resolve_owner_repo() {
-  local url path redacted_url
+  local url path
   url=$(git config --get remote.origin.url 2>/dev/null)
   if [ -z "$url" ]; then
     echo "ERROR: git-remote: no URL configured for remote 'origin'" >&2
     return 1
   fi
-  # A protocol-style origin can embed credentials (`https://TOKEN@host/...`,
-  # a real pattern for PAT-authenticated remotes). Redact before ever putting
-  # the URL in an ERROR message below — those callers currently all redirect
-  # this script's stderr to /dev/null, but that's an artifact of today's
-  # call sites, not a guarantee this function can rely on.
-  redacted_url="$url"
-  case "$url" in
-    *://*@*)
-      redacted_url="${url%%://*}://[redacted]@${url#*://*@}"
-      ;;
-  esac
   case "$url" in
     *://*)
       # protocol-style: scheme://[user@]host[:port]/owner/repo[.git]
@@ -56,12 +45,12 @@ resolve_owner_repo() {
   case "$path" in
     */*)
       if [ -z "${path%%/*}" ] || [ -z "${path#*/}" ]; then
-        echo "ERROR: git-remote: parsed owner or repo is empty from origin URL: $redacted_url" >&2
+        echo "ERROR: git-remote: parsed owner or repo is empty from origin URL: $url" >&2
         return 1
       fi
       ;;
     *)
-      echo "ERROR: git-remote: could not parse owner/repo from origin URL: $redacted_url" >&2
+      echo "ERROR: git-remote: could not parse owner/repo from origin URL: $url" >&2
       return 1
       ;;
   esac

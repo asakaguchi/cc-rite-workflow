@@ -138,8 +138,12 @@ get_owner_repo() {
   # different repo than the fast path when cwd != STATE_ROOT.
   _out=$(cd "$STATE_ROOT" 2>/dev/null && gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>"${_err:-/dev/null}") || _rc=$?
   if [ "$_rc" -ne 0 ] || [ -z "$_out" ]; then
+    # WARNING header is unconditional — gh repo view's own stderr may be
+    # empty (e.g. `cd "$STATE_ROOT"` itself failed, short-circuiting before
+    # gh ever ran), which must not suppress the header itself, only the
+    # optional detail lines below it.
+    echo "[rite] WARNING: issue-comment-wm-sync: gh repo view failed (rc=$_rc)" >&2
     if [ -n "$_err" ] && [ -s "$_err" ]; then
-      echo "[rite] WARNING: issue-comment-wm-sync: gh repo view failed (rc=$_rc)" >&2
       head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     _out=""

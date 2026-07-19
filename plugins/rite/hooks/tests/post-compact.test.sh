@@ -292,7 +292,7 @@ _setup_recon_env() {
   mkdir -p "$dir/bin"
   if [ -n "$git_remote_url" ]; then
     # Real git repo (not the `mkdir -p .git` non-repo stub below) so
-    # resolve_owner_repo() can actually parse `origin` — used by TC-RECON-08
+    # resolve_owner_repo() can actually parse `origin` — used by TC-RECON-09
     # to exercise the git-remote fast path's *success* case at the caller
     # level, instead of always falling through to the gh repo view mock.
     ( cd "$dir" && git init -q && git remote add origin "$git_remote_url" )
@@ -358,12 +358,30 @@ EOF
       # `repo view` is deliberately broken — if git-remote resolution didn't
       # actually run (or silently fell through to this fallback), the
       # reconciliation block would surface post_compact_gh_repo_view_failed.
+      # `pr view` / `api graphql` additionally assert the *correct* resolved
+      # value (o/r, from the host-alias origin below) is what's actually
+      # passed through — without this, a regression that drops the
+      # `cd "$STATE_ROOT"` anchor (this dogfood repo's own ambient origin
+      # happens to also resolve successfully, just to the wrong repo) would
+      # silently pass this fixture. See MOCK ASSERTION FAILED handling below.
       cat > "$dir/bin/gh" <<'EOF'
 #!/bin/bash
 case "$1 $2" in
-  "pr view") echo "false" ;;
+  "pr view")
+    if ! printf '%s\n' "$*" | grep -q -- '--repo o/r'; then
+      echo "MOCK ASSERTION FAILED: expected --repo o/r, got: $*" >&2
+      exit 1
+    fi
+    echo "false"
+    ;;
   "repo view") echo "auth required (should not be called — git-remote should resolve first)" >&2; exit 1 ;;
-  "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"In Review"}]}}]}}}}}' ;;
+  "api graphql")
+    if ! { printf '%s\n' "$*" | grep -q -- '-f owner=o' && printf '%s\n' "$*" | grep -q -- '-f repo=r'; }; then
+      echo "MOCK ASSERTION FAILED: expected -f owner=o -f repo=r, got: $*" >&2
+      exit 1
+    fi
+    echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"In Review"}]}}]}}}}}'
+    ;;
   *) exit 0 ;;
 esac
 EOF
@@ -519,6 +537,11 @@ if grep -qE 'post_compact_gh_repo_view_failed' "$recon_stderr"; then
   fail "git-remote fast path did not bypass the broken gh repo view fallback: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 else
   pass "git-remote fast path bypasses broken gh repo view (real #1899 scenario, caller-level)"
+fi
+if grep -qE 'MOCK ASSERTION FAILED' "$recon_stderr"; then
+  fail "git-remote fast path resolved the WRONG repo (not o/r from the alias origin): $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "git-remote fast path resolved the exact owner/repo from the alias origin (o/r), not just any repo"
 fi
 
 # TC-CONFIG-PARSE: post-compact.sh が rite-config.yml の awk parse 失敗を silent skip ではなく

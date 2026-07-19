@@ -105,6 +105,23 @@ out=$(resolve_in "$sbx" 2>/dev/null); rc=$?
 assert "empty repo segment: non-zero exit" "1" "$( [ "$rc" -ne 0 ] && echo 1 || echo 0 )"
 assert "empty repo segment: empty stdout" "" "$out"
 
+# --- Reject: 3+ segment origin path leaks an embedded `/` into $repo --------
+# This is the charset check's whole reason for existing (git-remote.sh:58-63):
+# callers pass the result straight into `gh ... --repo`, which re-parses
+# `[HOST/]OWNER/REPO` — an unrejected extra segment here would let `gh`
+# treat "a" as a HOST instead of the owner, silently redirecting the call to
+# a different GitHub instance.
+( cd "$sbx" && git remote remove origin >/dev/null 2>&1; git remote add origin "git@github.com-work:a/b/c.git" ) >/dev/null 2>&1
+out=$(resolve_in "$sbx" 2>/dev/null); rc=$?
+assert "3+ segment origin (embedded / in repo): non-zero exit" "1" "$( [ "$rc" -ne 0 ] && echo 1 || echo 0 )"
+assert "3+ segment origin (embedded / in repo): empty stdout" "" "$out"
+
+# --- Reject: disallowed character (outside [A-Za-z0-9._-]) in owner/repo ----
+( cd "$sbx" && git remote remove origin >/dev/null 2>&1; git remote add origin "https://github.com/ow;ner/repo.git" ) >/dev/null 2>&1
+out=$(resolve_in "$sbx" 2>/dev/null); rc=$?
+assert "disallowed char in owner segment: non-zero exit" "1" "$( [ "$rc" -ne 0 ] && echo 1 || echo 0 )"
+assert "disallowed char in owner segment: empty stdout" "" "$out"
+
 # --- Reject: not a git repository at all (mirrors the bare `mkdir .git`
 #     fixture pattern used by post-compact.test.sh's _setup_recon_env — the
 #     4-site fallback design depends on this failing cleanly so it falls

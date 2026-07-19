@@ -39,6 +39,10 @@ extract_resolver_block() {
   awk '/^# Resolve repository root for/,/^FLOW_STATE=/' "$HOOK"
 }
 
+extract_get_owner_repo() {
+  awk '/^get_owner_repo\(\) \{/,/^\}$/' "$HOOK"
+}
+
 echo "=== issue-comment-wm-sync.sh tests ==="
 echo ""
 
@@ -233,6 +237,92 @@ if printf '%s' "$out007" | grep -qF "status=success" && [ -f "$GH_SHIM_MARKER7" 
   pass "TC-007: posting continued despite pre-check failure → status=success"
 else
   fail "TC-007: expected post-through + status=success. out: $out007 marker=$([ -f "$GH_SHIM_MARKER7" ] && echo present || echo absent)"
+fi
+echo ""
+
+# ─── TC-008/009/010: get_owner_repo() (#1899) ────────────────────────────
+# get_owner_repo() had zero caller-level or function-level coverage before
+# this PR despite being the exact function cycle 2's review independently
+# found a CRITICAL cwd-anchoring bug in. These 3 cases exercise the fast
+# path's success case, its fall-through to the gh repo view fallback, and
+# the both-fail WARNING path (a regression guard for the empty-stderr
+# WARNING-header suppression bug fixed in this same PR: a `gh repo view`
+# failure with empty stderr used to suppress the WARNING header itself).
+func_get_owner_repo=$(extract_get_owner_repo)
+
+echo "TC-008: get_owner_repo() fast path resolves via SSH Host alias origin, bypassing broken gh repo view"
+dir008="$TEST_DIR/tc008"
+mkdir -p "$dir008/bin"
+( cd "$dir008" && git init -q && git remote add origin "git@github.com-work:o8/r8.git" )
+cat > "$dir008/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "should not be called — git-remote should resolve first" >&2; exit 1 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir008/bin/gh"
+out008=$(cd "$dir008" && PATH="$dir008/bin:$PATH" bash -c "
+  SCRIPT_DIR='$SCRIPT_DIR/..'
+  STATE_ROOT='$dir008'
+  source \"\$SCRIPT_DIR/control-char-neutralize.sh\"
+  $func_get_owner_repo
+  get_owner_repo
+")
+if [ "$out008" = "o8/r8" ]; then
+  pass "TC-008: fast path resolved o8/r8 from alias origin, bypassing broken gh repo view"
+else
+  fail "TC-008: expected 'o8/r8', got '$out008'"
+fi
+echo ""
+
+echo "TC-009: get_owner_repo() falls back to gh repo view when git-remote can't resolve"
+dir009="$TEST_DIR/tc009"
+mkdir -p "$dir009/bin" "$dir009/.git"
+cat > "$dir009/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "o9/r9"; exit 0 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir009/bin/gh"
+out009=$(cd "$dir009" && PATH="$dir009/bin:$PATH" bash -c "
+  SCRIPT_DIR='$SCRIPT_DIR/..'
+  STATE_ROOT='$dir009'
+  source \"\$SCRIPT_DIR/control-char-neutralize.sh\"
+  $func_get_owner_repo
+  get_owner_repo
+")
+if [ "$out009" = "o9/r9" ]; then
+  pass "TC-009: fast path failure falls through to gh repo view fallback (o9/r9)"
+else
+  fail "TC-009: expected 'o9/r9', got '$out009'"
+fi
+echo ""
+
+echo "TC-010: get_owner_repo() both fast path and fallback fail → WARNING header always emitted"
+dir010="$TEST_DIR/tc010"
+mkdir -p "$dir010/bin" "$dir010/.git"
+cat > "$dir010/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") exit 1 ;;
+esac
+exit 1
+GH_SHIM
+chmod +x "$dir010/bin/gh"
+stderr010=$(cd "$dir010" && PATH="$dir010/bin:$PATH" bash -c "
+  SCRIPT_DIR='$SCRIPT_DIR/..'
+  STATE_ROOT='$dir010'
+  source \"\$SCRIPT_DIR/control-char-neutralize.sh\"
+  $func_get_owner_repo
+  get_owner_repo
+" 2>&1 >/dev/null)
+if printf '%s' "$stderr010" | grep -qE 'WARNING: issue-comment-wm-sync: gh repo view failed'; then
+  pass "TC-010: WARNING header emitted even when gh repo view fails with empty stderr"
+else
+  fail "TC-010: WARNING header missing when gh repo view fails silently. stderr: $stderr010"
 fi
 echo ""
 

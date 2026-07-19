@@ -37,11 +37,11 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{pr_number}` | PR number | `gh pr create` output or `gh pr view -R {owner_repo}` | `536` |
+| `{pr_number}` | PR number | `gh pr create` output or `gh pr view "$(git branch --show-current)" -R {owner_repo}` | `536` |
 | `#{pr_number}` | PR number with `#` prefix | Same as `{pr_number}` with formatting | `#536` |
-| `{pr_state}` | PR state | `gh pr view -R {owner_repo} --json state --jq '.state'` | `OPEN`, `MERGED`, `CLOSED` |
-| `{pr_url}` | PR URL | `gh pr view -R {owner_repo} --json url --jq '.url'` | `https://github.com/owner/repo/pull/536` |
-| `{isDraft}` | Whether PR is draft | `gh pr view -R {owner_repo} --json isDraft --jq '.isDraft'` | `true`, `false` |
+| `{pr_state}` | PR state | `gh pr view {pr_number} -R {owner_repo} --json state --jq '.state'` | `OPEN`, `MERGED`, `CLOSED` |
+| `{pr_url}` | PR URL | `gh pr view {pr_number} -R {owner_repo} --json url --jq '.url'` | `https://github.com/owner/repo/pull/536` |
+| `{isDraft}` | Whether PR is draft | `gh pr view {pr_number} -R {owner_repo} --json isDraft --jq '.isDraft'` | `true`, `false` |
 
 ### Branch Information
 

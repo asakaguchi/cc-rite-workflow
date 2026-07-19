@@ -311,7 +311,7 @@ echo "Pre-PR checks passed: $COMMIT_COUNT commit(s), branch on remote"
 |--------------|-------|-----|
 | `No commits between X and Y` | Head branch has no new commits vs base | Create and push at least one commit |
 | `Could not resolve to a Ref` | Branch doesn't exist on remote | `git push origin {branch_name}` |
-| `A pull request already exists` | PR for this branch already open | Use `gh pr view -R {owner_repo}` to find existing PR |
+| `A pull request already exists` | PR for this branch already open | Use `gh pr view "$(git branch --show-current)" -R {owner_repo}` to find existing PR |
 | `Base branch is invalid` | Base branch doesn't exist | Verify `rite-config.yml` `branch.base` |
 
 ---

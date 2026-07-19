@@ -689,8 +689,19 @@ gh コマンド**（`gh pr create/view/list/edit/merge/ready/comment/review/diff
    gh pr view {pr_number} -R {owner_repo} --json state
    ```
 
+   > **⚠️ 注意（名前衝突）**: canonical スニペット（上記）の shell 変数 `$owner_repo` は
+   > **TAB 区切り**（`git-remote.sh` の出力契約 `owner<TAB>repo`）であり、`{owner_repo}`
+   > プレースホルダ（**slash 形式** `owner/repo`）とは別物。`-R "$owner_repo"` と shell 変数値を
+   > そのまま渡してはならない（TAB のまま渡ると gh が `expected the "[HOST/]OWNER/REPO" format`
+   > で失敗する）。shell 変数から slash 形式を組むときは必ず `-R "$owner/$repo"` を使うこと。
+
 適用除外: 🚫 PROHIBITED 例・エラーカタログの失敗再現例（失敗の再現自体が目的のコマンド）には
 `-R` を付与しない（付与すると例の意味が壊れる）。
+
+`gh pr view` への `-R` 伝播では selector（PR 番号または branch 名）を必ず併記する — gh は
+`-R` 指定時に selector を必須とする（`argument required when using the --repo flag`）ため、
+selector なしの `gh pr view` に `-R` だけを足すと必ず失敗する。現在ブランチの PR を対象に
+する場合は `gh pr view "$(git branch --show-current)" -R {owner_repo}` の形を使う。
 
 ---
 

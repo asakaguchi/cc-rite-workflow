@@ -465,6 +465,10 @@ set -uo pipefail
 parent_number="{parent_number}"
 owner="{owner}"
 repo="{repo}"
+# -R 用の repo 識別子は $owner/$repo（github.projects.owner 由来 = Project owner。repo owner と
+# 乖離する設定を許容）と分離し、canonical Owner/Repo Resolution の slash 形式値を literal substitute する
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo_slash="{owner_repo}"
 
 # --- Placeholder sanity guard: Phase 4.6 は親検出時のみ到達。未置換/非数値は routing bug ---
 case "$parent_number" in
@@ -480,7 +484,7 @@ p46_err=$(mktemp 2>/dev/null) || p46_err=""
 
 # --- 4.6.0: Idempotency — 親が既に CLOSED なら no-op (close-side idempotency, extends AC-6 principle) ---
 parent_state=""
-if parent_state=$(gh issue view "$parent_number" -R "$owner/$repo" --json state --jq '.state' 2>"${p46_err:-/dev/null}"); then
+if parent_state=$(gh issue view "$parent_number" -R "$owner_repo_slash" --json state --jq '.state' 2>"${p46_err:-/dev/null}"); then
   echo "parent_state=$parent_state"
 else
   echo "[DEBUG] p460: gh issue view failed (rc=$?)" >&2
@@ -519,7 +523,7 @@ fi
 # Method B: 親 body の `## Sub-Issues` section parse (literal heading text — GitHub 機能ではない)
 if [ -z "$children_json" ] || [ "$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)" -eq 0 ]; then
   echo "[DEBUG] fallback to Method B (parent body '## Sub-Issues' parse)"
-  parent_body=$(gh issue view "$parent_number" -R "$owner/$repo" --json body --jq '.body' 2>/dev/null || echo "")
+  parent_body=$(gh issue view "$parent_number" -R "$owner_repo_slash" --json body --jq '.body' 2>/dev/null || echo "")
   child_numbers=$(awk '/^## Sub-Issues$/{flag=1;next} /^## /{flag=0} flag && /^- \[[ xX]\] #[0-9]+/{print}' <<< "$parent_body" | grep -oE '#[0-9]+' | tr -d '#')
   if [ -z "$child_numbers" ]; then
     children_json="[]"
@@ -527,7 +531,7 @@ if [ -z "$children_json" ] || [ "$(printf '%s' "$children_json" | jq 'length' 2>
     children_json="["; first=1
     for n in $child_numbers; do
       # state 取得失敗は fail-closed (OPEN 扱い) で auto-close を抑止する
-      child_state=$(gh issue view "$n" -R "$owner/$repo" --json state --jq '.state' 2>/dev/null || echo "OPEN")
+      child_state=$(gh issue view "$n" -R "$owner_repo_slash" --json state --jq '.state' 2>/dev/null || echo "OPEN")
       [ -z "$child_state" ] && child_state="OPEN"
       [ "$first" -eq 1 ] && first=0 || children_json+=","
       children_json+="{\"number\":$n,\"state\":\"$child_state\"}"
@@ -580,7 +584,7 @@ fi
 
 ### 4.6.3 Update Parent Status to Done & Close
 
-親の Projects Status → Done（[共通委譲パターン](#shared-projects-status--done-delegate-pattern)、`github.projects.enabled: false` ならスキップ）と `gh issue close` を **単一 block** で実行する。Step 3 の state-inconsistency summary を**必ず** emit し、片方成功/片方失敗の silent data corruption を可視化する。`{projects_enabled}` / `{project_number}` / `{owner}` / `{repo}` は `rite-config.yml` から、`{parent_number}` / `{issue_number}` は前 Phase から置換する。
+親の Projects Status → Done（[共通委譲パターン](#shared-projects-status--done-delegate-pattern)、`github.projects.enabled: false` ならスキップ）と `gh issue close` を **単一 block** で実行する。Step 3 の state-inconsistency summary を**必ず** emit し、片方成功/片方失敗の silent data corruption を可視化する。`{projects_enabled}` / `{project_number}` / `{owner}` / `{repo}` は `rite-config.yml` から、`{parent_number}` / `{issue_number}` は前 Phase から置換する。`{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した実リポジトリの owner/repo（slash 形式）を literal substitute する（`{owner}` は Project owner 由来で repo owner と乖離しうるため、`-R` には使わない）。
 
 ```bash
 set -uo pipefail
@@ -590,6 +594,9 @@ set -uo pipefail
 parent_number="{parent_number}"
 owner="{owner}"
 repo="{repo}"
+# -R 用の repo 識別子は $owner/$repo（Projects delegate 用 = Project owner 由来）と分離する
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo_slash="{owner_repo}"
 projects_enabled="{projects_enabled}"
 project_number="{project_number}"
 issue_number="{issue_number}"
@@ -637,7 +644,7 @@ fi
 
 # --- Step 2: Close the parent Issue ---
 p463_err_close=$(_mktemp_or_warn "Step 2")
-if gh issue close "$parent_number" -R "$owner/$repo" --comment "子 Issue がすべて完了したため自動クローズします。(/rite:issue-close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>"${p463_err_close:-/dev/null}"; then
+if gh issue close "$parent_number" -R "$owner_repo_slash" --comment "子 Issue がすべて完了したため自動クローズします。(/rite:issue-close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>"${p463_err_close:-/dev/null}"; then
   issue_close_result="success"; echo "親 Issue #${parent_number} を自動クローズしました"
 else
   issue_close_result="failed"

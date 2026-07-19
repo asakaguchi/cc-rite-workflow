@@ -305,22 +305,38 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     [ -n "$_pr_cd_err" ] && rm -f "$_pr_cd_err"
 
     if [ "$PR_IS_DRAFT" = "false" ]; then
-      # Capture gh repo view stderr so failures get attributed to auth/network/
-      # permission rather than misclassified as missing data. This pattern is
-      # paired with watchdog-status-mismatch; if those two sites diverge in error
-      # capture, the same root cause produces asymmetric WARNING details and
-      # becomes harder to diagnose.
-      if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
-        :
-      else
-        repo_rc=$?
-        repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
-        REPO_INFO=""
+      # git-remote parse first: works even when `origin` is an SSH Host alias
+      # unrecognized by gh's host allowlist (#1899). Falls through to the
+      # existing `gh repo view` + stderr-attribution path only when no origin
+      # remote is configured at all. REPO_INFO is only ever checked for
+      # emptiness downstream (never parsed as JSON again), so a non-empty
+      # sentinel is sufficient to signal "already resolved" past that gate.
+      REPO_OWNER=""
+      REPO_NAME=""
+      _git_or_line=$(bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_or_line=""
+      if [ -n "$_git_or_line" ]; then
+        IFS=$'\t' read -r REPO_OWNER REPO_NAME <<< "$_git_or_line"
       fi
-      # Capture jq stderr separately so JSON parse failure (gh succeeded but JSON
-      # is corrupt or a field is null) gets attributed in the WARNING details.
-      REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
-      REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>"${jq_name_err:-/dev/null}") || REPO_NAME=""
+      if [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ]; then
+        REPO_INFO="git:${REPO_OWNER}/${REPO_NAME}"
+      else
+        # Capture gh repo view stderr so failures get attributed to auth/network/
+        # permission rather than misclassified as missing data. This pattern is
+        # paired with watchdog-status-mismatch; if those two sites diverge in error
+        # capture, the same root cause produces asymmetric WARNING details and
+        # becomes harder to diagnose.
+        if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
+          :
+        else
+          repo_rc=$?
+          repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
+          REPO_INFO=""
+        fi
+        # Capture jq stderr separately so JSON parse failure (gh succeeded but JSON
+        # is corrupt or a field is null) gets attributed in the WARNING details.
+        REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
+        REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>"${jq_name_err:-/dev/null}") || REPO_NAME=""
+      fi
       # Capture awk stderr for rite-config.yml parsing. A silent empty fallback
       # here would let broken Projects integration go unnoticed by the user.
       awk_pe_err=""

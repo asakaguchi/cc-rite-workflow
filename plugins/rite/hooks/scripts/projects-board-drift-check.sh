@@ -152,20 +152,31 @@ trap '_rite_board_drift_cleanup; exit 143' TERM
 trap '_rite_board_drift_cleanup; exit 129' HUP
 
 # --- Repo info ---
-repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-repo-err-XXXXXX") || repo_view_err=""
-if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
-  echo "ERROR: gh repo view failed" >&2
-  if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
-    head -5 "$repo_view_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  fi
-  echo "  対処: gh auth status / network 接続を確認してください" >&2
-  exit 2
+# git-remote parse first: works even when `origin` is an SSH Host alias
+# unrecognized by gh's host allowlist (#1899). Falls through to
+# `gh repo view` only when no origin remote is configured at all.
+REPO_OWNER=""
+REPO_NAME=""
+_git_or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_or_line=""
+if [ -n "$_git_or_line" ]; then
+  IFS=$'\t' read -r REPO_OWNER REPO_NAME <<< "$_git_or_line"
 fi
-REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
-REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
 if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
-  echo "ERROR: failed to parse owner/name from gh repo view (owner='$REPO_OWNER' name='$REPO_NAME')" >&2
-  exit 2
+  repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-repo-err-XXXXXX") || repo_view_err=""
+  if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
+    echo "ERROR: gh repo view failed" >&2
+    if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
+      head -5 "$repo_view_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    fi
+    echo "  対処: gh auth status / network 接続を確認してください" >&2
+    exit 2
+  fi
+  REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
+  REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
+  if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
+    echo "ERROR: failed to parse owner/name from gh repo view (owner='$REPO_OWNER' name='$REPO_NAME')" >&2
+    exit 2
+  fi
 fi
 
 # --- Scan recently-updated CLOSED Issues (single GraphQL page) ---

@@ -116,7 +116,18 @@ FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 # 「owner/repo 取得不能 = Issue comment 経路の機能停止」が silent に発生する。stderr を
 # tempfile capture して、失敗時に WARNING で根本原因を expose する。
 get_owner_repo() {
-  local _err _rc=0 _out
+  local _err _rc=0 _out _git_line _git_owner _git_repo
+  # git-remote parse first: works even when `origin` is an SSH Host alias
+  # unrecognized by gh's host allowlist (#1899). Falls through to
+  # `gh repo view` below only when no origin remote is configured at all.
+  _git_line=$(bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_line=""
+  if [ -n "$_git_line" ]; then
+    IFS=$'\t' read -r _git_owner _git_repo <<< "$_git_line"
+    if [ -n "$_git_owner" ] && [ -n "$_git_repo" ]; then
+      printf '%s/%s' "$_git_owner" "$_git_repo"
+      return
+    fi
+  fi
   _err=$(mktemp 2>/dev/null) || _err=""
   _out=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>"${_err:-/dev/null}") || _rc=$?
   if [ "$_rc" -ne 0 ] || [ -z "$_out" ]; then
@@ -414,7 +425,10 @@ INIT_EOF
   _init_err=""
   _init_err=$(mktemp 2>/dev/null) || _init_err=""
   _init_rc=0
-  result=$(gh issue comment "$ISSUE" --body-file "$tmpfile" 2>"${_init_err:-/dev/null}") || _init_rc=$?
+  # --repo を明示: shorthand の `gh issue comment` は内部で `gh repo view` と同じ
+  # host-allowlist 解決を行うため、明示しないと origin が SSH Host alias のとき
+  # OWNER_REPO が解決済みでもここで再び失敗する (#1899)。
+  result=$(gh issue comment "$ISSUE" --repo "$OWNER_REPO" --body-file "$tmpfile" 2>"${_init_err:-/dev/null}") || _init_rc=$?
   if [ "$_init_rc" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: gh issue comment 作成失敗 (rc=$_init_rc)" >&2
     [ -n "$_init_err" ] && [ -s "$_init_err" ] && head -3 "$_init_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2

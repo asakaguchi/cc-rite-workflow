@@ -705,30 +705,39 @@ trap '_rite_issue518_cleanup; cleanup' EXIT
 # TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (正常系 / fix)
 # --------------------------------------------------------------------------
 # pr/pr-review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
-# 呼ぶときに tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX") でファイル生成する必要がある。
+# 呼ぶときに tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX) でファイル生成する必要がある。
 # この TC は /tmp/rite-* prefix でのファイルが正常に受容され、fix が正しく動作することを保証する。
+# NOTE: content-file の /tmp/rite-* literal は被テスト hook の path-containment allowlist
+# ($PWD/* | /tmp/rite-* | /private/tmp/rite-*) に一致させる load-bearing fixture であり、
+# ${TMPDIR:-/tmp} 化してはならない (TMPDIR≠/tmp の環境で hook が正しく拒否し偽 FAIL する)。
+# /tmp 直下が書込不可な sandbox 環境では本 TC は検証不能のため明示 skip する。
 echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (regression)"
-dir36a="$TEST_DIR/tc36a"
-mkdir -p "$dir36a"
-cat > "$dir36a/rite-config.yml" <<'EOF'
+if _probe36a=$(mktemp /tmp/rite-probe-XXXXXX 2>/dev/null); then
+  rm -f "$_probe36a"
+  dir36a="$TEST_DIR/tc36a"
+  mkdir -p "$dir36a"
+  cat > "$dir36a/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
 EOF
-# Create content-file using /tmp/rite-* prefix (pr-review.md / fix.md / close.md と同パターン)
-tmp_in_rite=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX")
-_rite_issue518_tmps+=("$tmp_in_rite")
-echo "review body" > "$tmp_in_rite"
-( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 0 ]; then
-  # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
-  target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
-  if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
-    pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
+  # Create content-file using /tmp/rite-* prefix (pr-review.md / fix.md / close.md と同パターン)
+  tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
+  _rite_issue518_tmps+=("$tmp_in_rite")
+  echo "review body" > "$tmp_in_rite"
+  ( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
+  if [ $rc -eq 0 ]; then
+    # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
+    target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
+    if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
+      pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
+    else
+      fail "/tmp/rite-* prefix → rc=0 but output file not found (path='$target_path36a')"
+    fi
   else
-    fail "/tmp/rite-* prefix → rc=0 but output file not found (path='$target_path36a')"
+    fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
 else
-  fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
+  echo "  SKIP: TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
 fi
 echo ""
 

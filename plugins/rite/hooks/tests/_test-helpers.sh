@@ -322,7 +322,7 @@ make_sandbox() {
     exit 1
   }
   sandbox_err=$(mktemp "${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX" 2>/dev/null) || {
-    echo "WARNING: make_sandbox: mktemp "${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX" failed; diagnostic capture disabled (git stderr will not be surfaced on failure)" >&2
+    echo "WARNING: make_sandbox: mktemp ${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX failed; diagnostic capture disabled (git stderr will not be surfaced on failure)" >&2
     sandbox_err="/dev/null"
   }
 

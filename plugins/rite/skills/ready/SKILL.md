@@ -35,6 +35,7 @@ When this command is executed, run the following phases in order.
 | Placeholder | Description | How to Obtain |
 |---------------|------|----------|
 | `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner_repo}` | Repo-context gh コマンドの `-R` に literal substitute する owner/repo（slash 形式） | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) |
 
 ---
 
@@ -172,7 +173,8 @@ End processing.
 Retrieve the PR associated with the current branch:
 
 ```bash
-gh pr view --json number,title,state,isDraft,url,headRefName,body
+# -R 指定時は selector が必須のため、現在のブランチ名を selector に渡す（従来どおり「現在ブランチの PR」を特定する）
+gh pr view "$(git branch --show-current)" -R {owner_repo} --json number,title,state,isDraft,url,headRefName,body
 ```
 
 **If PR is not found:**
@@ -298,7 +300,7 @@ End processing.
 ### 3.1 Execute gh pr ready
 
 ```bash
-gh pr ready {pr_number}
+gh pr ready {pr_number} -R {owner_repo}
 ```
 
 **On success:**
@@ -379,7 +381,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 Extract the related Issue from the PR body:
 
 ```bash
-gh pr view {pr_number} --json body,headRefName
+gh pr view {pr_number} -R {owner_repo} --json body,headRefName
 ```
 
 **Extraction patterns:**

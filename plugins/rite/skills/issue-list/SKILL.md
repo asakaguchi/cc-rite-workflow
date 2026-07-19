@@ -40,10 +40,12 @@ Determine the filter conditions specified by the user:
 
 ### 2.1 When Issue Number is Specified (`#123` or `123`)
 
+> `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
+
 Fetch and display details for the specific Issue:
 
 ```bash
-gh issue view {number} --json number,title,body,state,labels,assignees,milestone,createdAt,updatedAt
+gh issue view {number} -R {owner_repo} --json number,title,body,state,labels,assignees,milestone,createdAt,updatedAt
 ```
 
 Display in the following format:
@@ -73,19 +75,19 @@ Display in the following format:
 
 ```bash
 # open（デフォルト）
-gh issue list --state open --json number,title,labels,assignees,createdAt --limit 20
+gh issue list -R {owner_repo} --state open --json number,title,labels,assignees,createdAt --limit 20
 
 # closed
-gh issue list --state closed --json number,title,labels,assignees,createdAt --limit 20
+gh issue list -R {owner_repo} --state closed --json number,title,labels,assignees,createdAt --limit 20
 
 # all
-gh issue list --state all --json number,title,labels,assignees,createdAt --limit 20
+gh issue list -R {owner_repo} --state all --json number,title,labels,assignees,createdAt --limit 20
 ```
 
 ### 2.3 When Label Filter is Used
 
 ```bash
-gh issue list --label "{label}" --json number,title,state,labels,assignees,createdAt --limit 20
+gh issue list -R {owner_repo} --label "{label}" --json number,title,state,labels,assignees,createdAt --limit 20
 ```
 
 ---

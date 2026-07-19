@@ -429,7 +429,9 @@ The section extends from the matched heading to the next `##` heading or end of 
 - `verification.acceptance_criteria_check` is `false`
 - Issue body does not contain an acceptance criteria section (none of the above headings found)
 
-**Issue body retrieval**: Use the Issue body already obtained at `skills/open/SKILL.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
+> `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
+
+**Issue body retrieval**: Use the Issue body already obtained at `skills/open/SKILL.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
 
 **Check procedure:**
 
@@ -727,7 +729,7 @@ Execute in 3 stages (Bash → Read+Write → Bash). On any validation failure, o
 tmpfile_read=$(mktemp)
 tmpfile_write=$(mktemp)
 
-gh issue view {parent_issue_number} --json body --jq '.body' > "$tmpfile_read"
+gh issue view {parent_issue_number} -R {owner_repo} --json body --jq '.body' > "$tmpfile_read"
 
 # Validate retrieval result
 if [ ! -s "$tmpfile_read" ]; then
@@ -776,7 +778,7 @@ if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
   exit 0  # Skip — do not abort workflow
 fi
 
-gh issue edit {parent_issue_number} --body-file "$tmpfile_write"
+gh issue edit {parent_issue_number} -R {owner_repo} --body-file "$tmpfile_write"
 
 # No EXIT trap is set in Step 1 (it would delete these before Step 2), so clean up here
 rm -f "$tmpfile_read" "$tmpfile_write"

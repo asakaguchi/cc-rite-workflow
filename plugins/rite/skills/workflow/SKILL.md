@@ -172,10 +172,12 @@ Based on the state confirmed in Phase 1, suggest the next action.
 > こと — rite は main checkout のブランチを切り替えません。詳細は
 > `docs/designs/multi-session-worktree.md` 参照。
 
+> `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
+
 Retrieve and display the Issue details:
 
 ```bash
-gh issue view {issue-number} --json title,body,state
+gh issue view {issue-number} -R {owner_repo} --json title,body,state
 ```
 
 ### 4.2 If There Is No Active Issue
@@ -205,13 +207,13 @@ Display additional information depending on the project state.
 ### 5.1 Number of Open Issues
 
 ```bash
-gh issue list --state open --json number --jq 'length'
+gh issue list -R {owner_repo} --state open --json number --jq 'length'
 ```
 
 ### 5.2 Number of Open PRs
 
 ```bash
-gh pr list --state open --json number --jq 'length'
+gh pr list -R {owner_repo} --state open --json number --jq 'length'
 ```
 
 Display the results:

@@ -321,11 +321,13 @@ This is comment rot — the comment's "sorted by last login" claim is no longer 
 Comments of the form `TODO(...)`, `FIXME`, `HACK`, `XXX`, `BUG(...)` often reference an external tracker, a deadline, or a precondition that should be resolved.
 
 - **Expired TODOs**: TODOs with date references (`TODO: remove after 2025-Q2`) whose date has passed. Flag as HIGH.
-- **Orphan TODOs**: TODOs referencing an Issue/ticket number (`TODO(#123)`) where the Issue is CLOSED. Verify via `gh issue view` when Issue numbers are cited.
+- **Orphan TODOs**: TODOs referencing an Issue/ticket number (`TODO(#123)`) where the Issue is CLOSED. Verify via `gh issue view -R {owner_repo}` when Issue numbers are cited.
 - **Unassigned TODOs**: TODOs with no owner, no date, and no Issue reference. Flag as MEDIUM (they are technical debt that never expires).
 - **FIXME in production paths**: `FIXME` comments in code paths that are exercised in production. Flag as HIGH if the FIXME describes a known bug that could surface.
 
-**Verification procedure**: Use `Grep` on the comment-change hunks to find all TODO/FIXME markers, then check each marker's context (date, Issue number, owner). For Issue references, use `gh issue view N --json state` to confirm the state.
+**Verification procedure**: Use `Grep` on the comment-change hunks to find all TODO/FIXME markers, then check each marker's context (date, Issue number, owner). For Issue references, use `gh issue view N -R {owner_repo} --json state` to confirm the state.
+
+> `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
 
 #### 5. WHY vs WHAT Balance
 

@@ -115,6 +115,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 **Placeholder legend:**
 - `{pr_number}`: PR number (obtained from argument or `gh pr view` result)
 - `{owner}`, `{repo}`: Repository information (obtained via `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`, fallback `gh repo view --json owner,name` — SSH host alias safe; canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe))
+- `{owner_repo}`: [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute（SSH host alias 環境対応。同節の Propagation 小節参照）
 - `{post_comment_mode}`: Final decision whether to post PR comment (`true`/`false`), computed in ステップ 1.0 from flags + config
 - Other `{variable}` formats: Values obtained from command execution results or previous phases
 
@@ -319,7 +320,7 @@ If the argument is omitted, first retrieve the PR number from work memory.
 **If retrieved from work memory:**
 
 ```bash
-gh pr view {pr_number} --json number,title,body,state,isDraft,additions,deletions,changedFiles,files,headRefName,baseRefName,url
+gh pr view {pr_number} -R {owner_repo} --json number,title,body,state,isDraft,additions,deletions,changedFiles,files,headRefName,baseRefName,url
 ```
 
 #### 1.1.2 Fallback (When Not Retrieved from Work Memory)
@@ -327,14 +328,15 @@ gh pr view {pr_number} --json number,title,body,state,isDraft,additions,deletion
 If a PR number is specified as an argument:
 
 ```bash
-gh pr view {pr_number} --json number,title,body,state,isDraft,additions,deletions,changedFiles,files,headRefName,baseRefName,url
+gh pr view {pr_number} -R {owner_repo} --json number,title,body,state,isDraft,additions,deletions,changedFiles,files,headRefName,baseRefName,url
 ```
 
 If the argument is omitted and there is no PR number in work memory, identify the PR from the current branch:
 
 ```bash
 git branch --show-current
-gh pr view --json number,title,body,state,isDraft,additions,deletions,changedFiles,files,headRefName,baseRefName,url
+# -R 指定時は selector が必須のため、現在のブランチ名を selector に渡す（従来どおり「現在ブランチの PR」を特定する）
+gh pr view "$(git branch --show-current)" -R {owner_repo} --json number,title,body,state,isDraft,additions,deletions,changedFiles,files,headRefName,baseRefName,url
 ```
 
 **If no PR is found:**
@@ -400,12 +402,12 @@ Classify as Small (<= 500 lines, <= 10 files), Medium (<= 2000 lines, <= 30 file
 
 **Diff retrieval (guard-validated commands only — avoids patterns blocked by `pre-tool-bash-guard.sh`):**
 
-Small scale: `gh pr diff {pr_number}` (bulk retrieval)
-Medium/Large scale: `gh pr view {pr_number} --json files --jq '.files[].path'` (per-reviewer extraction in ステップ 4.3)
+Small scale: `gh pr diff {pr_number} -R {owner_repo}` (bulk retrieval)
+Medium/Large scale: `gh pr view {pr_number} -R {owner_repo} --json files --jq '.files[].path'` (per-reviewer extraction in ステップ 4.3)
 
-**File statistics:** `gh pr view {pr_number} --json files --jq '.files[] | {path, additions, deletions}'`
+**File statistics:** `gh pr view {pr_number} -R {owner_repo} --json files --jq '.files[] | {path, additions, deletions}'`
 
-**Per-file diff extraction:** `gh pr diff {pr_number} | awk '/^diff --git/ { found=0 } /^diff --git.*{target_pattern}/ { found=1 } found { print }'`
+**Per-file diff extraction:** `gh pr diff {pr_number} -R {owner_repo} | awk '/^diff --git/ { found=0 } /^diff --git.*{target_pattern}/ { found=1 } found { print }'`
 
 
 #### 1.2.3 Retrieve Changed File List
@@ -610,7 +612,7 @@ Retain the Issue number in the conversation context for use in ステップ 6.4.
 
 1. Retrieve the Issue body:
  ```bash
- gh issue view {issue_number} --json body --jq '.body'
+ gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'
  ```
 
 2. Extract the following sections from the retrieved body (if they exist):
@@ -3160,7 +3162,7 @@ fi
 line_content=$(tr -d '\n' < "$decision_tmp")
 rm -f "$decision_tmp"
 
-body=$(gh issue view {source_issue_number} --json body --jq '.body')
+body=$(gh issue view {source_issue_number} -R {owner_repo} --json body --jq '.body')
 
 if [ -z "$body" ]; then
   echo "WARNING: 元 Issue #{source_issue_number} の body 取得に失敗。Decision Log 記録をスキップします" >&2
@@ -3189,7 +3191,7 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
 
   # awk 異常終了時（部分出力）で body 全体を切り詰めたまま上書きしないよう、exit code も検査する
   # （full-body PATCH のため `[ -s ]` の非空チェックだけでは途中終了の部分出力を見逃す）。
-  if [ "$awk_rc" -eq 0 ] && [ -s "$tmpfile" ] && gh issue edit {source_issue_number} --body-file "$tmpfile"; then
+  if [ "$awk_rc" -eq 0 ] && [ -s "$tmpfile" ] && gh issue edit {source_issue_number} -R {owner_repo} --body-file "$tmpfile"; then
     echo "[CONTEXT] DECISION_LOG_APPENDED=1; issue={source_issue_number}; entry=$next_d"
     echo "記録: $new_line"
   else

@@ -331,17 +331,20 @@ owner=""; repo=""
 }
 ```
 
+> 以降の実行スニペットの `-R {owner_repo}` は、上記（または ステップ 0.2）で解決した owner/repo を slash 形式（例: `myorg/myrepo`）でリテラル置換する（canonical: [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) の Propagation 小節。SSH host alias 環境対応）。
+
 When PR number is specified as an argument:
 
 ```bash
-gh pr view {pr_number} --json number,title,state,isDraft,headRefName,baseRefName,url,body
+gh pr view {pr_number} -R {owner_repo} --json number,title,state,isDraft,headRefName,baseRefName,url,body
 ```
 
 When argument is omitted, identify the PR from the current branch:
 
 ```bash
 git branch --show-current
-gh pr view --json number,title,state,isDraft,headRefName,baseRefName,url,body
+# -R 指定時は selector が必須のため、現在のブランチ名を selector に渡す（従来どおり「現在ブランチの PR」を特定する）
+gh pr view "$(git branch --show-current)" -R {owner_repo} --json number,title,state,isDraft,headRefName,baseRefName,url,body
 ```
 
 **When PR is not found:**
@@ -1427,7 +1430,7 @@ if ! gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews --jq '.[] | {id, node
 fi
 
 # 通常のコメント（PR コメント欄）を一括取得して保存（ステップ 1.2.1 で再利用）
-if ! pr_comments=$(gh pr view {pr_number} --json comments --jq '.comments' 2>"$gh_api_err"); then
+if ! pr_comments=$(gh pr view {pr_number} -R {owner_repo} --json comments --jq '.comments' 2>"$gh_api_err"); then
   echo "エラー: PR コメントの取得に失敗しました (gh pr view --json comments)" >&2
   echo "詳細 (gh pr view stderr 先頭 5 行):" >&2
   head -5 "$gh_api_err" | sed 's/^/  /' >&2
@@ -2792,7 +2795,7 @@ fi
 
 # gh pr comment の exit code を明示的にチェック (silent failure 防止):
 # 投稿失敗が silent に発生すると、レビュアーには通知されないまま fix loop が完了と判定される
-if ! gh pr comment {pr_number} --body-file "$tmpfile"; then
+if ! gh pr comment {pr_number} -R {owner_repo} --body-file "$tmpfile"; then
   echo "ERROR: gh pr comment による報告投稿に失敗しました" >&2
   echo "  対処: gh auth status / network 接続 / PR #{pr_number} の存在を確認してください" >&2
   echo "  影響: 対応完了報告コメントが PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2

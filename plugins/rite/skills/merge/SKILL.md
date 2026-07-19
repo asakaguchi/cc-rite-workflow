@@ -32,6 +32,7 @@ argument-hint: "<pr_number>"
 |-------------|--------|
 | `{pr_number}` | 引数 `$1` |
 | `{branch_name}` | ステップ 1 の `gh pr view --json headRefName` から取得 |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 
 ---
 
@@ -40,7 +41,7 @@ argument-hint: "<pr_number>"
 Ready/merge 可否の権威判定はここ (`gh pr view`) に一本化する。flow-state は離散コマンド運用 (`/clear` 毎) では writer (`/rite:open`) と reader (本スキル) が別セッションになり常に空を読むため、前提チェックは設けず不在を正常系として扱う (設計ドキュメント `docs/designs/clear-per-command-flow-state-decoupling.md` §AC-4)。
 
 ```bash
-gh pr view {pr_number} --json mergeable,mergeStateStatus,isDraft,headRefName
+gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft,headRefName
 ```
 
 `headRefName` の値は完了通知 (ステップ 3) の `{branch_name}` 展開に使うため retain する (flow-state 不在でもブランチ名が空にならない)。
@@ -76,7 +77,7 @@ else
   gh_err=""
 fi
 
-if gh pr merge {pr_number} --squash --delete-branch=false 2>"${gh_err:-/dev/null}"; then
+if gh pr merge {pr_number} -R {owner_repo} --squash --delete-branch=false 2>"${gh_err:-/dev/null}"; then
   echo "<!-- skill return signal: caller must continue next step -->"
   echo "<!-- [merge:returned-to-caller] -->"
   # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。

@@ -51,6 +51,7 @@ argument-hint: ""
 | `{resolved_phase}` | Phase 3.5: cross-check 確定 phase (`[CONTEXT] RESOLVED_PHASE` marker)。Phase 4.2 で user が phase 変更を選んだ場合は `[CONTEXT] FINAL_PHASE` marker を優先 |
 | `{type}` / `{slug}` | ブランチ名 `{type}/issue-{number}-{slug}` の構成要素 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 
 ---
 
@@ -97,7 +98,7 @@ fi
 ### 1.2 Issue 存在確認
 
 ```bash
-if ! gh issue view "$issue_arg" --json number,title,state >/dev/null 2>&1; then
+if ! gh issue view "$issue_arg" -R {owner_repo} --json number,title,state >/dev/null 2>&1; then
   echo "ERROR: Issue #$issue_arg が見つかりません" >&2
   exit 1
 fi
@@ -211,7 +212,8 @@ echo "[CONTEXT] GIT_IN_REBASE=$git_in_rebase"
 ### 3.3 PR 状態取得
 
 ```bash
-pr_info=$(gh pr view --json state,number,isDraft,mergeable 2>/dev/null || echo '{"state":"NONE","number":0,"isDraft":false,"mergeable":"UNKNOWN"}')
+# -R 指定時は selector が必須のため、現在のブランチ名を selector に渡す（従来どおり「現在ブランチの PR」を特定。PR 不在時は fallback JSON）
+pr_info=$(gh pr view "$(git branch --show-current)" -R {owner_repo} --json state,number,isDraft,mergeable 2>/dev/null || echo '{"state":"NONE","number":0,"isDraft":false,"mergeable":"UNKNOWN"}')
 pr_state=$(echo "$pr_info" | jq -r '.state // "NONE"')
 pr_number_gh=$(echo "$pr_info" | jq -r '.number // 0')
 pr_is_draft=$(echo "$pr_info" | jq -r '.isDraft // false')

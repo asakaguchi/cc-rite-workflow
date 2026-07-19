@@ -268,8 +268,10 @@ If extraction fails, confirm with `AskUserQuestion`:
 
 ### 1.5 Retrieve Issue Information
 
+> 以降の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応。同節の Propagation 小節参照）。
+
 ```bash
-gh issue view {issue_number} --json number,title,body,state,labels
+gh issue view {issue_number} -R {owner_repo} --json number,title,body,state,labels
 ```
 
 **If the Issue is closed:**
@@ -364,7 +366,7 @@ Extract checklist from the Issue body obtained in Phase 1.5:
 
 ```bash
 # Issue 本文を取得（既に Phase 1.5 で取得済みの場合は再利用）
-gh issue view {issue_number} --json body --jq '.body'
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'
 ```
 
 **Extraction pattern:**
@@ -809,7 +811,7 @@ if [ ! -s "$pr_workdir/pr_body.md" ]; then
   exit 1
 fi
 
-gh pr create --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
+gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
 ```
 
 ### 3.5 Update Work Memory Phase

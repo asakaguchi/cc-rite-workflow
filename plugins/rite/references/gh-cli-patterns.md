@@ -30,6 +30,8 @@ A collection of frequently used GitHub CLI (gh) command patterns in rite workflo
 
 ## Safe Patterns Quick Reference
 
+> 以下の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution (SSH Host Alias Safe)](#ownerrepo-resolution-ssh-host-alias-safe) で解決した `owner/repo`（slash 形式）をリテラル置換する（SSH host alias 環境対応。同節の Propagation 小節参照）。
+
 ### For Issue/PR body (create/edit)
 
 ```bash
@@ -43,7 +45,7 @@ if [ ! -s "$tmpfile" ]; then
   echo "ERROR: body is empty" >&2
   exit 1
 fi
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 ### For comment creation
@@ -54,7 +56,7 @@ trap 'rm -f "$tmpfile"' EXIT
 cat <<'BODY_EOF' > "$tmpfile"
 <comment content here>
 BODY_EOF
-gh issue comment {issue_number} --body-file "$tmpfile"
+gh issue comment {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 ### For comment update (gh api PATCH)
@@ -151,7 +153,7 @@ echo "{\"body\": \"$body\"}" | gh api ... --input -
 # preventing reads from other users, making it secure.
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
-gh issue view {issue_number} --json body --jq '.body' > "$tmpfile"
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' > "$tmpfile"
 
 # Validate retrieval result (confirm non-empty)
 if [ ! -s "$tmpfile" ]; then
@@ -171,7 +173,7 @@ trap 'rm -f "$tmpfile"' EXIT
 
 # ... write updated content to temp file ...
 
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 **Building body dynamically:**
@@ -189,7 +191,7 @@ cat <<'BODY_EOF' > "$tmpfile"
 更新された本文の内容
 BODY_EOF
 
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 #### 3. Pre-Update Validation
@@ -207,7 +209,7 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 ### Body Update Rules
@@ -316,13 +318,13 @@ Recommended patterns for operating Issue body checklists (`- [ ] task` / `- [x] 
 ```bash
 # ✅ SAFE: Extract with grep -E (avoid -P option due to environment dependency)
 # Read-only pipe operation, no body loss risk
-gh issue view {issue_number} --json body --jq '.body' | grep -E '^- \[[ xX]\] '
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' | grep -E '^- \[[ xX]\] '
 
 # Exclude Issue references (distinguish from parent-child Issue Tasklist)
-gh issue view {issue_number} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+'
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+'
 
 # Count incomplete check items (for automated checks, excluding Issue references)
-gh issue view {issue_number} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] '
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] '
 ```
 
 ### Checkbox Update
@@ -342,7 +344,7 @@ Execute in 3 stages (Bash → Read+Write → Bash). Shell variables do not persi
 tmpfile_read=$(mktemp)
 tmpfile_write=$(mktemp)
 
-gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' > "$tmpfile_read"
 
 # Validate retrieval result
 if [ ! -s "$tmpfile_read" ]; then
@@ -376,7 +378,7 @@ if [ ! -s "$tmpfile_write" ]; then
   exit 1
 fi
 
-gh issue edit {issue_number} --body-file "$tmpfile_write"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile_write"
 
 # No EXIT trap is set in Step 1 (it would delete these before Step 2), so clean up here
 rm -f "$tmpfile_read" "$tmpfile_write"
@@ -447,7 +449,7 @@ awk 'found == 0 { ... }'
 awk 'in_section == 0 { ... }'
 
 # ✅ SAFE: Restructure to avoid negation entirely
-gh pr diff {pr_number} | awk '
+gh pr diff {pr_number} -R {owner_repo} | awk '
   /^diff --git/ { found=0 }
   /^diff --git.*target_pattern/ { found=1 }
   found { print }
@@ -469,10 +471,10 @@ gh pr diff {pr_number} | awk '
 
 ```bash
 # Full diff
-gh pr diff {pr_number}
+gh pr diff {pr_number} -R {owner_repo}
 
 # File list only
-gh pr diff {pr_number} --name-only
+gh pr diff {pr_number} -R {owner_repo} --name-only
 
 # 🚫 PROHIBITED: gh pr diff does NOT support -- <files> for per-file filtering
 gh pr diff {pr_number} -- path/to/file.md
@@ -523,6 +525,7 @@ cat <<'BODY_EOF' > "$tmpfile"
 BODY_EOF
 
 gh pr create \
+  -R {owner_repo} \
   --title "{title}" \
   --body-file "$tmpfile" \
   --base "{base_branch}" \
@@ -658,10 +661,36 @@ owner=""; repo=""
 # WHY: gh は remote URL の host 部（github.com-work 等）を GitHub host として解決できない
 ```
 
-解決した `$owner/$repo` があれば、repo コンテキスト依存の gh コマンドにも明示指定できる
-（`gh issue view N -R "$owner/$repo"` / `gh repo view "$owner/$repo" --json id,url` 等 —
-明示指定なら alias 環境でも動く）。内部スクリプトでの実装例:
+内部スクリプトでの実装例:
 `scripts/watchdog-status-mismatch.sh`（git-remote.sh → gh repo view の 2 段 fallback + 診断 stderr）。
+
+### Propagation to Repo-Context gh Commands (`{owner_repo}`)
+
+解決した owner/repo は「解決箇所」だけで使って終わりにせず、**すべての repo コンテキスト依存
+gh コマンド**（`gh pr create/view/list/edit/merge/ready/comment/review/diff/checks` /
+`gh issue view/list/edit/comment/create/close/reopen/develop` 等）へ `-R` で明示指定する。
+`-R` 指定があれば gh は remote の host 解決を行わないため、SSH host alias 環境でも動く。
+
+実行スニペットでの伝播は次の 2 形式のいずれかを使う:
+
+1. **シェル変数が同一ブロックで解決済み** — canonical スニペット（上記）の直後で使う形式:
+
+   ```bash
+   gh issue view {issue_number} -R "$owner/$repo" --json body
+   ```
+
+2. **`{owner_repo}` プレースホルダ** — `{plugin_root}` と同じ literal substitution 方式。
+   セッション内で一度 canonical スニペット（上記）を実行して `owner/repo`（slash 形式、
+   例: `myorg/myrepo`）を解決し、以降の実行ブロックでは `-R {owner_repo}` をその値で
+   リテラル置換してから実行する。同一ブロックへの解決スニペット複製が不要になるため、
+   単発の gh コマンドにはこちらを優先する:
+
+   ```bash
+   gh pr view {pr_number} -R {owner_repo} --json state
+   ```
+
+適用除外: 🚫 PROHIBITED 例・エラーカタログの失敗再現例（失敗の再現自体が目的のコマンド）には
+`-R` を付与しない（付与すると例の意味が壊れる）。
 
 ---
 

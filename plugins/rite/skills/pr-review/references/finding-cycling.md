@@ -133,11 +133,13 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 
 ## §3 — 共通 4-option AskUserQuestion (Signal 1 / 3 / 4 共用)
 
+> `-R {owner_repo}` は [Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応）。
+
 | Option | Action |
 |--------|--------|
 | 本 PR 内で再試行（推奨） | review invocation (Phase 5.4.1.0 §1 Step 5 / Phase 5.4.3 Step 4) へ進む。再発火しても本 phase が再 escalate する (次サイクル経路) |
 | 別 Issue として切り出す | §4 の split bash で persistent finding を tracking Issue 化、work memory に split メモを残し、review invocation へ進む |
-| PR を取り下げる | `gh pr close {pr_number}` を実行、review invocation を skip、Phase 5.6 (completion report) へ jump (workflow 終端) |
+| PR を取り下げる | `gh pr close {pr_number} -R {owner_repo}` を実行、review invocation を skip、Phase 5.6 (completion report) へ jump (workflow 終端) |
 | 手動レビューへエスカレーション | review invocation を skip、review-fix loop を抜けて Phase 5.5 (Ready for Review) へ jump (人手レビューに引継ぎ) |
 
 ### Branching after user selection
@@ -146,7 +148,7 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 |-----------|------|
 | 本 PR 内で再試行 | review invocation 実行 |
 | 別 Issue として切り出す | §4 の split bash 実行 → review invocation 実行 |
-| PR を取り下げる | `gh pr close {pr_number}` → Phase 5.6 (review invocation skip) |
+| PR を取り下げる | `gh pr close {pr_number} -R {owner_repo}` → Phase 5.6 (review invocation skip) |
 | 手動レビューへエスカレーション | Phase 5.5 へ jump (review invocation skip) |
 
 ## §4 — Split bash for "別 Issue として切り出す"

@@ -124,6 +124,8 @@ Detect the parent Issue of the current (child) Issue. **Three methods are tried 
 
 > **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. **Method 3's validation loop body is also a sync target**: the self-match exclusion (`cand != {issue_number}`), the body re-validation regex (which confirms the candidate body actually contains the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line), and `--limit 10` MUST stay identical across both sites — only the `--state` filter differs. If the detection method ordering, the OR semantics, or the Method 3 loop body (regex / `--limit`) diverge between start and close, the past silent-skip and false-positive regressions in parent-child sync reappear.
 
+> `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](./gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
+
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
 Read the current (child) Issue body and search for the `## 親 Issue` section. This section is written by `/rite:issue-create` (Decompose Path, flat workflow) when child Issues are created from a parent. Format:
@@ -135,7 +137,7 @@ Read the current (child) Issue body and search for the `## 親 Issue` section. T
 ```
 
 ```bash
-child_body=$(gh issue view {issue_number} --json body --jq '.body')
+child_body=$(gh issue view {issue_number} -R {owner_repo} --json body --jq '.body')
 # SIGPIPE 防止: here-string で subprocess を排除
 parent_number=$(grep -A2 '^## 親 Issue' <<< "$child_body" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
 echo "method1_parent=${parent_number:-none}"
@@ -166,13 +168,13 @@ If Methods 1 and 2 both failed:
 
 ```bash
 # GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
-candidates=$(gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+candidates=$(gh issue list -R {owner_repo} --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
 parent_number=""
 for cand in $candidates; do
   # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
   [ "$cand" = "{issue_number}" ] && continue
   # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
-  cand_body=$(gh issue view "$cand" --json body --jq '.body')
+  cand_body=$(gh issue view "$cand" -R {owner_repo} --json body --jq '.body')
   if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
     parent_number="$cand"
     break

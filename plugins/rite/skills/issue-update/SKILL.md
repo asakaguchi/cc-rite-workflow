@@ -99,8 +99,10 @@ Use `AskUserQuestion` to confirm the Issue number.
 
 ### 0.3 Verify Issue Exists
 
+> `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
+
 ```bash
-gh issue view {issue_number} --json number,title,state
+gh issue view {issue_number} -R {owner_repo} --json number,title,state
 ```
 
 If the Issue is not found:
@@ -426,4 +428,4 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 |-------|----------|
 | On main/master Branch | See error output for details |
 | Issue Is Already Closed | See error output for details |
-| Comment Update Failed | `gh issue view {number}` で Issue を確認; 再度実行 |
+| Comment Update Failed | `gh issue view {number} -R {owner_repo}` で Issue を確認; 再度実行 |

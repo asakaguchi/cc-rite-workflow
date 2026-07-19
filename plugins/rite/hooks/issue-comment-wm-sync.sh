@@ -133,7 +133,10 @@ get_owner_repo() {
     fi
   fi
   _err=$(mktemp 2>/dev/null) || _err=""
-  _out=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>"${_err:-/dev/null}") || _rc=$?
+  # cd "$STATE_ROOT" here too (same as the git-remote fast path above and
+  # post-compact.sh's fallback) — without it, this fallback could resolve a
+  # different repo than the fast path when cwd != STATE_ROOT.
+  _out=$(cd "$STATE_ROOT" 2>/dev/null && gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>"${_err:-/dev/null}") || _rc=$?
   if [ "$_rc" -ne 0 ] || [ -z "$_out" ]; then
     if [ -n "$_err" ] && [ -s "$_err" ]; then
       echo "[rite] WARNING: issue-comment-wm-sync: gh repo view failed (rc=$_rc)" >&2

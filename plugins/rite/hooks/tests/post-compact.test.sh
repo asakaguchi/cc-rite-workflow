@@ -287,9 +287,18 @@ echo ""
 # ──────────────────────────────────────────────────────────────────────────
 
 _setup_recon_env() {
-  local label="$1" gh_behavior="$2" reconcile_result="${3:-updated}"
+  local label="$1" gh_behavior="$2" reconcile_result="${3:-updated}" git_remote_url="${4:-}"
   local dir="$TEST_DIR/recon-$label"
-  mkdir -p "$dir/.git" "$dir/bin"
+  mkdir -p "$dir/bin"
+  if [ -n "$git_remote_url" ]; then
+    # Real git repo (not the `mkdir -p .git` non-repo stub below) so
+    # resolve_owner_repo() can actually parse `origin` — used by TC-RECON-08
+    # to exercise the git-remote fast path's *success* case at the caller
+    # level, instead of always falling through to the gh repo view mock.
+    ( cd "$dir" && git init -q && git remote add origin "$git_remote_url" )
+  else
+    mkdir -p "$dir/.git"
+  fi
   # flow-state with pr_number=42 → reconciliation block enters
   write_per_session_state "$dir" \
     '{"active": true, "issue_number": 42, "phase": "ready", "next_action": "Ready", "loop_count": 0, "pr_number": 42, "branch": "feat/issue-42-recon"}'
@@ -340,6 +349,20 @@ EOF
 case "$1 $2" in
   "pr view") echo "false" ;;
   "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"In Review"}]}}]}}}}}' ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
+    git_remote_bypass)
+      # `repo view` is deliberately broken — if git-remote resolution didn't
+      # actually run (or silently fell through to this fallback), the
+      # reconciliation block would surface post_compact_gh_repo_view_failed.
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "pr view") echo "false" ;;
+  "repo view") echo "auth required (should not be called — git-remote should resolve first)" >&2; exit 1 ;;
   "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"In Review"}]}}]}}}}}' ;;
   *) exit 0 ;;
 esac
@@ -480,6 +503,22 @@ if grep -qE 'post_compact_gh_repo_view_failed' "$recon_stderr"; then
   pass "TC-RECON-07 WARNING is attributed via post_compact_gh_repo_view_failed token"
 else
   fail "TC-RECON-07 WARNING emitted but not attributed via post_compact_gh_repo_view_failed token: $(head -c 500 "$recon_stderr")"
+fi
+
+# TC-RECON-09: SSH Host alias origin → git-remote fast path bypasses a broken
+# gh repo view (the actual #1899 scenario). Every fixture above uses a fake
+# `mkdir -p .git` non-repo, so all of them fail to parse via git-remote and
+# fall through to (and exercise) the gh repo view fallback — none exercises
+# the git-remote fast path's *success* case at the caller level.
+echo "TC-RECON-09: SSH Host alias origin → git-remote fast path bypasses broken gh repo view"
+recon_dir=$(_setup_recon_env "git-remote-success" "git_remote_bypass" "updated" "git@github.com-work:o/r.git")
+recon_stderr="$(mktemp "$TEST_DIR/recon-git-remote-success-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'post_compact_gh_repo_view_failed' "$recon_stderr"; then
+  fail "git-remote fast path did not bypass the broken gh repo view fallback: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "git-remote fast path bypasses broken gh repo view (real #1899 scenario, caller-level)"
 fi
 
 # TC-CONFIG-PARSE: post-compact.sh が rite-config.yml の awk parse 失敗を silent skip ではなく

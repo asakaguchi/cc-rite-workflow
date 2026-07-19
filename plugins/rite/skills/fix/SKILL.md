@@ -1115,13 +1115,17 @@ fi
 # ステップ 1.5 / Fast Path Cancel exit / Step C error exit — で明示的に削除する)
 handoff_committed=1
 
-# Block 境界 sentinel emit (observability / debugging trail)。skip_file= は後続 phase の
-# Read tool 参照用の実パス (sandbox 環境で $TMPDIR 配下となるため、リテラル /tmp 前提で読めない)
-echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={target_comment_id}; skip_file=$skip_file" >&2
+# Block 境界 sentinel emit (observability / debugging trail)。body_file= / author_file= /
+# skip_file= は後続 phase の Read tool 参照用の実パス (sandbox 環境で $TMPDIR 配下となるため、
+# リテラル /tmp 前提で読めない。handoff 3 本すべてを surface する — 片方だけの marker 化は
+# sibling の取り残しになる)
+echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={target_comment_id}; body_file=$body_file; author_file=$author_file; skip_file=$skip_file" >&2
 ```
 
 
 **Parsing rule**:
+
+> `$target_body` の実体は Block C が書き出した body_file であり、Claude は **Block C の `[CONTEXT] BLOCK_C_COMPLETE` marker の `body_file=` 値をリテラル使用して Read tool で読む**（Read tool は `${TMPDIR:-/tmp}` を展開できないため documented path 形式では読めない。specific path 必須、wildcard glob 禁止）。
 
 1. If `$target_body` contains `## 📜 rite レビュー結果`: **ステップ 1.2.1 で定義された table パースロジック** (`### 全指摘事項` を起点に reviewer サブセクションごとの table を解析し `severity_map` を構築する手順) を `$target_body` に対して適用する。**ステップ 1.2.1 のコメント取得処理 (broad retrieval) は実行しない** — 対象コメントは既に取得済みのため
 2. Otherwise (外部ツール: `/verified-review` skill、`pr-review-toolkit:review-pr` plugin、手動コメント等): **best-effort parse**
@@ -1839,7 +1843,7 @@ Confirm the fix approach for each finding (only for findings whose scope is NOT 
 | Fast Path 経由 かつ `target_author_mention_skip == "false"` | `@{target_author}` | `@{target_author}` |
 | Fast Path 経由 かつ `target_author_mention_skip == "true"` | `(不明なレビュアー)` | `(unknown reviewer)` |
 
-Claude は ステップ 1 末尾で skip_file を Read tool で読み (パスは Block C の `[CONTEXT] BLOCK_C_COMPLETE` marker の `skip_file=` 値をリテラル使用する — Read tool は `${TMPDIR:-/tmp}` を展開できないため。specific path 必須、wildcard glob は並列セッション破壊のため絶対禁止)、`"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
+Claude は ステップ 1 末尾で skip_file を、`{target_author}` が必要な箇所では author_file を、それぞれ Read tool で読む (パスは Block C の `[CONTEXT] BLOCK_C_COMPLETE` marker の `skip_file=` / `author_file=` / `body_file=` 値をリテラル使用する — Read tool は `${TMPDIR:-/tmp}` を展開できないため、handoff 3 本すべて marker 値経由で読む。specific path 必須、wildcard glob は並列セッション破壊のため絶対禁止)。skip_file が `"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
 
 **複数 reviewer 時の `{reviewer_display_N}` 展開ルール** (ステップ 3.2 trailer / ステップ 4.2 PR comment 報告で使用):
 
@@ -3259,7 +3263,7 @@ The fix content includes: PR number, findings addressed, fix strategies used, an
 ```bash
 # {plugin_root} はリテラル値で埋め込む
 # ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下・/tmp/rite-*・$TMPDIR/rite-* prefix のみを受容する
-# mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
+# mktemp デフォルトの ${TMPDIR:-/tmp}/tmp.* では trigger が exit 1 で silent fail する
 tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX")
 trigger_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-err-XXXXXX") || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)

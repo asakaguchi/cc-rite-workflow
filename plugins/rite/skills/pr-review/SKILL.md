@@ -2701,7 +2701,7 @@ The review content includes: PR number, reviewer types, finding categories, seve
 ```bash
 # {plugin_root} はリテラル値で埋め込む
 # ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下・/tmp/rite-*・$TMPDIR/rite-* prefix のみを受容する
-# mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
+# mktemp デフォルトの ${TMPDIR:-/tmp}/tmp.* では trigger が exit 1 で silent fail する
 tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX")
 trigger_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-err-XXXXXX") || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)

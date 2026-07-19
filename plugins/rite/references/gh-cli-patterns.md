@@ -696,7 +696,10 @@ gh コマンド**（`gh pr create/view/list/edit/merge/ready/comment/review/diff
    > で失敗する）。shell 変数から slash 形式を組むときは必ず `-R "$owner/$repo"` を使うこと。
 
 適用除外: 🚫 PROHIBITED 例・エラーカタログの失敗再現例（失敗の再現自体が目的のコマンド）には
-`-R` を付与しない（付与すると例の意味が壊れる）。
+`-R` を付与しない（付与すると例の意味が壊れる）。**reviewer agent 定義**（`agents/*-reviewer.md`）も
+適用除外 — spawn される reviewer subagent は `{plugin_root}` / `{owner_repo}` を解決する経路を持たない
+（user prompt には diff / spec / shared principles のみが渡る）ため、`-R {owner_repo}` を付与すると
+literal のまま実行され逆に回帰する。reviewer は repo cwd で動くため gh の remote 推論に任せる。
 
 `gh pr view` への `-R` 伝播では selector（PR 番号または branch 名）を必ず併記する — gh は
 `-R` 指定時に selector を必須とする（`argument required when using the --repo flag`）ため、

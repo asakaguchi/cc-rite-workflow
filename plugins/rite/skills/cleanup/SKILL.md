@@ -211,7 +211,7 @@ PR #{pr_number} ({pr_title}) のマージ時点で未完了だったタスクを
 ```bash
 # 0. `残作業` label を冪等に事前作成 (gh issue create --label X は X 未存在時に
 # `could not add label: 'X' not found` で fail し Issue creation 自体が失敗するため必須)
-gh label create 残作業 --description "PR マージ後の残作業" --color "fbca04" 2>/dev/null || true
+gh label create 残作業 -R {owner_repo} --description "PR マージ後の残作業" --color "fbca04" 2>/dev/null || true
 
 # 1. Issue 本文を tempfile に書き出し
 # trap 設置順は ../../references/bash-trap-patterns.md#signal-specific-trap-template と統一。

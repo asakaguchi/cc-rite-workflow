@@ -255,7 +255,7 @@ labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length
 # helper の $result (warnings) として surface される。空 labels_csv はループ 0 回で従来動作。
 while IFS= read -r label; do
   [ -z "$label" ] && continue
-  gh label create "$label" --description "auto-created by rite issue-create" --color "ededed" 2>/dev/null || true
+  gh label create "$label" -R {owner_repo} --description "auto-created by rite issue-create" --color "ededed" 2>/dev/null || true
 done < <(printf '%s\n' "$labels_json" | jq -r '.[]')
 
 # args_json を入れ子 $() から分離して構築する (深い入れ子 quoting の malform 源を削減。

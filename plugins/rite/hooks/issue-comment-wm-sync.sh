@@ -116,17 +116,49 @@ FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 # 「owner/repo 取得不能 = Issue comment 経路の機能停止」が silent に発生する。stderr を
 # tempfile capture して、失敗時に WARNING で根本原因を expose する。
 get_owner_repo() {
-  local _err _rc=0 _out
+  local _err _rc=0 _out _git_err _git_or_line _git_owner _git_repo
+  # git-remote parse first: works even when `origin` is an SSH Host alias
+  # unrecognized by gh's host allowlist (#1899). Falls through to
+  # `gh repo view` below whenever the parse fails (no origin remote,
+  # unparseable URL, charset-rejected).
+  # Anchored to `cd "$STATE_ROOT"` (same as post-compact.sh) so this resolves
+  # the intended repo rather than whatever git repo the ambient process cwd
+  # happens to sit in — `cd` here is subshell-scoped via the `$(...)` this
+  # function is always called through, so it cannot affect the caller's cwd.
+  _git_err=$(mktemp 2>/dev/null) || _git_err=""
+  _git_or_line=$(cd "$STATE_ROOT" 2>/dev/null && bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>"${_git_err:-/dev/null}") || _git_or_line=""
+  if [ -n "$_git_or_line" ]; then
+    IFS=$'\t' read -r _git_owner _git_repo <<< "$_git_or_line"
+    if [ -n "$_git_owner" ] && [ -n "$_git_repo" ]; then
+      [ -n "$_git_err" ] && rm -f "$_git_err"
+      printf '%s/%s' "$_git_owner" "$_git_repo"
+      return
+    fi
+  fi
   _err=$(mktemp 2>/dev/null) || _err=""
-  _out=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>"${_err:-/dev/null}") || _rc=$?
+  # cd "$STATE_ROOT" here too (same as the git-remote fast path above and
+  # post-compact.sh's fallback) — without it, this fallback could resolve a
+  # different repo than the fast path when cwd != STATE_ROOT.
+  _out=$(cd "$STATE_ROOT" 2>/dev/null && gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>"${_err:-/dev/null}") || _rc=$?
   if [ "$_rc" -ne 0 ] || [ -z "$_out" ]; then
+    # WARNING header is unconditional — gh repo view's own stderr may be
+    # empty (e.g. `cd "$STATE_ROOT"` itself failed, short-circuiting before
+    # gh ever ran), which must not suppress the header itself, only the
+    # optional detail lines below it.
+    echo "[rite] WARNING: issue-comment-wm-sync: gh repo view failed (rc=$_rc)" >&2
     if [ -n "$_err" ] && [ -s "$_err" ]; then
-      echo "[rite] WARNING: issue-comment-wm-sync: gh repo view failed (rc=$_rc)" >&2
       head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    fi
+    # Both resolution paths failed at this point — also surface why the
+    # git-remote fast path bailed, or this WARNING would show only the
+    # fallback's side of a two-sided failure.
+    if [ -n "$_git_err" ] && [ -s "$_git_err" ]; then
+      head -3 "$_git_err" | neutralize_ctrl --keep-newline | sed 's/^/  git-remote: /' >&2
     fi
     _out=""
   fi
   [ -n "$_err" ] && rm -f "$_err"
+  [ -n "$_git_err" ] && rm -f "$_git_err"
   printf '%s' "$_out"
 }
 
@@ -414,7 +446,10 @@ INIT_EOF
   _init_err=""
   _init_err=$(mktemp 2>/dev/null) || _init_err=""
   _init_rc=0
-  result=$(gh issue comment "$ISSUE" --body-file "$tmpfile" 2>"${_init_err:-/dev/null}") || _init_rc=$?
+  # --repo を明示: shorthand の `gh issue comment` は内部で `gh repo view` と同じ
+  # host-allowlist 解決を行うため、明示しないと origin が SSH Host alias のとき
+  # OWNER_REPO が解決済みでもここで再び失敗する (#1899)。
+  result=$(gh issue comment "$ISSUE" --repo "$OWNER_REPO" --body-file "$tmpfile" 2>"${_init_err:-/dev/null}") || _init_rc=$?
   if [ "$_init_rc" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: gh issue comment 作成失敗 (rc=$_init_rc)" >&2
     [ -n "$_init_err" ] && [ -s "$_init_err" ] && head -3 "$_init_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2

@@ -244,6 +244,57 @@ fi
 assert_file_contains "$DRIFT_SH" 'projectItems\(first: [1-9]' "GraphQL projectItems page size is positive (guards first: 0 break)"
 
 echo ""
+echo "[T-8] Behavioral: git-remote fast path resolves SSH alias origin, owner/repo threaded into graphql (#1899)"
+# Real git repo + SSH Host alias origin + deliberately-broken `gh repo view` +
+# enabled:true config (bypassing the T-6 no-op gates so the repo-resolution
+# block is actually reached). The graphql shim requires the exact resolved
+# owner/repo — a regression to the gh repo view shorthand or a wrong-repo
+# resolution fails loudly instead of passing silently.
+T8_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-board-drift-t8-XXXXXX")
+# T-7 の trap を上書きするため、その cleanup 対象 ($tmpd) も引き継ぐ
+trap 'rm -rf "${tmpd:-}" "$T8_DIR"' EXIT
+mkdir -p "$T8_DIR/repo/bin"
+( cd "$T8_DIR/repo" && git init -q && git remote add origin "git@github.com-work:o/r.git" ) >/dev/null 2>&1
+cat > "$T8_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+cat > "$T8_DIR/repo/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view")
+    echo "should not be called - git-remote fast path must resolve first" >&2
+    exit 1 ;;
+  "api graphql")
+    if ! { printf '%s\n' "$*" | grep -qE -- ' owner=o( |$)' && printf '%s\n' "$*" | grep -qE -- ' repo=r( |$)'; }; then
+      echo "MOCK ASSERTION FAILED: expected -f owner=o -f repo=r, got: $*" >&2
+      exit 1
+    fi
+    echo '{"data":{"repository":{"issues":{"nodes":[]}}}}' ;;
+  *) exit 0 ;;
+esac
+GH_SHIM
+chmod +x "$T8_DIR/repo/bin/gh"
+set +e
+t8_out=$(cd "$T8_DIR/repo" && PATH="$T8_DIR/repo/bin:$PATH" bash "$DRIFT_SH" --quiet 2>"$T8_DIR/stderr.txt")
+t8_rc=$?
+set -e
+if [ "$t8_rc" -eq 0 ] && printf '%s' "$t8_out" | grep -q 'Total projects-board-drift findings: 0'; then
+  PASS=$((PASS + 1)); echo "  ✓ run succeeds via git-remote fast path (exit 0, 0 findings)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-8: expected exit 0 + 0-findings summary, got rc=$t8_rc; stderr: $(head -c 300 "$T8_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ run failed (exit $t8_rc)" >&2
+fi
+if grep -qE 'MOCK ASSERTION FAILED|gh repo view failed' "$T8_DIR/stderr.txt" 2>/dev/null; then
+  FAIL=$((FAIL + 1)); FAILURES+=("T-8: wrong owner/repo value or fallback to gh repo view: $(head -c 300 "$T8_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ wrong owner/repo value or gh repo view fallback was hit" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ exact owner=o repo=r threaded to graphql, gh repo view never consulted"
+fi
+
+echo ""
 echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then

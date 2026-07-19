@@ -8,6 +8,7 @@
 # Wiki 活動ログ
 
 このファイルは Wiki の活動を時系列で記録します（append-only）。
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=268, broken_refs=0
 
 ## 活動ログ
 

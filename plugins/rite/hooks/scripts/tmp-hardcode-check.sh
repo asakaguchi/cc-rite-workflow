@@ -31,7 +31,9 @@
 #       makes an otherwise-successful push exit non-zero. `git stash push -u`
 #       (include-untracked stash) is a different command and does NOT match:
 #       the interposed "stash" word breaks the `git push` token sequence.
-#       Known boundary: combined short flags (`-qu`) are not detected.
+#       Known boundary: combined short flags (`-qu`) and the flag-after-refspec
+#       form (`git push origin -u branch`) are not detected — the regex only
+#       allows flag-shaped tokens between `git push` and `-u`/`--set-upstream`.
 #
 # Scan scope: plugins/rite/**/*.{md,sh} plus docs/**/*.md when present.
 # Exclusions:
@@ -80,8 +82,12 @@ log() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*" >&2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) USE_ALL=1; shift ;;
-    --target) TARGETS+=("$2"); shift 2 ;;
-    --repo-root) REPO_ROOT="$2"; shift 2 ;;
+    --target)
+      [ $# -ge 2 ] || { echo "ERROR: --target requires a value" >&2; usage >&2; exit 2; }
+      TARGETS+=("$2"); shift 2 ;;
+    --repo-root)
+      [ $# -ge 2 ] || { echo "ERROR: --repo-root requires a value" >&2; usage >&2; exit 2; }
+      REPO_ROOT="$2"; shift 2 ;;
     --quiet) QUIET=1; shift ;;
     --skip-if-no-target) SKIP_IF_NO_TARGET=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -106,13 +112,8 @@ fi
 SELF_REL="plugins/rite/hooks/scripts/tmp-hardcode-check.sh"
 
 if [ "$USE_ALL" -eq 1 ]; then
-  declare -a scan_dirs=()
   for d in "plugins/rite" "docs"; do
-    if [ -d "$d" ]; then
-      scan_dirs+=("$d")
-    else
-      echo "WARNING: $d not found under $REPO_ROOT (skipped)" >&2
-    fi
+    [ -d "$d" ] || echo "WARNING: $d not found under $REPO_ROOT (skipped)" >&2
   done
   # docs/ だけの環境 (plugins/rite 不在) は gate 対象の rite ソースが無い
   if [ ! -d "plugins/rite" ]; then
@@ -125,6 +126,7 @@ if [ "$USE_ALL" -eq 1 ]; then
     echo "  Recovery: run from the rite plugin source tree, pass --target FILE, or pass --skip-if-no-target" >&2
     exit 2
   fi
+  # docs は documented scope どおり *.md のみ (plugins/rite は *.md + *.sh)
   while IFS= read -r f; do
     case "$f" in
       */tests/*) continue ;;
@@ -132,7 +134,8 @@ if [ "$USE_ALL" -eq 1 ]; then
       "$SELF_REL") continue ;;
     esac
     TARGETS+=("$f")
-  done < <(find "${scan_dirs[@]}" -type f \( -name '*.md' -o -name '*.sh' \) 2>/dev/null | sort)
+  done < <( { find plugins/rite -type f \( -name '*.md' -o -name '*.sh' \); \
+              [ -d docs ] && find docs -type f -name '*.md'; } 2>/dev/null | sort)
 fi
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
@@ -150,6 +153,11 @@ check_file() {
     echo "WARNING: target not found: $file" >&2
     return 0
   fi
+  # 読み取り不能ファイルが grep rc=2 → silent clean 化するのを防ぐ (loud に skip する)
+  if [ ! -r "$file" ]; then
+    echo "WARNING: target not readable: $file" >&2
+    return 0
+  fi
   # P1: mktemp + /tmp template (flag 介在・quote 付きバリアントも検出)。
   # ${TMPDIR:-/tmp} 形式は quote 直後が `/tmp/` にならないため構造的に除外される
   grep -nE 'mktemp[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*["'"'"']?/tmp/' "$file" 2>/dev/null | while IFS=: read -r ln _; do
@@ -161,7 +169,8 @@ check_file() {
     printf '[tmp-hardcode][P2] %s:%s: fixed /tmp path hardcode (sandbox read-only) — use "${TMPDIR:-/tmp}/..."\n' "$file" "$ln"
   done >> "$FINDINGS_FILE"
   # P3: git push -u / --set-upstream (upstream 書込は .git/config 保護で常時拒否)。
-  # flag 介在形 (git push --force -u 等) も検出。`git stash push -u` は token 列が異なりマッチしない
+  # flag 介在形 (git push --force -u 等) も検出。`git stash push -u` は token 列が異なりマッチしない。
+  # Known boundary: 結合短形 (-qu) と refspec 後置形 (git push origin -u branch) は非検出 (docstring 参照)
   grep -nE 'git push[[:space:]]+(-[a-zA-Z-]+[[:space:]]+)*(-u|--set-upstream)([[:space:]]|$)' "$file" 2>/dev/null | while IFS=: read -r ln _; do
     printf '[tmp-hardcode][P3] %s:%s: git push -u/--set-upstream (upstream write denied under sandbox) — drop it\n' "$file" "$ln"
   done >> "$FINDINGS_FILE"

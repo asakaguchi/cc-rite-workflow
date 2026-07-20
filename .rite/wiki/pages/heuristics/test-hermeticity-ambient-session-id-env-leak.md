@@ -1,0 +1,53 @@
+---
+type: "heuristics"
+title: "hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)"
+domain: "heuristics"
+description: "flow-state.sh の session_id 解決は env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id ファイルの優先順位を持つため、テストスイート自身を実行している Claude Code セッションの環境変数が、テスト内の bash \"$HOOK\" 呼び出しへ暗黙に継承され、ファイルベースの per-session fixture を無視して誤った flow-state を読む non-hermetic なテストになる。テスト冒頭で該当環境変数を明示的に unset する。"
+created: "2026-07-20T09:47:41Z"
+updated: "2026-07-20T09:47:41Z"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260720T094042Z-pr-1928.md"
+tags: ["test", "hermeticity", "env-var-leak", "session-id", "flow-state", "sandbox"]
+confidence: high
+---
+
+# hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)
+
+## 概要
+
+`flow-state.sh` の session_id 解決優先順位（CLI `--session` > env `CLAUDE_CODE_SESSION_ID` > env `CLAUDE_SESSION_ID` > `.rite-session-id` ファイル、Issue #1530）は、hook を単体で叩く分にはファイルベース fixture を安全に isolate できる設計だが、テストスイート自体が **稼働中の Claude Code セッション内**（`bash "$HOOK"` を素の子プロセスとして呼ぶ形）で実行されると、そのセッション自身の環境変数がテストの各 `bash "$HOOK"` 呼び出しへ暗黙に継承され、優先順位の上位で fixture を握り潰す。
+
+## 詳細
+
+### 症状
+
+Issue #1911（PR #1928）の `post-compact.test.sh` は、Issue 本文では「`gh`/network 依存が未 mock 化なのが原因」と推定されていたが、実際に `bash -x` でトレースした結果、原因は全く別だった: テストが `write_per_session_state()` で `.rite-session-id` ファイルに特定の session_id を書き込んだ fixture を用意していても、テストランナー自身（この対話セッション）の `CLAUDE_CODE_SESSION_ID` 環境変数が各 `bash "$HOOK"` 呼び出しに ambient に漏れ込み、優先順位に従ってファイル fixture より先に解決されてしまう。結果、hook は存在しない（または意図と異なる）flow-state ファイルを解決し、出力が silent に空になる。
+
+```bash
+# 反面教材 — テストランナー自身の環境変数が子プロセスに暗黙継承される
+write_per_session_state "$fixture_session_id" ...   # .rite-session-id ファイルに書く
+bash "$HOOK" ...   # だが CLAUDE_CODE_SESSION_ID が親から継承され、ファイルより優先されてしまう
+```
+
+修正は `unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID` をテストスイート冒頭に 1 行追加するだけで、`post-compact.test.sh` は 34/34 pass に到達した（修正前は 15-17 件が silent に fail）。
+
+### なぜ問題か
+
+- **CLI から直接叩くと再現しない**: 独立した非対話シェル（新しいターミナル等）から同じテストを実行すると `CLAUDE_CODE_SESSION_ID` は設定されておらず問題は顕在化しない。稼働中の Claude Code セッション内でテストスイートを実行するときのみ発現するため、開発者の実行文脈によって pass/fail が変わる non-hermetic なテストになる。
+- **Issue の推定原因が的外れになりうる**: 本件では Issue 本文が「gh/network 未 mock 化」を原因と推定していたが、これは誤りだった。ambient env var 漏洩は症状（empty output / 意図しない flow-state 参照）だけからは推測しにくく、実際に `bash -x` で「どの session_id がどこから来たか」をトレースしないと特定できない。
+- **横展開の射程が広い**: `flow-state.sh` を呼ぶ hook テストは共通してこの優先順位ロジックに依存するため、1 ファイルで顕在化した場合、同種の `bash "$HOOK"` 呼び出しパターンを持つ他のテストファイルにも同一バグが潜んでいる可能性が高い（Issue #1911 の横断調査で `hooks/tests/*.test.sh` 6+ ファイルに同一パターンを確認、Issue #1929 として追跡）。
+
+### 対策
+
+1. **テストスイート冒頭で明示的に unset する**: `.rite-session-id` ファイル fixture に依存するテストスイートでは、`set -euo pipefail` の直後など早い段階で `unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID` を実行し、session_id 解決を常にファイルベース fixture へ強制する。
+2. **優先順位ロジックに依存する全テストを横断監査する**: 1 ファイルで発見したら、同じ `bash "$HOOK"` 呼び出しパターンを持つ他のテストファイルも横断的に確認する（横展開の射程がドメイン単位で広いため、issue_accountability に基づき個別 Issue へ切り出す）。
+3. **Issue 本文の推定原因を鵜呑みにしない**: 「〜が原因と思われる」という記述は仮説であり、実際に失敗を再現・トレースして検証してから修正範囲を確定する。
+
+## 関連ページ
+
+- [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](./test-hermeticity-ambient-git-remote-dependency.md)
+
+## ソース
+
+- [PR #1928 review results — post-compact.test.sh の ambient session-id 環境変数漏洩を遮断](../../raw/reviews/20260720T094042Z-pr-1928.md)

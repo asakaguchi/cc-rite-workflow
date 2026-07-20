@@ -672,28 +672,95 @@ _rite_dir_is_self() {
 rite_self_dir="${RITE_WORKTREE:-$rite_invocation_pwd}"
 rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
 
+# Liveness TTL (Issue #1923). Both signals below used to protect an
+# active=true holder with NO time bound, which deadlocks this guard forever
+# when a session ends WITHOUT session-end.sh's SessionEnd hook firing (forced
+# quit / crash / terminal close — see session-end.sh header for which exits
+# skip it): its flow-state stays `active=true` and the worktree/branch it
+# holds can never be lazily reaped. TTL_HOURS bounds that: an active=true
+# holder is protected only while its `updated_at` is within the TTL.
+# Overridable via env for ops/troubleshooting (no new rite-config.yml key —
+# CLAUDE.md シンプルさを死守する).
+readonly RITE_SESSION_LIVENESS_TTL_HOURS="${RITE_SESSION_LIVENESS_TTL_HOURS:-24}"
+
+# _rite_epoch_of_ts: best-effort ISO 8601 UTC (`Z` suffix) -> epoch seconds.
+# Tries GNU `date -d` (Linux) then BSD/macOS `date -j -f` — the same two-step
+# technique as session-ownership.sh's parse_iso8601_to_epoch — but, unlike
+# that helper, reports failure via return code instead of collapsing it to
+# epoch 0. The caller (_rite_ttl_protects) must tell "malformed input" and
+# "this host's date binary can't parse a well-formed timestamp" apart from
+# "genuinely far in the past" — all three would alias to the same huge diff
+# if compared against a fixed epoch-0 fallback.
+# Returns 0 with epoch on stdout, 1 on any parse failure.
+_rite_epoch_of_ts() {
+  local ts="$1" epoch
+  [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
+  if epoch=$(date -u -d "$ts" +%s 2>/dev/null); then
+    printf '%s' "$epoch"; return 0
+  fi
+  if epoch=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s 2>/dev/null); then
+    printf '%s' "$epoch"; return 0
+  fi
+  return 1
+}
+
+# _rite_ttl_protects: whether an active=true holder last active at
+# `updated_at` (ISO 8601 UTC) is still within the liveness TTL (Issue #1923).
+#   0 = protect: within TTL: OR updated_at missing/malformed (AC-4 fail-safe,
+#       silent) OR this host's `date` cannot parse a well-formed timestamp
+#       (4.5 fail-safe, WARNING emitted once per run — TTL enforcement
+#       degrades to the pre-#1923 always-protect behavior on that host)
+#   1 = TTL exceeded -> not protected by this signal (still subject to the
+#       other liveness signal / Gates 1-3)
+# AC-6: the boundary (age == TTL exactly) counts as "within" -> protect.
+_rite_date_incompat_warned=0
+_rite_ttl_protects() {
+  local updated_at="$1" now_epoch upd_epoch age ttl_seconds
+  [ -n "$updated_at" ] || return 0
+  if ! upd_epoch=$(_rite_epoch_of_ts "$updated_at"); then
+    if [[ "$updated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
+       && [ "$_rite_date_incompat_warned" != "1" ]; then
+      echo "WARNING: この環境の date コマンドで updated_at ($(printf '%s' "$updated_at" | neutralize_ctrl)) を解釈できません。worktree liveness の TTL 判定を skip し、従来どおり active=true holder を無期限に保護します。" >&2
+      _rite_date_incompat_warned=1
+    fi
+    return 0
+  fi
+  now_epoch=$(date -u +%s 2>/dev/null) || return 0
+  age=$(( now_epoch - upd_epoch ))
+  ttl_seconds=$(( RITE_SESSION_LIVENESS_TTL_HOURS * 3600 ))
+  [ "$age" -le "$ttl_seconds" ]
+}
+
 # Worktree liveness guard (Issue #1524 + #1552). The 4th protection layer:
 # extend Gate 0 self-exclusion to ALL sessions that may still resume into this
 # worktree. Two independent signals, either of which protects (skip reap):
 #   (A) flow-state.worktree scan — a session's per-session flow-state records
-#       this worktree as its `active` `worktree` (Issue #1524). No time bound:
-#       an active session protects its tree regardless of idle time.
+#       this worktree as its `active` `worktree` (Issue #1524), protected
+#       while `updated_at` is within the liveness TTL above (Issue #1923;
+#       previously unbounded — "no time bound: an active session protects
+#       its tree regardless of idle time").
 #   (B) claim-join (Issue #1552) — the issue's claim file records this worktree
 #       and its holder session is still `active=true`, EVEN IF the claim's
 #       heartbeat (flow-state `updated_at`) has aged past the 2h staleness window
-#       used by issue-claim.sh `check`. A session that is active=true but idle
-#       >2h has a `stale` claim, which Gate 2 alone would treat as reapable —
-#       reaping a worktree the harness can still resume into and restore as cwd,
-#       breaking `/clear` with `Path does not exist`. (B) closes that window for
-#       sessions whose flow-state.worktree drifted empty/mismatched so (A) misses
-#       them, since the claim reliably records the worktree↔holder binding.
-# Both signals protect ONLY active=true holders: a deactivated/abandoned holder
-# (active=false) stays reapable (subject to the other gates), preserving the
-# lazy-reap purpose and bounding worktree leak. Returns:
-#   0 = an active=true session references $2 (canonical wt_path) → protect
+#       used by issue-claim.sh `check` — but, like (A), only while that SAME
+#       `updated_at` is within the liveness TTL (Issue #1923). A session that
+#       is active=true but idle >2h (and <TTL) has a `stale` claim, which
+#       Gate 2 alone would treat as reapable — reaping a worktree the harness
+#       can still resume into and restore as cwd, breaking `/clear` with
+#       `Path does not exist`. (B) closes that window for sessions whose
+#       flow-state.worktree drifted empty/mismatched so (A) misses them,
+#       since the claim reliably records the worktree↔holder binding.
+# Both signals protect ONLY active=true holders WITHIN the TTL (Issue #1923):
+# a deactivated/abandoned holder (active=false) stays reapable as before, and
+# an active=true holder whose `updated_at` has aged past the TTL also stops
+# being protected — bounding the worktree/branch leak from sessions that end
+# without SessionEnd ever clearing `active`. Returns:
+#   0 = an active=true session references $2 (canonical wt_path) AND its
+#       updated_at is within the TTL (or TTL calc unavailable, fail-safe) → protect
 #   2 = the sessions dir cannot be enumerated, or a flow-state cannot be parsed
 #       → caller skips conservatively (AC-4): cannot prove no live session needs it
-#   1 = no active session references it → reap may proceed (subject to other gates)
+#   1 = no active session references it, or the referencing holder's TTL has
+#       exceeded → reap may proceed (subject to other gates)
 # Reads the shared-root sessions dir + issue-claims dir ($repo_root/.rite/...).
 _rite_worktree_protected_by_flow_state() {
   local issue_num="$1" target_canon="$2"
@@ -705,13 +772,19 @@ _rite_worktree_protected_by_flow_state() {
   # over-protecting on a stray claim read error.
   local cfile="$repo_root/.rite/state/issue-claims/issue-${issue_num}.json"
   if [ -f "$cfile" ] && [ -r "$cfile" ]; then
-    local _holder _cwt _hactive
+    local _holder _cwt _hactive _hupdated
     _holder=$(jq -r '.session_id // ""' "$cfile" 2>/dev/null) || _holder=""
     _cwt=$(jq -r '.worktree // ""' "$cfile" 2>/dev/null) || _cwt=""
     if [ -n "$_holder" ] && [ -n "$_cwt" ] && { [ "$_cwt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_cwt")" = "$target_canon" ]; }; then
       _hactive=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
                  get --session "$_holder" --field active --default "false" 2>/dev/null) || _hactive="false"
-      [ "$_hactive" = "true" ] && return 0
+      if [ "$_hactive" = "true" ]; then
+        # TTL gate (Issue #1923): active=true alone no longer protects — the
+        # holder's updated_at must also be within the liveness TTL.
+        _hupdated=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
+                   get --session "$_holder" --field updated_at --default "" 2>/dev/null) || _hupdated=""
+        _rite_ttl_protects "$_hupdated" && return 0
+      fi
     fi
   fi
   # (A) flow-state.worktree scan (Issue #1524).
@@ -722,15 +795,17 @@ _rite_worktree_protected_by_flow_state() {
   local f parse_failed=0
   for f in "$sdir"/*.flow-state; do
     [ -f "$f" ] || continue   # literal glob (no matches) or non-file → skip
-    local _row _active _wt
+    local _row _active _wt _updated
     # Single composite read so a corrupt flow-state is caught as a parse failure
     # (→ conservative skip) rather than silently degrading active/worktree to empty.
-    _row=$(jq -r '[(.active // false | tostring), (.worktree // "")] | join("")' "$f" 2>/dev/null) || { parse_failed=1; continue; }
-    IFS=$'\x1f' read -r _active _wt <<< "$_row"
+    _row=$(jq -r '[(.active // false | tostring), (.worktree // ""), (.updated_at // "")] | join("")' "$f" 2>/dev/null) || { parse_failed=1; continue; }
+    IFS=$'\x1f' read -r _active _wt _updated <<< "$_row"
     [ "$_active" = "true" ] || continue
     [ -n "$_wt" ] || continue
     if [ "$_wt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_wt")" = "$target_canon" ]; then
-      return 0
+      # TTL gate (Issue #1923): active=true + worktree match alone no longer
+      # protects — this holder's updated_at must also be within the TTL.
+      _rite_ttl_protects "$_updated" && return 0
     fi
   done
   [ "$parse_failed" -eq 1 ] && return 2

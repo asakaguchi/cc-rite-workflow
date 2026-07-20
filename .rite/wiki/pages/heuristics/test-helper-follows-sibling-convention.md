@@ -2,8 +2,10 @@
 title: "新規 test helper は同ディレクトリ sibling test の既存 helper 慣習を踏襲する (counter + summary 報告)"
 domain: "heuristics"
 created: "2026-06-09T07:58:52+00:00"
-updated: "2026-06-09T07:58:52+00:00"
+updated: "2026-07-20T10:36:25+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260719T235117Z-pr-1921.md"
   - type: "reviews"
     ref: "raw/reviews/20260609T064947Z-pr-1318.md"
 tags: ["test", "bash", "observability", "convention", "skip-counter"]
@@ -49,6 +51,10 @@ skip() {
 - test helper を追加する PR では、着手時に **同ディレクトリの sibling test file を 1-2 個 grep して既存 helper の構造 (counter init / increment / summary 反映) を確認** してから書く。
 - 「echo だけの helper」は動くが observability を欠く。root skip / env-gated skip がある test では特に、skip 件数が Summary に出ないと「未実行 (skip) なのに全 PASS に見える」false-confidence を生む。
 
+### 再発事例: 前提不成立時の skip が `FAIL: 0` のまま観測不能になる (PR #1921 で再確認)
+
+PR #1921 (Issue #1914) のテストでも、前提条件不成立時の skip を `pass` ではなく素の `echo` で実装したため、skip 発火時にアサーション数が減っても `FAIL: 0` のまま表示され、カウンタ・マーカー基準の走査からカバレッジ欠落が観測できなくなる同型パターンが検出された。skip 自体を不要にする (前提を確定的に作る) のがより本筋の対策として提示された — カウンタ三点セットの追加より優先度が高い代替手段。
+
 ## 関連ページ
 
 - [bash test の summary 行は `$(basename "$0")` で自動同期する](../patterns/bash-test-summary-basename-auto-sync.md)
@@ -56,3 +62,4 @@ skip() {
 ## ソース
 
 - [PR #1318 review results (cycle 1)](../../raw/reviews/20260609T064947Z-pr-1318.md)
+- [PR #1921 review results — 前提不成立時 skip の echo 実装によるカウンタ観測不能パターンを再確認、skip 自体の不要化 (前提確定) を代替対策として提示](../../raw/reviews/20260719T235117Z-pr-1921.md)

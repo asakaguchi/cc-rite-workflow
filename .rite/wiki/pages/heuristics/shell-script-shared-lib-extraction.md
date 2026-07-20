@@ -2,8 +2,10 @@
 title: "兄弟 shell script の重複 helper は shared lib 抽出で解く"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-07-20T10:36:25+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260720T013625Z-pr-1921.md"
   - type: "fixes"
     ref: "raw/fixes/20260416T092207Z-pr-544.md"
   - type: "fixes"
@@ -77,12 +79,17 @@ grep -rn 'parse_wiki_scalar()' plugins/rite/hooks/scripts/
 
 一致する定義が 2+ ファイルにあれば shared lib 候補。`source` で取り込む共通ファイル（例: `plugins/rite/hooks/scripts/_lib.sh`）に集約する。
 
+### Owner/repo 解決 helper の重複 (PR #1921 で確認)
+
+PR #1921 (Issue #1914) の review で、SSH host alias 対応の owner/repo 解決パターン (`git-remote.sh resolve-owner-repo` 優先 → `gh repo view` fallback → 両失敗で degrade + WARNING) を実装する `get_owner_repo()` 型 helper が、リポジトリ内 6 ファイルに重複実装されていることが指摘された。本 PR では sibling hook (`issue-comment-wm-sync.sh`) の既存実装を忠実に踏襲する対称修正を選択し、共通化は別 Issue 候補として scope 外化した — 本ページの「同 commit / 類似 pattern の小規模 duplication は本 PR で inline 対称修正」基準に一致する判断。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
+- [PR #1921 review results (cycle 2) — get_owner_repo 型 helper が 6 ファイルに重複、共通化は別 Issue 候補として scope 外化](../../raw/reviews/20260720T013625Z-pr-1921.md)
 - [PR #544 fix (git ls-tree duplication の DRY 解消)](../../raw/fixes/20260416T092207Z-pr-544.md)
 - [PR #548 cycle 4 fix (shared lib 抽出は Issue #549 で分離)](../../raw/fixes/20260416T180658Z-pr-548.md)
 - [PR #544 review (DRY violation 検出)](../../raw/reviews/20260416T091926Z-pr-544.md)

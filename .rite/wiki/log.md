@@ -4,6 +4,10 @@
 * **Create**: [placeholder 伝播は実行主体の解決経路を確認してから適用する](pages/heuristics/placeholder-propagation-requires-resolver-context.md) — raw/reviews/20260719T154814Z-pr-1919-c3.md, raw/fixes/20260719T154952Z-pr-1919-c3.md を新規ページ化
 * **Create**: [機械的スイープでは挿入先コンテキストを検証してから変更を適用する](pages/patterns/mechanical-sweep-insertion-context-verification.md) — raw/reviews/20260719T151010Z-pr-1919.md, raw/fixes/20260719T151513Z-pr-1919.md, raw/reviews/20260719T153208Z-pr-1919-c2.md, raw/fixes/20260719T153443Z-pr-1919-c2.md を新規ページ化
 * **Skip**: [20260719T160230Z-pr-1919-c4.md](raw/reviews/20260719T160230Z-pr-1919-c4.md) — mergeable 到達サイクルの記録のみで、経験則は同 PR の c1-c3 raw から作成した 3 ページで抽出済み
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260719T235117Z-pr-1921.md を統合
+* **Update**: [新規 test helper は同ディレクトリ sibling test の既存 helper 慣習を踏襲する (counter + summary 報告)](pages/heuristics/test-helper-follows-sibling-convention.md) — raw/reviews/20260719T235117Z-pr-1921.md を統合
+* **Update**: [兄弟 shell script の重複 helper は shared lib 抽出で解く](pages/heuristics/shell-script-shared-lib-extraction.md) — raw/reviews/20260720T013625Z-pr-1921.md を統合
+* **Create**: [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-git-remote-dependency.md) — raw/reviews/20260720T013625Z-pr-1921.md を新規ページ化
 
 # Wiki 活動ログ
 

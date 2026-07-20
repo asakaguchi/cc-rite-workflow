@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-04T00:55:00+09:00"
+updated: "2026-07-20T10:36:25+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260719T235117Z-pr-1921.md"
   - type: "reviews"
     ref: "raw/reviews/20260626T031814Z-pr-1663.md"
   - type: "reviews"
@@ -681,6 +683,32 @@ unmutated code では mismatch ガードが先に評価され loser を捕捉す
 
 教訓: **防御 in-depth の複数ガードのうち特定の 1 つを「exercise する」と主張するテストコメントは、mutation で当該ガードを単独除去して該当テストが FAIL するかを確認するまで信じない**。論理和構造では単独 isolation は成立せず、CLI で決定的再現不能な二次防御は「未到達」と正直に文書化するのが最小 fix。
 
+### 適用 27: 2 段構え fallback (優先経路 → fallback 経路) の fallback 側成功パスが未カバーのまま残る (PR #1921 で実証)
+
+PR #1921 (Issue #1914 — `issue-body-safe-update.sh` の owner/repo 解決を SSH host alias 対応にする) で、優先経路 (`git-remote.sh resolve-owner-repo`) → fallback 経路 (`gh repo view`) の 2 段構え実装に対し、初版テストは「優先経路の成功」と「両経路の失敗」の 2 状態だけを固定し、**fallback 経路が実際に成功する状態が未カバー**のまま残っていた。test reviewer が fallback 関数を `false` に置換する mutation を適用し、全テストが緑のままであることを実測して確定した。
+
+```bash
+# 反面教材 — 2 状態のみ固定
+# 1. 優先経路 (resolve-owner-repo) が成功する場合
+# 2. 優先経路・fallback 経路の両方が失敗する場合
+# ↑ fallback 経路 (gh repo view) が単独で成功するケースの pin が無い
+
+# Mutation: fallback 関数を無条件 false に置換
+gh_repo_view_fallback() { return 1; }
+# 期待: 優先経路を無効化した状態で FAIL するはず
+# 実測: 全テストが PASS → fallback 単独成功パスが dead
+```
+
+fallback は「普段通らない経路」であるため、成功系のテストを書き忘れてもテストスイートは緑で通過し、将来のリファクタで fallback が壊れても元のバグへ silent に回帰する。これは適用 5 Pattern 5-B / 適用 10 (対称性主張の片側のみ pin) と同型の coverage gap を、対象を **「優先経路 / fallback 経路の 2 段構え」の tier 別 pin** へ一般化したもの。
+
+#### Canonical 対策
+
+優先経路成功 / fallback 経路成功 / 全 tier 失敗の **3 状態を個別に pin** する。tier を分ける mutation (優先経路のみ無効化 → fallback 単独成功を確認、fallback のみ無効化 → 優先経路単独成功を確認、両方無効化 → 失敗 degrade + WARNING を確認) を必須の 3 点セットとする。
+
+同 PR review でもう 1 件、テストの前提不成立時 skip を `pass` ではなく素の `echo` で実装したことで、skip 発火時にアサーション数が減っても `FAIL: 0` のまま表示され、カウンタ・マーカー基準の走査からカバレッジ欠落が観測できなくなるパターンが検出された ([[test-helper-follows-sibling-convention]] の再発事例)。4 reviewer 中 3 名が 0 findings で、唯一 findings を出した test reviewer が隔離 worktree での mutation testing により両指摘を実測で裏づけた事例。
+
+教訓: **N 段構え fallback は tier 数と同数の positive pin を用意する**。「優先経路成功」「全滅」の 2 極端だけでは中間 tier (fallback 単独成功) が dead range になる。tier ごとに他 tier を無効化する mutation を適用し、対応する pin が単独で FAIL することを commit 前に確認する。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -734,3 +762,4 @@ unmutated code では mismatch ガードが先に評価され loser を捕捉す
 - [PR #1742 review results (cycle 3) — CAS の防御的 revive 分岐が CLI 経由で決定的再現不能・未到達であり「TC-14 でカバー」コメントが mutation で削除しても green の vacuous over-claim になる問題を検出、未到達の正直な文書化 (no-silent-caps) を提示](../../raw/reviews/20260703T144050Z-pr-1742.md)
 - [PR #1742 review results (cycle 4/re-review) — 「行実行順序」と「mutation-isolated coverage」の混同による over-claim を実装トレースで確定、2 ガードが論理和構成で単独 isolate は成立しないことを mutation で立証、コメント軟化 fix の正確性を再検証し 0 findings 収束 (適用 26 の核)](../../raw/reviews/20260703T153807Z-pr-1742.md)
 - [PR #1742 fix results — TC-16 コメントの mutation-coverage over-claim をコメント軟化 (実行コード不変) で解消 / 未到達分岐の正直な文書化 / 対称 skip ガード / SPEC 条件付き表現による over-claim 回避 の 4 fix パターン](../../raw/fixes/20260703T154111Z-pr-1742.md)
+- [PR #1921 review results — 2 段構え fallback の fallback 側成功パス未カバーを mutation (fallback を false 置換 → 全緑) で実測、echo のみの skip 実装によるカウンタ観測不能パターンも併せて検出 (test reviewer 単独 findings / 4 reviewer 中 3 名 0 findings)](../../raw/reviews/20260719T235117Z-pr-1921.md)

@@ -369,7 +369,7 @@ esac
        else
          echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
          if [ -n "$_wt_rm_err" ] && grep -qi "busy" "$_wt_rm_err" 2>/dev/null; then
-           echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。復旧: このコマンドのみ sandbox を無効化して再実行するか、sandbox 外のシェルで次を実行してください: git worktree remove --force '{flow_wt}' && git worktree prune" >&2
+           echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force '{flow_wt}' && git worktree prune" >&2
          fi
        fi
        [ -n "$_wt_rm_err" ] && rm -f "$_wt_rm_err"

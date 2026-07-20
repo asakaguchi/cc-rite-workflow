@@ -10,6 +10,10 @@
 * **Create**: [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-git-remote-dependency.md) — raw/reviews/20260720T013625Z-pr-1921.md を新規ページ化
 * **Create**: [bash 数値 env override 検証と算術評価の基数不一致（先頭ゼロの8進誤解釈）](pages/anti-patterns/bash-numeric-env-validation-arithmetic-base-mismatch.md) — raw/fixes/20260720T051441Z-pr-1924.md を新規ページ化
 * **Create**: [診断WARNINGの宛先（実行エージェント向けかユーザー向けか）を主語で明示する](pages/heuristics/diagnostic-warning-message-audience-ambiguity.md) — raw/fixes/20260720T052902Z-pr-1924.md を新規ページ化
+* **Create**: [ドキュメントに未検証の具体的設定キー例を書くと存在しないキー名を捏造してしまう](pages/anti-patterns/unverified-config-key-example-fabrication.md) — raw/fixes/20260720T065752Z-pr-1925.md を新規ページ化
+* **Update**: [セッション worktree + sandbox 環境の 3 つの罠: cwd 相対 write-allowlist・`.rite-plugin-root` のブランチ相違・`--show-toplevel` の誤解決](pages/heuristics/worktree-cwd-write-allowlist-and-plugin-root-staleness.md) — raw/fixes/20260720T070808Z-pr-1925.md を統合
+* **Create**: [明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる](pages/anti-patterns/unrouted-phase-insertion-in-explicit-transition-skill.md) — raw/fixes/20260720T071821Z-pr-1925.md を新規ページ化
+* **Skip**: [20260720T072944Z-pr-1925.md](raw/fixes/20260720T072944Z-pr-1925.md) — 軽微な文言修正1件のみで独立した経験則として抽出できないため（cycle1-3で構造的問題は既にページ化済み）
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=268, broken_refs=0
 
 # Wiki 活動ログ

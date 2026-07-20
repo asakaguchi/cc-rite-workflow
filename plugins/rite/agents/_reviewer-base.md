@@ -221,12 +221,12 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
 
 ### Hypothetical Exception カテゴリの nit-noted 禁止
 
-[Hypothetical Exception Categories](../references/severity-levels.md#hypothetical-exception-categories) に該当する **4 reviewer** (`security` / `database` / `devops` / `dependencies`) は **scope=`nit-noted` の出力を全 severity 帯で禁止** する。理由は以下:
+[Hypothetical Exception Categories](../references/severity-levels.md#hypothetical-exception-categories) に該当する **4 reviewer** (`security` / `application` / `devops` / `dependencies`) は **scope=`nit-noted` の出力を全 severity 帯で禁止** する。理由は以下:
 
 | Reviewer | nit-noted 禁止の根拠 |
 |----------|---------------------|
 | `security-reviewer.md` | 攻撃者が「いつ exploit を demonstrate するか選ぶ」性質上、nit (修正不要) として受け流すと CRITICAL リスクが silent に蓄積する。`acknowledged` 経路で見落とすことを阻止 |
-| `database-reviewer.md` | migration は production で 1 回しか実行されない。「nit」として受け流した destructive migration が後続 PR で取り返しのつかない state にする可能性 |
+| `application-reviewer.md` | migration は production で 1 回しか実行されない。「nit」として受け流した destructive migration が後続 PR で取り返しのつかない state にする可能性 |
 | `devops-reviewer.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
 | `dependencies-reviewer.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
 
@@ -318,7 +318,7 @@ The default response to a missing error path is:
 A fallback recommendation is acceptable only when the **reviewer's own agent definition** explicitly lists the case as an allowed fallback. Examples:
 
 - `error-handling-reviewer.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
-- `frontend-reviewer.md` may list "default avatar image when user upload fails" as an allowed fallback.
+- `application-reviewer.md` may list "default avatar image when user upload fails" as an allowed fallback.
 
 If the reviewer's skill file does NOT list the case, the reviewer MUST recommend `throw` / `raise` and document the recommendation in the `推奨対応` column with explicit reasoning (e.g., "throw して呼び出し元の error boundary に伝播。fallback は silent failure を生むため非推奨").
 

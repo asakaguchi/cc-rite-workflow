@@ -58,7 +58,7 @@ Absence of any of these matches is the reviewer-side contract violation that Pha
 | `devops` | Infra rollback/deploy paths failure leaves production broken |
 | `dependencies` | Known CVEs and supply-chain risks are inherently "could happen any time" |
 
-These categories inherit [Hypothetical Exception Categories](../../../references/severity-levels.md#hypothetical-exception-categories) (severity-levels.md の表は歴代の `database-reviewer.md` 名で Database migration 例外を定義しており、その successor が `application`)。Updates to the exception list MUST be synchronized across this section and `pr-review.md` ステップ 5.1 (Demoted findings collection)。`severity-levels.md` / `_reviewer-base.md` 側の列挙は reviewer 統合時点で Non-Target 凍結のため旧名のまま残っており、凍結解除時に同期する。
+These categories inherit [Hypothetical Exception Categories](../../../references/severity-levels.md#hypothetical-exception-categories) (severity-levels.md の表は Database migration 例外の参照先を `application-reviewer.md` に更新済み)。Updates to the exception list MUST be synchronized across this section and `pr-review.md` ステップ 5.1 (Demoted findings collection)。
 
 **Relation to 5.3.7 (AI independent judgment prohibition)**: The mechanical demotion in 5.3.0 is **explicitly permitted** because it follows a deterministic algorithm (regex match on `Likelihood-Evidence:` anchor + destination fixed by matrix) with no AI discretion. In contrast, 5.3.7 prohibits AI from applying severity exceptions based on its own judgment (e.g., "this CRITICAL is actually minor"). Mechanical rule = allowed; AI judgment = forbidden.
 

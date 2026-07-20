@@ -26,6 +26,7 @@
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=271, broken_refs=0
 * **Skip**: [20260720T124936Z-pr-1931.md](raw/reviews/20260720T124936Z-pr-1931.md) — 0 findings、既存 anti-patterns/asymmetric-fix-transcription.md の一適用例に留まり、同ページが既に肥大化（341KB超）しているため新規知見抽出を見送り
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=272, broken_refs=0
+* **Update**: [hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-session-id-env-leak.md) — raw/reviews/20260720T142626Z-pr-1932.md を統合
 
 # Wiki 活動ログ
 

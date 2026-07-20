@@ -115,10 +115,20 @@ printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin:$PATH" MOCK_LOG="$mock_log" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-14 apply happy-path → exit 0" 0 "$rc"
-if grep -q 'issue edit 999 --body-file' "$mock_log"; then
+# The `--repo` flag sits between the issue number and --body-file since #1914, so
+# this must not re-tighten into an adjacency match on 'issue edit 999 --body-file'.
+if grep -qE 'issue edit 999 .*--body-file' "$mock_log"; then
   pass "TC-15 apply called gh issue edit with --body-file"
 else
   fail "TC-15 mock gh log missing 'issue edit ... --body-file': $(cat "$mock_log")"
+fi
+# Without an explicit --repo, gh infers the repo from git remotes and fails when
+# `origin` is an SSH Host alias it cannot expand (#1914). The test process runs
+# inside this repo, so git-remote resolution succeeds and the flag must be present.
+if grep -qE 'issue edit 999 --repo [^ ]+/[^ ]+ --body-file' "$mock_log"; then
+  pass "TC-15b apply passes --repo owner/repo explicitly (SSH host alias safety)"
+else
+  fail "TC-15b mock gh log missing '--repo owner/repo' — gh would fall back to remote inference: $(cat "$mock_log")"
 fi
 [ ! -f "$tmp_read" ] && pass "TC-16 apply happy-path cleaned tmpfile-read" || fail "TC-16 tmpfile-read leak"
 [ ! -f "$tmp_write" ] && pass "TC-17 apply happy-path cleaned tmpfile-write" || fail "TC-17 tmpfile-write leak"
@@ -472,4 +482,100 @@ GHEOF
   rm -rf "$mock_bin_25g"
 done
 
-print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."
+echo ""
+echo "=== Phase 16: owner/repo resolution → explicit --repo, with degrade fallback (#1914) ==="
+# fetch mode must carry the same --repo flag as apply: the SSH-host-alias failure
+# hit `gh issue view` first, and fixing only one mode leaves the checklist-update
+# path (implement 5.1.1.1) broken while apply looks healthy.
+mock_bin7=$(mktemp -d)
+mock_log7=$(mktemp)
+cat > "$mock_bin7/gh" <<'MOCK_FETCH_OK'
+#!/bin/bash
+echo "gh $*" >> "${MOCK_LOG:-/dev/null}"
+case "$1 $2" in
+  "issue view") echo "body content" ;;
+esac
+exit 0
+MOCK_FETCH_OK
+chmod +x "$mock_bin7/gh"
+rc=0
+out=$(PATH="$mock_bin7:$PATH" MOCK_LOG="$mock_log7" bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
+assert_exit "TC-30 fetch with resolvable repo → exit 0" 0 "$rc"
+if grep -qE 'issue view 999 --repo [^ ]+/[^ ]+ --json body' "$mock_log7"; then
+  pass "TC-30b fetch passes --repo owner/repo explicitly"
+else
+  fail "TC-30b fetch missing '--repo owner/repo' — gh falls back to remote inference: $(cat "$mock_log7")"
+fi
+# fetch deliberately persists tmpfile_read / tmpfile_write for Step 2/3, so this
+# test owns their cleanup.
+printf '%s\n' "$out" | sed -n 's/^tmpfile_[a-z]*=//p' | xargs -r rm -f
+rm -f "$mock_log7"
+
+# The remaining two tiers both need a directory whose `git config --get
+# remote.origin.url` is empty, so git-remote.sh fails and resolution falls
+# through. `git init` makes that state explicit instead of relying on $TMPDIR
+# happening to sit outside a repository — a precondition that silently dropped
+# three assertions when it did not hold. GIT_CONFIG_* are neutralised at
+# invocation time so a stray global remote.origin.url cannot leak in.
+norepo_dir=$(mktemp -d)
+git init -q "$norepo_dir"
+
+# Tier 2: git-remote.sh fails but `gh repo view` resolves. Without a test here,
+# deleting the entire fallback branch keeps the suite green — the flag simply
+# stops appearing and no assertion notices.
+cat > "$mock_bin7/gh" <<'MOCK_REPO_VIEW_OK'
+#!/bin/bash
+echo "gh $*" >> "${MOCK_LOG:-/dev/null}"
+case "$1 $2" in
+  "repo view") echo "fallbackowner/fallbackrepo" ;;
+  "issue view") echo "body content" ;;
+esac
+exit 0
+MOCK_REPO_VIEW_OK
+chmod +x "$mock_bin7/gh"
+mock_log7=$(mktemp)
+rc=0
+out=$(cd "$norepo_dir" && PATH="$mock_bin7:$PATH" MOCK_LOG="$mock_log7" \
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
+assert_exit "TC-32 gh repo view fallback → exit 0" 0 "$rc"
+if grep -qE 'issue view 999 --repo fallbackowner/fallbackrepo --json body' "$mock_log7"; then
+  pass "TC-32b gh repo view fallback supplies --repo when git-remote resolution fails"
+else
+  fail "TC-32b fallback tier did not reach the gh call — the whole fallback branch can be deleted undetected: $(cat "$mock_log7")"
+fi
+printf '%s\n' "$out" | sed -n 's/^tmpfile_[a-z]*=//p' | xargs -r rm -f
+rm -f "$mock_log7"
+
+# Tier 3 (degrade): neither path yields an owner/repo. The script must fall back
+# to the pre-#1914 invocation shape rather than aborting — and must say so,
+# because a silent fallback is indistinguishable from the bug this fix removes.
+cat > "$mock_bin7/gh" <<'MOCK_NO_REPO'
+#!/bin/bash
+echo "gh $*" >> "${MOCK_LOG:-/dev/null}"
+case "$1 $2" in
+  "repo view") echo "none of the git remotes configured for this repository point to a known GitHub host" >&2; exit 1 ;;
+  "issue view") echo "body content" ;;
+esac
+exit 0
+MOCK_NO_REPO
+chmod +x "$mock_bin7/gh"
+mock_log7=$(mktemp)
+rc=0
+out=$(cd "$norepo_dir" && PATH="$mock_bin7:$PATH" MOCK_LOG="$mock_log7" \
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
+assert_exit "TC-31 unresolvable repo → exit 0 (non-blocking degrade)" 0 "$rc"
+if grep -qE 'issue view 999 --json body' "$mock_log7"; then
+  pass "TC-31b unresolvable repo degrades to a --repo-less gh invocation"
+else
+  fail "TC-31b expected a --repo-less 'issue view' invocation: $(cat "$mock_log7")"
+fi
+if printf '%s' "$out" | grep -q 'owner/repo を解決できません'; then
+  pass "TC-31c unresolvable repo surfaces a WARNING instead of degrading silently"
+else
+  fail "TC-31c missing owner/repo resolution WARNING: $out"
+fi
+printf '%s\n' "$out" | sed -n 's/^tmpfile_[a-z]*=//p' | xargs -r rm -f
+rm -f "$mock_log7"
+rm -rf "$mock_bin7" "$norepo_dir"
+
+print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Dropping the explicit --repo flag likewise re-breaks every body update under an SSH host alias (#1914). Keep the guards intact and update the test if the guards intentionally change."

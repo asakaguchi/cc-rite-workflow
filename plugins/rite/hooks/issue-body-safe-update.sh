@@ -51,6 +51,57 @@ _emit_body_update_incident() {
   echo "WARNING: issue-body-safe-update: Issue #${ISSUE:-unknown} ${MODE:-unknown} ${incident_type} (reason=$reason rc=$rc stderr=$stderr_snippet)" >&2
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Owner/repo resolution ---
+# Without an explicit --repo, `gh issue view` / `gh issue edit` infer the target
+# repo from the git remotes and fail with "none of the git remotes configured for
+# this repository point to a known GitHub host" when `origin` is an SSH Host alias
+# (e.g. git@github.com-work:owner/repo.git). gh expands such aliases by reading
+# ~/.ssh/config, so the failure surfaces specifically where that read is denied —
+# notably the sandboxed workflow environment, where every body update degraded to
+# fetch_failure_reason=gh_view_failed (#1914). Resolving owner/repo ourselves and
+# passing it explicitly bypasses gh's host inference entirely.
+#
+# Both paths are best-effort: when neither yields an owner/repo the caller keeps
+# the previous behaviour (no --repo flag) rather than failing, per this script's
+# non-blocking contract. The double failure is still surfaced as a WARNING so a
+# genuinely unresolvable environment stays diagnosable instead of silently
+# reverting to the broken path.
+get_owner_repo() {
+  local _err _rc=0 _out _git_err _git_or_line _git_owner _git_repo
+  # git-remote parse first: works even when `origin` is an SSH Host alias that
+  # gh's host allowlist rejects (#1899). Falls through to `gh repo view` when the
+  # parse fails (no origin remote, unparseable URL).
+  _git_err=$(mktemp "${TMPDIR:-/tmp}/rite-issue-body-remote-err-XXXXXX" 2>/dev/null) || _git_err=""
+  _git_or_line=$(bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>"${_git_err:-/dev/null}") || _git_or_line=""
+  if [ -n "$_git_or_line" ]; then
+    IFS=$'\t' read -r _git_owner _git_repo <<< "$_git_or_line"
+    if [ -n "$_git_owner" ] && [ -n "$_git_repo" ]; then
+      [ -n "$_git_err" ] && rm -f "$_git_err"
+      printf '%s/%s' "$_git_owner" "$_git_repo"
+      return
+    fi
+  fi
+  _err=$(mktemp "${TMPDIR:-/tmp}/rite-issue-body-ghrepo-err-XXXXXX" 2>/dev/null) || _err=""
+  _out=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>"${_err:-/dev/null}") || _rc=$?
+  if [ "$_rc" -ne 0 ] || [ -z "$_out" ]; then
+    echo "${err_level:-WARNING}: issue-body-safe-update: owner/repo を解決できません (gh repo view rc=$_rc)。--repo なしで続行します（SSH host alias 環境では gh 呼び出しが失敗する可能性があります）" >&2
+    if [ -n "$_err" ] && [ -s "$_err" ]; then
+      head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    fi
+    # Surface why the git-remote fast path bailed too, or this WARNING would show
+    # only the fallback's side of a two-sided failure.
+    if [ -n "$_git_err" ] && [ -s "$_git_err" ]; then
+      head -3 "$_git_err" | neutralize_ctrl --keep-newline | sed 's/^/  git-remote: /' >&2
+    fi
+    _out=""
+  fi
+  [ -n "$_err" ] && rm -f "$_err"
+  [ -n "$_git_err" ] && rm -f "$_git_err"
+  printf '%s' "$_out"
+}
+
 # --- Argument parsing ---
 MODE="${1:-}"
 shift 2>/dev/null || true
@@ -86,6 +137,15 @@ fi
 # for future severity differentiation but currently has no behavioral effect.
 err_level="WARNING"
 
+# Resolved once ahead of the mode dispatch: fetch and apply each issue exactly one
+# gh call needing the flag, and resolution is identical for either mode. Empty
+# array = pre-#1914 behaviour, so an unresolvable repo degrades instead of failing.
+GH_REPO_ARGS=()
+OWNER_REPO=$(get_owner_repo)
+if [ -n "$OWNER_REPO" ]; then
+  GH_REPO_ARGS=(--repo "$OWNER_REPO")
+fi
+
 case "$MODE" in
   fetch)
     # The script's non-blocking contract requires exit 0 on transient failure,
@@ -118,7 +178,7 @@ case "$MODE" in
     # status). Use the else-branch to preserve gh's real exit code so the WARNING
     # details accurately attribute auth / rate-limit / 404 failures.
     rc=0
-    if gh issue view "$ISSUE" --json body --jq '.body' >"$tmpfile_read" 2>"$tmpfile_err"; then
+    if gh issue view "$ISSUE" "${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"}" --json body --jq '.body' >"$tmpfile_read" 2>"$tmpfile_err"; then
       :
     else
       rc=$?
@@ -220,7 +280,7 @@ case "$MODE" in
     }
     trap 'rm -f "$apply_err" 2>/dev/null || true' EXIT
     rc=0
-    if gh issue edit "$ISSUE" --body-file "$TMPFILE_WRITE" 2>"${apply_err:-/dev/null}"; then
+    if gh issue edit "$ISSUE" "${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"}" --body-file "$TMPFILE_WRITE" 2>"${apply_err:-/dev/null}"; then
       :
     else
       rc=$?

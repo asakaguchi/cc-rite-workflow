@@ -8,6 +8,7 @@
 * **Update**: [新規 test helper は同ディレクトリ sibling test の既存 helper 慣習を踏襲する (counter + summary 報告)](pages/heuristics/test-helper-follows-sibling-convention.md) — raw/reviews/20260719T235117Z-pr-1921.md を統合
 * **Update**: [兄弟 shell script の重複 helper は shared lib 抽出で解く](pages/heuristics/shell-script-shared-lib-extraction.md) — raw/reviews/20260720T013625Z-pr-1921.md を統合
 * **Create**: [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-git-remote-dependency.md) — raw/reviews/20260720T013625Z-pr-1921.md を新規ページ化
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=268, broken_refs=0
 
 # Wiki 活動ログ
 

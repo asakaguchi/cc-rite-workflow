@@ -681,24 +681,47 @@ rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
 # holder is protected only while its `updated_at` is within the TTL.
 # Overridable via env for ops/troubleshooting (no new rite-config.yml key —
 # CLAUDE.md シンプルさを死守する).
-readonly RITE_SESSION_LIVENESS_TTL_HOURS="${RITE_SESSION_LIVENESS_TTL_HOURS:-24}"
+readonly RITE_SESSION_LIVENESS_TTL_HOURS_RAW="${RITE_SESSION_LIVENESS_TTL_HOURS:-24}"
+# Validate the env override is a positive integer (ops typo guard, e.g. "24h"):
+# an invalid value must not silently corrupt the `* 3600` arithmetic below with
+# a raw bash error. Falls back to the 24h default with a WARNING (fail-safe,
+# same "protect on anything we can't compute" posture as the rest of this guard).
+if [[ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" =~ ^[0-9]+$ ]] && [ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" -gt 0 ]; then
+  readonly RITE_SESSION_LIVENESS_TTL_HOURS="$RITE_SESSION_LIVENESS_TTL_HOURS_RAW"
+else
+  echo "WARNING: RITE_SESSION_LIVENESS_TTL_HOURS='$RITE_SESSION_LIVENESS_TTL_HOURS_RAW' は正の整数ではありません。既定値 24 を使用します。" >&2
+  readonly RITE_SESSION_LIVENESS_TTL_HOURS=24
+fi
 
-# _rite_epoch_of_ts: best-effort ISO 8601 UTC (`Z` suffix) -> epoch seconds.
-# Tries GNU `date -d` (Linux) then BSD/macOS `date -j -f` — the same two-step
-# technique as session-ownership.sh's parse_iso8601_to_epoch — but, unlike
-# that helper, reports failure via return code instead of collapsing it to
-# epoch 0. The caller (_rite_ttl_protects) must tell "malformed input" and
-# "this host's date binary can't parse a well-formed timestamp" apart from
-# "genuinely far in the past" — all three would alias to the same huge diff
-# if compared against a fixed epoch-0 fallback.
+# _rite_epoch_of_ts: best-effort ISO 8601 UTC (`Z` suffix OR `+HH:MM`/`-HH:MM`
+# offset) -> epoch seconds. Tries GNU `date -d` (Linux) then BSD/macOS
+# `date -j -f` — the same two-step technique as session-ownership.sh's
+# parse_iso8601_to_epoch — but, unlike that helper, reports failure via return
+# code instead of collapsing it to epoch 0. The caller (_rite_ttl_protects)
+# must tell "malformed input" and "this host's date binary can't parse a
+# well-formed timestamp" apart from "genuinely far in the past" — all three
+# would alias to the same huge diff if compared against a fixed epoch-0
+# fallback.
+# The offset alternation (not `Z`-only) matters: flow-state.sh (the canonical
+# writer) emits `Z`, but pre-compact.sh / session-start.sh / session-end.sh
+# emit `+00:00` for the same `updated_at` field — a `Z`-only regex would
+# silently fall into the "malformed" fail-safe (permanent protect, no WARNING)
+# for any session whose last heartbeat came from one of those, reintroducing
+# this Issue's own dead-lock.
 # Returns 0 with epoch on stdout, 1 on any parse failure.
 _rite_epoch_of_ts() {
-  local ts="$1" epoch
-  [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
-  if epoch=$(date -u -d "$ts" +%s 2>/dev/null); then
+  local ts="$1" epoch ts_norm ts_nocolon
+  [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$ ]] || return 1
+  # Normalize `Z` to `+00:00` (same technique as session-ownership.sh's
+  # parse_iso8601_to_epoch) so both parse paths below only ever see an
+  # explicit numeric offset.
+  ts_norm="${ts/%Z/+00:00}"
+  if epoch=$(date -u -d "$ts_norm" +%s 2>/dev/null); then
     printf '%s' "$epoch"; return 0
   fi
-  if epoch=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s 2>/dev/null); then
+  # BSD/macOS date -j -f with %z needs the offset without a colon (+00:00 -> +0000).
+  ts_nocolon="${ts_norm%:*}${ts_norm##*:}"
+  if epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "$ts_nocolon" +%s 2>/dev/null); then
     printf '%s' "$epoch"; return 0
   fi
   return 1
@@ -718,7 +741,7 @@ _rite_ttl_protects() {
   local updated_at="$1" now_epoch upd_epoch age ttl_seconds
   [ -n "$updated_at" ] || return 0
   if ! upd_epoch=$(_rite_epoch_of_ts "$updated_at"); then
-    if [[ "$updated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
+    if [[ "$updated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$ ]] \
        && [ "$_rite_date_incompat_warned" != "1" ]; then
       echo "WARNING: この環境の date コマンドで updated_at ($(printf '%s' "$updated_at" | neutralize_ctrl)) を解釈できません。worktree liveness の TTL 判定を skip し、従来どおり active=true holder を無期限に保護します。" >&2
       _rite_date_incompat_warned=1

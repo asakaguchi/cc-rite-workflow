@@ -117,9 +117,15 @@ assert "TC-1 TTL-exceeded worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issu
 assert "TC-1 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-200.json" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "TC-1 status reports session_worktrees=1" ;; *) fail "TC-1 status: $out" ;; esac
 
-echo "=== TC-2 (AC-2, non-regression): updated_at 1h ago (TTL 以内) -> protected ==="
+echo "=== TC-2 (AC-2, non-regression): updated_at 3h ago (TTL 以内) -> protected ==="
+# 3h is deliberate (not 1h): it must clear issue-claim.sh's own independent 2h
+# claim-staleness window so Gate 2 does NOT independently protect the worktree —
+# otherwise a mutation that disables the TTL guard entirely would still pass
+# this assertion (Gate 2 alone would protect a fresh-enough claim), making the
+# TC vacuous. See age_flow_state()'s comment in pr-cycle-cleanup-session-reap.test.sh
+# for the identical rationale.
 R=$(make_repo 201); cleanup_dirs+=("$R")
-set_updated_at "$R" "$(ts_hours_ago 1)"
+set_updated_at "$R" "$(ts_hours_ago 3)"
 out=$(run_pcc "$R")
 assert "TC-2 TTL-within worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-201" ] && echo 1 || echo 0 )"
 assert_grep "TC-2 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree liveness"
@@ -160,11 +166,18 @@ assert "TC-5 well-formed-but-unparseable timestamp -> worktree survives (fail-sa
 assert_grep "TC-5 date-incompatible WARNING emitted" "$R/pcc.err" "date コマンドで"
 case "$out" in *"session_worktrees=0"*) pass "TC-5 status reports session_worktrees=0" ;; *) fail "TC-5 status: $out" ;; esac
 
-echo "=== TC-6 (AC-6): TTL 境界ちょうど (24h) -> 保護 ==="
+echo "=== TC-6 (AC-6): TTL 境界近傍 (24h-60s、以内側) -> 保護 ==="
+# 86340s (TTL-60s), not exactly 86400s: this test computes `ts_seconds_ago 86400`
+# at one wall-clock instant, but pr-cycle-cleanup.sh reads its own `now` afresh
+# a moment later (after subshell + bash startup + test setup latency). That gap
+# pushes the effective age past the exact 24h boundary often enough to flake
+# (reap decided age > ttl, protect assertion fails). A 60s safety margin makes
+# the "protected" side of the boundary immune to that drift while still
+# comfortably exercising the AC-6 pin (see TC-6b for the other side of the line).
 R=$(make_repo 206); cleanup_dirs+=("$R")
-set_updated_at "$R" "$(ts_seconds_ago 86400)"
+set_updated_at "$R" "$(ts_seconds_ago 86340)"
 out=$(run_pcc "$R")
-assert "TC-6 TTL boundary (exactly 24h) -> protected" "1" "$( [ -d "$R/.rite/worktrees/issue-206" ] && echo 1 || echo 0 )"
+assert "TC-6 TTL boundary (24h-60s, within) -> protected" "1" "$( [ -d "$R/.rite/worktrees/issue-206" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=0"*) pass "TC-6 status reports session_worktrees=0" ;; *) fail "TC-6 status: $out" ;; esac
 
 echo "=== TC-6b (AC-6): TTL 境界+1秒 (24h超) -> reaped ==="
@@ -233,12 +246,49 @@ assert "TC-10 claim-join-only TTL exceeded -> reaped" "0" "$( [ -d "$R/.rite/wor
 case "$out" in *"session_worktrees=1"*) pass "TC-10 status reports session_worktrees=1" ;; *) fail "TC-10 status: $out" ;; esac
 
 echo "=== TC-11 (signal B only): claim-join の TTL 以内 -> protected (flow-state.worktree 不記録) ==="
+# 3h (not 1h): same rationale as TC-2 — must clear the 2h claim-staleness window
+# so Gate 2 alone cannot account for the "survives" assertion (non-vacuous for
+# the claim-join TTL gate specifically).
 R=$(make_repo_claim_only 212); cleanup_dirs+=("$R")
-set_updated_at "$R" "$(ts_hours_ago 1)"
+set_updated_at "$R" "$(ts_hours_ago 3)"
 out=$(run_pcc "$R")
 assert "TC-11 claim-join-only TTL within -> protected" "1" "$( [ -d "$R/.rite/worktrees/issue-212" ] && echo 1 || echo 0 )"
 assert_grep "TC-11 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree liveness"
 case "$out" in *"session_worktrees=0"*) pass "TC-11 status reports session_worktrees=0" ;; *) fail "TC-11 status: $out" ;; esac
+
+# ---------------------------------------------------------------------------
+# `+00:00` offset format coverage (Issue #1923 review finding F-01). flow-state.sh
+# (the canonical writer) emits `Z`, but pre-compact.sh / session-start.sh /
+# session-end.sh emit `+00:00` for the very same updated_at field — most
+# critically pre-compact.sh, whose heartbeat updates `updated_at` alone
+# (leaving `active=true` untouched), making it the realistic "last write before
+# a crash" for a long-running session that has gone through `/compact`. TC-1..11
+# above all use ts_hours_ago()/ts_seconds_ago() which only ever produce `Z`
+# suffixes — without these two TCs, a regression that narrows the parser back
+# to `Z`-only would pass the entire suite above while silently reintroducing
+# this Issue's own dead-lock for `/compact`-then-crash sessions.
+# ---------------------------------------------------------------------------
+ts_hours_ago_offset() {
+  local hours="$1"
+  date -u -d "${hours} hours ago" +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null \
+    || date -u -v-"${hours}"H +"%Y-%m-%dT%H:%M:%S+00:00"
+}
+
+echo "=== TC-12 (F-01 regression): +00:00 形式で updated_at 25h ago (TTL 超過) -> reaped ==="
+R=$(make_repo 213); cleanup_dirs+=("$R")
+set_updated_at "$R" "$(ts_hours_ago_offset 25)"
+out=$(run_pcc "$R")
+assert "TC-12 +00:00-format TTL-exceeded worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-213" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "TC-12 status reports session_worktrees=1" ;; *) fail "TC-12 status: $out" ;; esac
+
+echo "=== TC-13 (F-01 regression): +00:00 形式で updated_at 1h ago (TTL 以内) -> protected ==="
+R=$(make_repo 214); cleanup_dirs+=("$R")
+set_updated_at "$R" "$(ts_hours_ago_offset 1)"
+out=$(run_pcc "$R")
+assert "TC-13 +00:00-format TTL-within worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-214" ] && echo 1 || echo 0 )"
+assert_grep "TC-13 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree liveness"
+assert_not_grep "TC-13 no date-incompatible WARNING (well-formed +00:00 must parse)" "$R/pcc.err" "date コマンドで"
+case "$out" in *"session_worktrees=0"*) pass "TC-13 status reports session_worktrees=0" ;; *) fail "TC-13 status: $out" ;; esac
 
 print_summary "$(basename "$0")" \
   "Drift hint: pr-cycle-cleanup.sh's worktree liveness guard (signals A/B, Issue #1524/#1552) now gates both on the liveness TTL (Issue #1923, RITE_SESSION_LIVENESS_TTL_HOURS, default 24h) instead of protecting active=true holders unconditionally — bounds the dead-lock where a session that never runs SessionEnd (crash/forced-quit) leaves active=true forever."

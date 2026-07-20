@@ -436,8 +436,10 @@ Operating rules (important):
 
   • Sandboxed environments: after entering a session worktree, state writes to
     the main checkout (.rite/sessions/, etc.) can be rejected as read-only.
-    See references/git-worktree-patterns.md's "#1896" section for the fix
-    (/rite:setup surfaces the same guidance when it detects this applies).
+    See ../../references/git-worktree-patterns.md, section "worktree cwd から
+    main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる"
+    (Issue #1896), for the fix (/rite:setup surfaces the same guidance when it
+    detects this applies).
 
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
   - parallel  → multiple sub-agents within ONE session (.worktrees/{issue}/{task})

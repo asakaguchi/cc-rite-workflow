@@ -1189,8 +1189,8 @@ git rev-parse --show-toplevel
 ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、
    main checkout 配下（.rite/sessions/ 等）への state 書込が「読み込み専用ファイルシステムです」
    で拒否されることがあります。
-   恒久対処: sandbox の write 許可リストへ main checkout root の絶対パスを追加してください
-     （例: {repo_root} を settings の sandbox.filesystem.write.allowWithinDeny 等に追加）
+   恒久対処: /sandbox コマンド、または settings の sandbox 設定で、write 許可リストへ
+     main checkout root の絶対パス（{repo_root}）を追加してください
    詳細: git-worktree-patterns.md の #1896 対処節を参照
 ```
 

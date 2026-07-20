@@ -1177,10 +1177,10 @@ Then:
 
 判定は Claude 自身の実行コンテキスト（system prompt に記述された sandbox の write 許可リスト）を読んで行う。bash コマンドでは検出できない（sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）。
 
-該当する場合、まずリポジトリルートの絶対パスを取得する:
+該当する場合、まず main checkout root の絶対パスを取得する。`git rev-parse --show-toplevel` は現在の worktree の toplevel を返すため、setup がセッション worktree cwd から実行された場合（例: EnterWorktree 後の `/rite:setup --upgrade` 手動実行）に worktree パスを誤って返す（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh) が同じ理由でこのパターンを避けている）。代わりに `state-path-resolve.sh` で main checkout root を解決する:
 
 ```bash
-git rev-parse --show-toplevel
+bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
 その値を `{repo_root}` として、以下を表示する（本文の複製ではなく [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) への 1 行ポインタ + 対象パスの実例のみ）:

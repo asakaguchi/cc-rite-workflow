@@ -337,6 +337,12 @@ case "$cleanup_wt" in
   in_worktree|in_worktree_unrecorded)
     dirty=$(git status --porcelain 2>/dev/null)
     echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no); main_root=$main_root"
+    # dirty 一覧は marker と区別できるようデリミタで囲んで表示する（ファイル名由来の偽 marker 混入防止。Step 4 と同一パターン）
+    if [ -n "$dirty" ]; then
+      echo "--- dirty files begin ---"
+      printf '%s\n' "$dirty"
+      echo "--- dirty files end ---"
+    fi
     ;;
   *)
     echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; main_root=$main_root"
@@ -345,7 +351,7 @@ esac
 ```
 
 - `CLEANUP_WT=in_worktree` / `in_worktree_unrecorded`（cwd がセッション worktree。後者は flow-state 未記録だが物理 cwd が当該 Issue の worktree な場合 — #1622。以降の手順 1〜4 は両者で同一）:
-  1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
+  1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
   3. main から worktree を削除する。**削除前に self-exclusion 付き live-cwd guard（Issue #1544 / #1670）を通す**: **別の**セッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。一方、cleanup を実行している**自セッション自身**（ハーネス = この Bash の親 `$PPID` の process subtree）は除外する — これを除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op だった経路（`in_worktree_unrecorded` 等で worktree が EnterWorktree 記録なしに path 入場された場合）で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする自己ブロッキングが起きる（#1670）。判定は self-exclusion を内蔵した `worktree-foreign-cwd.sh` に委譲する（`worktree-live-cwd.sh` 自体は変更しない — #1670 Non-Target）:
      ```bash

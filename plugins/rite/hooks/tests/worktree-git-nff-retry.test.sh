@@ -53,12 +53,12 @@ rival_push "$BASE" rival.txt "rival-change"          # origin/wiki now ahead
 # under_test adds a NON-conflicting new file and pushes via the helper.
 echo "ut-content" > "$BASE/under_test/ut.txt"
 rc=0
-out=$(worktree_commit_push "$BASE/under_test" wiki "ut commit" ut.txt 2>/tmp/wtg1.err) || rc=$?
+out=$(worktree_commit_push "$BASE/under_test" wiki "ut commit" ut.txt 2>"${TMPDIR:-/tmp}/wtg1.err") || rc=$?
 assert "TC-1 rc 0 (NFF resolved)" "0" "$rc"
 case "$out" in *"push=ok"*) pass "TC-1 push=ok" ;; *) fail "TC-1 status line: $out" ;; esac
 # The rival's file must be present (rebase pulled it in) along with ours.
 assert "TC-1 rival change rebased in" "1" "$( [ -f "$BASE/under_test/rival.txt" ] && echo 1 || echo 0 )"
-if grep -qiE 'non-fast-forward|rejected' /tmp/wtg1.err; then pass "TC-1 NFF retry path exercised (WARNING emitted)"; else fail "TC-1 expected NFF WARNING"; fi
+if grep -qiE 'non-fast-forward|rejected' "${TMPDIR:-/tmp}/wtg1.err"; then pass "TC-1 NFF retry path exercised (WARNING emitted)"; else fail "TC-1 expected NFF WARNING"; fi
 
 echo "=== TC-2 (AC-2): rebase conflict aborts → rc 4 ==="
 BASE=$(setup_remote)
@@ -66,9 +66,9 @@ rival_push "$BASE" shared.txt "rival-conflicting-line"   # rival changes shared.
 # under_test changes the SAME file → rebase will conflict.
 echo "ut-conflicting-line" >> "$BASE/under_test/shared.txt"
 rc=0
-worktree_commit_push "$BASE/under_test" wiki "ut conflict" shared.txt >/tmp/wtg2.out 2>/tmp/wtg2.err || rc=$?
+worktree_commit_push "$BASE/under_test" wiki "ut conflict" shared.txt >"${TMPDIR:-/tmp}/wtg2.out" 2>"${TMPDIR:-/tmp}/wtg2.err" || rc=$?
 assert "TC-2 rc 4 (rebase conflict → existing contract)" "4" "$rc"
-if grep -qiE 'rebase.*(failed|conflict)|aborted' /tmp/wtg2.err; then pass "TC-2 rebase-abort WARNING emitted"; else fail "TC-2 expected rebase-abort WARNING: $(cat /tmp/wtg2.err)"; fi
+if grep -qiE 'rebase.*(failed|conflict)|aborted' "${TMPDIR:-/tmp}/wtg2.err"; then pass "TC-2 rebase-abort WARNING emitted"; else fail "TC-2 expected rebase-abort WARNING: $(cat "${TMPDIR:-/tmp}/wtg2.err")"; fi
 # After abort the worktree must NOT be left mid-rebase.
 assert "TC-2 no rebase in progress left" "0" "$( [ -d "$BASE/under_test/.git/rebase-merge" ] || [ -d "$BASE/under_test/.git/rebase-apply" ] && echo 1 || echo 0 )"
 
@@ -78,10 +78,10 @@ BASE=$(setup_remote)
 ( cd "$BASE/under_test" && $GIT remote set-url origin "$BASE/does-not-exist.git" ) >/dev/null 2>&1
 echo "x" > "$BASE/under_test/ut2.txt"
 rc=0
-worktree_commit_push "$BASE/under_test" wiki "ut nonnff" ut2.txt >/tmp/wtg3.out 2>/tmp/wtg3.err || rc=$?
+worktree_commit_push "$BASE/under_test" wiki "ut nonnff" ut2.txt >"${TMPDIR:-/tmp}/wtg3.out" 2>"${TMPDIR:-/tmp}/wtg3.err" || rc=$?
 assert "TC-3 rc 4 (non-NFF)" "4" "$rc"
-if grep -qiE 'non-fast-forward' /tmp/wtg3.err; then fail "TC-3 must NOT take NFF retry path"; else pass "TC-3 no NFF retry (immediate fail)"; fi
+if grep -qiE 'non-fast-forward' "${TMPDIR:-/tmp}/wtg3.err"; then fail "TC-3 must NOT take NFF retry path"; else pass "TC-3 no NFF retry (immediate fail)"; fi
 
-rm -f /tmp/wtg1.err /tmp/wtg2.out /tmp/wtg2.err /tmp/wtg3.out /tmp/wtg3.err 2>/dev/null || true
+rm -f "${TMPDIR:-/tmp}/wtg1.err" "${TMPDIR:-/tmp}/wtg2.out" "${TMPDIR:-/tmp}/wtg2.err" "${TMPDIR:-/tmp}/wtg3.out" "${TMPDIR:-/tmp}/wtg3.err" 2>/dev/null || true
 print_summary "$(basename "$0")" \
   "Drift hint: worktree-git.sh §9 — NFF push retry (fetch+rebase+push x3); rebase conflict → rc4; non-NFF → immediate rc4; 0/3/4/5 contract unchanged."

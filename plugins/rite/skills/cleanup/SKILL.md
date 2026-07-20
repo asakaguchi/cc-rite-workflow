@@ -749,7 +749,7 @@ PR: #{pr_number} - {pr_title}
 Status: {projects_status_result}
 
 実行した処理:
-- [x] base ブランチを更新 (fetch + merge --ff-only)
+- [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
 - [{review_cleanup_check}] PR-specific state ファイル削除
@@ -764,6 +764,12 @@ Status: {projects_status_result}
 
 各チェックボックスおよび placeholder の判定:
 
+- `{base_update_check}`: ステップ 4 の `[CONTEXT] BASE_UPDATE=` marker で判定する（上から評価し最初に一致したものを採用）:
+  - `ok` のとき: `x`
+  - `skipped_not_on_base` のとき（main checkout が `{base_branch}` 以外のブランチ上にあり、rite が意図的にカレントブランチを切り替えず base 更新を skip した。ポリシー上の意図的 skip）: `x`
+  - `main_root_unresolved` のとき（main checkout の絶対パスが未解決、またはそこへの `cd` に失敗）: ` ` + 「⚠️ main checkout ルートが解決できず base 更新を skip しました。`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
+  - `ff_failed_clean` / `ff_failed_divergent` / `ff_failed_discardable` のいずれかのとき（fast-forward 失敗。未コミット変更の有無・内容は marker ごとに異なるが、いずれも base 更新自体は未完了）: ` ` + 「⚠️ base ブランチの fast-forward 更新に失敗しました。`git status` で状態を確認し、`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
+  - いずれの `[CONTEXT] BASE_UPDATE=` 行も見つからないとき（ステップ 4 の bash block が実行されなかった等の想定外経路）: ` ` + 「⚠️ base 更新の実行結果が確認できませんでした。`git status` / `git log` で状態を確認してください」を付記
 - `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` と `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/else で排他だが、両 `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
   - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（別のセッションが作業ツリーを使用中のため削除を見送った）: ` ` + 以下を付記
     ```

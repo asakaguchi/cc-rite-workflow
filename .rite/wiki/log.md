@@ -29,6 +29,7 @@
 * **Update**: [hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-session-id-env-leak.md) — raw/reviews/20260720T142626Z-pr-1932.md を統合
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=272, broken_refs=0
 * **Create**: [ドキュメントが提示する解決策は上流ソース（公式ドキュメント・issue tracker）で機能を裏取りする](pages/heuristics/documentation-remedy-upstream-verification.md) — raw/reviews/20260720T154907Z-pr-1933.md, raw/fixes/20260720T155318Z-pr-1933.md, raw/reviews/20260720T163001Z-pr-1933-cycle2.md, raw/fixes/20260720T163246Z-pr-1933-cycle2.md, raw/reviews/20260720T170155Z-pr-1933-cycle3-final.md を新規ページ化
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=272, broken_refs=0
 
 # Wiki 活動ログ
 

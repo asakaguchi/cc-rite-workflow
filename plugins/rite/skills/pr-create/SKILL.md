@@ -214,7 +214,7 @@ Terminate processing.
 ### 1.3 Verify Changes
 
 ```bash
-git status --porcelain
+bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh
 git diff --stat origin/{base_branch}...HEAD
 git log --oneline origin/{base_branch}...HEAD
 ```

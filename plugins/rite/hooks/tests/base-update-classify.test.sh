@@ -24,6 +24,10 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+# tests/ -> hooks/ -> rite (2 up), same resolution as _test-helpers.sh's
+# _helpers_resolve_plugin_root. Needed because the extracted classify block
+# now calls lib/git-status-filtered.sh via the {plugin_root} placeholder (#1936).
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -37,7 +41,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 # --- SKILL.md から検証 block を抽出 ({base_branch} は main に置換) ---
 CLASSIFY_SNIPPET="$TEST_DIR/classify.sh"
 awk '/# retry break 後の成否検証/{f=1} f && /^else$/{exit} f{print}' "$SKILL_MD" \
-  | sed 's/{base_branch}/main/g' > "$CLASSIFY_SNIPPET"
+  | sed -e 's/{base_branch}/main/g' -e "s|{plugin_root}|$PLUGIN_ROOT|g" > "$CLASSIFY_SNIPPET"
 if ! grep -q 'BASE_UPDATE=ff_failed_discardable' "$CLASSIFY_SNIPPET"; then
   echo "FAIL: SKILL.md からの検証 block 抽出に失敗しました (アンカーが変更された可能性)"
   echo "  抽出結果: $(wc -l < "$CLASSIFY_SNIPPET") 行"

@@ -1,5 +1,6 @@
 ## 2026-07-20
 
+* **Create**: [lint のスキャン除外スコープは既知アンチパターンの再発を検出しない盲点になる](pages/anti-patterns/lint-exclusion-scope-permits-known-antipattern-recurrence.md) — raw/reviews/20260720T091826Z-pr-1927.md を新規ページ化
 * **Skip**: [20260720T081406Z-pr-1926.md](raw/reviews/20260720T081406Z-pr-1926.md) — cycle1でmergeable到達した記録のみ。reviewerの横断確認プラクティスは既存ページ(asymmetric-fix-transcription.md等)がカバーする一般原則の一適用例に留まり、独立した新規経験則としての抽出には至らない
 * **Create**: [スイープの検証 grep にスイープ対象と同一パターンを再利用する](pages/anti-patterns/sweep-verification-grep-shares-blind-spot.md) — raw/reviews/20260719T154814Z-pr-1919-c3.md, raw/fixes/20260719T154952Z-pr-1919-c3.md を新規ページ化
 * **Create**: [placeholder 伝播は実行主体の解決経路を確認してから適用する](pages/heuristics/placeholder-propagation-requires-resolver-context.md) — raw/reviews/20260719T154814Z-pr-1919-c3.md, raw/fixes/20260719T154952Z-pr-1919-c3.md を新規ページ化

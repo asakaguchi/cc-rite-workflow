@@ -17,6 +17,7 @@
 * **Skip**: [20260720T072944Z-pr-1925.md](raw/fixes/20260720T072944Z-pr-1925.md) — 軽微な文言修正1件のみで独立した経験則として抽出できないため（cycle1-3で構造的問題は既にページ化済み）
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=268, broken_refs=0
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=269, broken_refs=0
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=270, broken_refs=0
 
 # Wiki 活動ログ
 

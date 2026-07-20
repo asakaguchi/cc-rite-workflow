@@ -1183,7 +1183,7 @@ Then:
 bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
-その値を `{repo_root}` として、以下を表示する（本文の複製ではなく [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) への 1 行ポインタ + 対象パスの実例のみ）:
+その値を `{repo_root}` として、以下を表示する（原因や恒久対処の詳細本文は複製せず、要約 + [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) への 1 行ポインタ + 対象パスの実例に留める）:
 
 ```
 ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、

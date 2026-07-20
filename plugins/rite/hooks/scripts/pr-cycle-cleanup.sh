@@ -682,14 +682,21 @@ rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
 # Overridable via env for ops/troubleshooting (no new rite-config.yml key —
 # CLAUDE.md シンプルさを死守する).
 readonly RITE_SESSION_LIVENESS_TTL_HOURS_RAW="${RITE_SESSION_LIVENESS_TTL_HOURS:-24}"
-# Validate the env override is a positive integer (ops typo guard, e.g. "24h"):
-# an invalid value must not silently corrupt the `* 3600` arithmetic below with
-# a raw bash error. Falls back to the 24h default with a WARNING (fail-safe,
-# same "protect on anything we can't compute" posture as the rest of this guard).
-if [[ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" =~ ^[0-9]+$ ]] && [ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" -gt 0 ]; then
+# Validate the env override is a positive base-10 integer with no leading zero
+# (ops typo guard, e.g. "24h"): an invalid value must not silently corrupt the
+# `* 3600` arithmetic below with a raw bash error. A leading zero (e.g. "010")
+# would pass a laxer `^[0-9]+$` check yet be parsed as octal by bash arithmetic
+# (`$(( 010 * 3600 ))` = 8h, not 10h) — silently wrong TTL, or a hard arithmetic
+# error for octal-invalid digits like "08". `^[1-9][0-9]*$` rejects both "0"
+# and any leading-zero value outright, so the surviving values are always
+# valid decimal input to `$(( ... * 3600 ))` (this also makes a separate
+# `-gt 0` check redundant — the pattern alone guarantees a positive integer).
+# Falls back to the 24h default with a WARNING (fail-safe, same "protect on
+# anything we can't compute" posture as the rest of this guard).
+if [[ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" =~ ^[1-9][0-9]*$ ]]; then
   readonly RITE_SESSION_LIVENESS_TTL_HOURS="$RITE_SESSION_LIVENESS_TTL_HOURS_RAW"
 else
-  echo "WARNING: RITE_SESSION_LIVENESS_TTL_HOURS='$RITE_SESSION_LIVENESS_TTL_HOURS_RAW' は正の整数ではありません。既定値 24 を使用します。" >&2
+  echo "WARNING: RITE_SESSION_LIVENESS_TTL_HOURS='$RITE_SESSION_LIVENESS_TTL_HOURS_RAW' は正の整数ではありません（先頭ゼロも不可）。既定値 24 を使用します。" >&2
   readonly RITE_SESSION_LIVENESS_TTL_HOURS=24
 fi
 

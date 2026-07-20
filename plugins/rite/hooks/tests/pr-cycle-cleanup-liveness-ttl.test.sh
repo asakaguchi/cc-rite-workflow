@@ -240,6 +240,34 @@ assert "TC-9b non-numeric TTL override falls back to 24h -> reaped" "0" "$( [ -d
 assert_grep "TC-9b non-numeric override WARNING emitted" "$R/pcc.err" "正の整数ではありません"
 case "$out" in *"session_worktrees=1"*) pass "TC-9b status reports session_worktrees=1" ;; *) fail "TC-9b status: $out" ;; esac
 
+echo "=== TC-9c (env override, reject path): RITE_SESSION_LIVENESS_TTL_HOURS=0 -> WARNING + 既定 24h へフォールバック ==="
+# "0" matches a laxer ^[0-9]+$ but must still be rejected (positive integer
+# required). A 25h-old holder is TTL-exceeded under the 24h fallback, so this
+# pins the `-gt 0`-equivalent reject path (cycle 3 test-reviewer finding: the
+# prior TC-9b only covered the non-numeric-regex reject path, not TTL=0).
+R=$(make_repo 218); cleanup_dirs+=("$R")
+set_updated_at "$R" "$(ts_hours_ago 25)"
+out=$( cd "$R" && RITE_SESSION_LIVENESS_TTL_HOURS="0" bash "$PCC" 2>"$R/pcc.err"; echo "rc=$?" )
+assert "TC-9c TTL=0 falls back to 24h -> reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-218" ] && echo 1 || echo 0 )"
+assert_grep "TC-9c TTL=0 WARNING emitted" "$R/pcc.err" "正の整数ではありません"
+case "$out" in *"session_worktrees=1"*) pass "TC-9c status reports session_worktrees=1" ;; *) fail "TC-9c status: $out" ;; esac
+
+echo "=== TC-9d (env override, leading-zero reject path): RITE_SESSION_LIVENESS_TTL_HOURS=\"010\" -> WARNING + 既定 24h へフォールバック ==="
+# Cycle 3 finding (code-quality-reviewer + error-handling-reviewer, independently):
+# a laxer ^[0-9]+$ regex accepts leading-zero values like "010", but bash
+# arithmetic (`$(( 010 * 3600 ))`) parses a leading zero as OCTAL, silently
+# turning an intended 10h TTL into 8h (and "08"/"09" into a raw arithmetic
+# error). A 9h-old holder demonstrates the real-world failure mode: under the
+# (buggy) octal misinterpretation it would be wrongly REAPED (9h > 8h), but
+# the fix rejects "010" outright and falls back to the 24h default, which
+# correctly PROTECTS a 9h-old holder (9h < 24h). This is the non-vacuous
+# distinguishing assertion — a regex that still accepted "010" would reap here.
+R=$(make_repo 219); cleanup_dirs+=("$R")
+set_updated_at "$R" "$(ts_hours_ago 9)"
+out=$( cd "$R" && RITE_SESSION_LIVENESS_TTL_HOURS="010" bash "$PCC" 2>"$R/pcc.err"; echo "rc=$?" )
+assert "TC-9d leading-zero TTL rejected, 9h-old holder protected under 24h fallback" "1" "$( [ -d "$R/.rite/worktrees/issue-219" ] && echo 1 || echo 0 )"
+assert_grep "TC-9d leading-zero override WARNING emitted" "$R/pcc.err" "正の整数ではありません"
+
 # ---------------------------------------------------------------------------
 # Signal (B) claim-join in isolation (no flow-state.worktree recorded), mirroring
 # pr-cycle-cleanup-session-reap.test.sh's T-09/T-10 shape but pinning the NEW

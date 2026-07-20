@@ -768,12 +768,13 @@ Status: {projects_status_result}
   - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（別のセッションが作業ツリーを使用中のため削除を見送った）: ` ` + 以下を付記
     ```
     ℹ️ この作業ツリーは別のセッションが使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
-      すぐに消したい場合（別セッションを閉じたあと）: git worktree remove --force {flow_wt} && git worktree prune
+      すぐに消したい場合（別セッションを閉じたあと）: git worktree remove --force '{flow_wt}' && git worktree prune
     ```
   - `WORKTREE_REMOVE_FAILED=1` のとき（削除そのものが失敗）: ` ` + 以下を付記
     ```
     ⚠️ 作業ツリーの削除に失敗しました。次回のセッション開始時に自動で再回収されます。
-      すぐに消したい場合: git worktree remove --force {flow_wt} && git worktree prune
+      すぐに消したい場合: git worktree remove --force '{flow_wt}' && git worktree prune
+      （上記コマンドが「Device or resource busy」で失敗する場合、Step 4-W の sandbox 干渉 WARNING を参照し、sandbox 外のシェルで実行してください）
     ```
   - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
 - `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定（上から評価し最初に一致したものを採用）:

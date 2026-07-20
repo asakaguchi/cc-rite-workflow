@@ -434,6 +434,11 @@ Operating rules (important):
     suffices (/rite:setup adds an entry only when not already covered;
     /rite:lint warns if it is not ignored while multi_session is enabled).
 
+  • Sandboxed environments: after entering a session worktree, state writes to
+    the main checkout (.rite/sessions/, etc.) can be rejected as read-only.
+    See references/git-worktree-patterns.md's "#1896" section for the fix
+    (/rite:setup surfaces the same guidance when it detects this applies).
+
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
   - parallel  → multiple sub-agents within ONE session (.worktrees/{issue}/{task})
   - multi_session → whole-session isolation across terminals (.rite/worktrees/issue-{N})

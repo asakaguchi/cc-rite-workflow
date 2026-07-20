@@ -1171,6 +1171,31 @@ Then:
 
 ---
 
+## Phase 4.8: Sandbox Write-Allowlist 事前案内（multi_session 有効時、#1896）
+
+`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれの経路でも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限を伴う sandbox で動作していることを示している場合のみ、以下を表示する。いずれか一方でも該当しない場合（`multi_session.enabled: false`、または sandbox 無効／write 制限なし）は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
+
+判定は Claude 自身の実行コンテキスト（system prompt に記述された sandbox の write 許可リスト）を読んで行う。bash コマンドでは検出できない（sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）。
+
+該当する場合、まずリポジトリルートの絶対パスを取得する:
+
+```bash
+git rev-parse --show-toplevel
+```
+
+その値を `{repo_root}` として、以下を表示する（本文の複製ではなく [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) への 1 行ポインタ + 対象パスの実例のみ）:
+
+```
+ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、
+   main checkout 配下（.rite/sessions/ 等）への state 書込が「読み込み専用ファイルシステムです」
+   で拒否されることがあります。
+   恒久対処: sandbox の write 許可リストへ main checkout root の絶対パスを追加してください
+     （例: {repo_root} を settings の sandbox.filesystem.write.allowWithinDeny 等に追加）
+   詳細: git-worktree-patterns.md の #1896 対処節を参照
+```
+
+settings ファイルへの自動書き込みは行わない（案内のみ、MUST NOT）。
+
 ## Phase 5: Completion Report
 
 ### Display Configuration Summary

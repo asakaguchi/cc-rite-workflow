@@ -475,7 +475,7 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-After displaying the status line, exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 事前案内](#phase-48-sandbox-write-allowlist-事前案内multi_session-有効時1896) (non-blocking, self-gated by its own multi_session + sandbox check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
@@ -1073,7 +1073,7 @@ echo "wiki_enabled=$wiki_enabled"
 **When `wiki_enabled=false`**:
 - Display `Wiki が無効化されています（wiki.enabled: false）。Phase 4.7 をスキップします。`
 - Set `wiki_status=skipped_disabled` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
 
 **When `wiki_enabled=true`**: Display `Wiki の自動初期化を開始します...` and proceed to 4.7.2.
 
@@ -1114,7 +1114,7 @@ fi
 **When `WIKI_INITIALIZED=true`**:
 - Display `Wiki は既に初期化されています（検知: {detection}）。スキップします。` (substitute `{detection}` with the matched branch name or file path)
 - Set `wiki_status=already_initialized` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
 
 **When `WIKI_INITIALIZED=false`**: Proceed to 4.7.3.
 
@@ -1167,9 +1167,36 @@ Then:
 - Display `⚠️ Wiki の初期化に失敗しました。/rite:setup 全体は成功扱いで続行します。手動で /rite:wiki-init を実行してください。` (warning only — do NOT exit)
 - Set `wiki_status=failed` (remember in LLM context)
 
-**→ Proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
+**→ Proceed to the next step (new-install: Phase 4.8, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
 
 ---
+
+## Phase 4.8: Sandbox Write-Allowlist 事前案内（multi_session 有効時、#1896）
+
+`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれの経路でも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限を伴う sandbox で動作していることを示している場合のみ、以下を表示する。いずれか一方でも該当しない場合（`multi_session.enabled: false`、または sandbox 無効／write 制限なし）は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
+
+判定は Claude 自身の実行コンテキスト（system prompt に記述された sandbox の write 許可リスト）を読んで行う。bash コマンドでは検出できない（sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）。
+
+該当する場合、まず main checkout root の絶対パスを取得する。`git rev-parse --show-toplevel` は現在の worktree の toplevel を返すため、setup がセッション worktree cwd から実行された場合（例: EnterWorktree 後の `/rite:setup --upgrade` 手動実行）に worktree パスを誤って返す（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh) が同じ理由でこのパターンを避けている）。代わりに `state-path-resolve.sh` で main checkout root を解決する:
+
+```bash
+bash {plugin_root}/hooks/state-path-resolve.sh
+```
+
+その値を `{repo_root}` として、以下を表示する（原因や恒久対処の詳細本文は複製せず、要約 + [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) への 1 行ポインタ + 対象パスの実例に留める）:
+
+```
+ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、
+   main checkout 配下（.rite/sessions/ 等）への state 書込が「読み込み専用ファイルシステムです」
+   で拒否されることがあります。
+   恒久対処: /sandbox コマンド、または settings の sandbox 設定で、write 許可リストへ
+     main checkout root の絶対パス（{repo_root}）を追加してください
+   詳細: git-worktree-patterns.md の #1896 対処節を参照
+```
+
+settings ファイルへの自動書き込みは行わない（案内のみ、MUST NOT）。
+
+**→ Proceed to Phase 5 (new-install) — this Phase is only reached via the new-install exit points in Phase 4.7 (§4.7.1/4.7.2/4.7.4); `--upgrade` invokes this Phase directly from Step 7b and then exits without a Phase 5 report.**
 
 ## Phase 5: Completion Report
 

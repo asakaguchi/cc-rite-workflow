@@ -3,6 +3,20 @@
 # Usage: bash plugins/rite/hooks/tests/pre-compact.test.sh
 set -euo pipefail
 
+# Hermeticity guard (Issue #1929): flow-state.sh path resolves session_id with
+# priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
+# file (Issue #1530). When this test suite runs inside a live Claude Code
+# session, that session's own id leaks into most `bash "$HOOK"` invocations
+# below (only one call site had an inline `env -u` guard) and silently
+# overrides the file-based per-session fixtures, making the hook resolve a
+# nonexistent (or wrong) flow-state file — in the worst case crashing the
+# suite outright under `set -euo pipefail`. Unsetting both here forces every
+# invocation to resolve session_id from the fixture's `.rite-session-id` file,
+# matching the intended test isolation. (The pre-existing inline `env -u`
+# guard further down stays as defense in depth; it's redundant but harmless
+# with this file-wide unset in place.)
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../pre-compact.sh"
 TEST_DIR="$(mktemp -d)"

@@ -484,8 +484,8 @@ push/fetch だけ失敗する非対称な挙動になる。
 リスト・credentials 保護設定はプラグイン外の環境設定のため、rite 側の設定変更では解消できない。
 SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
 
-**恒久策としては現状 Linux/WSL2 で機能しない設定**: `sandbox.excludedCommands`（公式サポート設定。
-指定したコマンドを sandbox 外で通常の permission フローに乗せる）は一見この問題の恒久策に見える:
+**恒久策**: `sandbox.excludedCommands`（公式サポート設定。指定したコマンドを sandbox 外で通常の
+permission フローに乗せる）は一見この問題の恒久策に見えるが、**Linux/WSL2 環境では現状機能しない**:
 
 ```json
 {
@@ -495,13 +495,12 @@ SSH alias remote を使う任意のプロジェクトで同様に起こりうる
 }
 ```
 
-しかし上流の複数の実測報告によれば、Linux/WSL2 環境では `excludedCommands` はファイルシステムの
+上流の複数の実測報告によれば、Linux/WSL2 環境では `excludedCommands` はファイルシステムの
 sandbox（bubblewrap）のみをバイパスし、ネットワークの sandbox はグローバルに適用され続ける。SSH
 （port 22）はブロックされたままで、本問題は解消しない（[claude-code#30619](https://github.com/anthropics/claude-code/issues/30619)、
 [#29274](https://github.com/anthropics/claude-code/issues/29274)、[#53012](https://github.com/anthropics/claude-code/issues/53012)。
 いずれも `not planned` でクローズ済み、2026-04 リリース時点でも未修正）。設定自体は無害なので試して
-もよいが、効果が確認できない場合は上記の `dangerouslyDisableSandbox` が現状唯一確実に機能する回避策
-である。
+もよいが、確実に機能するのは `dangerouslyDisableSandbox: true` での再実行のみである。
 
 ### worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる
 

@@ -21,7 +21,7 @@ Beyond these four, apply general application judgment when the diff warrants it 
 
 ## Hypothetical Exception Category (migration)
 
-This reviewer inherits the **Database migration** entry of the Hypothetical Exception Categories defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories) (that table lists the pre-consolidation `database-reviewer.md`; this reviewer is its successor for the database domain). The exception applies **only to migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths): those MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
+This reviewer inherits the **Database migration** entry of the Hypothetical Exception Categories defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories). The exception applies **only to migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths): those MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
 
 **Rationale**: A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. "Wait until we observe data loss in production" is not an acceptable risk model.
 

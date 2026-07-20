@@ -219,6 +219,8 @@
 | [スイープの検証 grep にスイープ対象と同一パターンを再利用する](pages/anti-patterns/sweep-verification-grep-shares-blind-spot.md) | anti-patterns | 横断スイープの完了検証をスイープ抽出と同じ grep パターンで行うと、抽出時の死角が検証でも同様に見逃され「残存ゼロ確認」が偽の安心を与える。検証は対象の性質（repo コンテキスト依存性等）で独立に設計する (PR #1919 で gh label create 2 箇所が 3 サイクル素通り、runtime 実測で発覚)。 | 2026-07-20T01:15:00+09:00 | high |
 | [placeholder 伝播は実行主体の解決経路を確認してから適用する](pages/heuristics/placeholder-propagation-requires-resolver-context.md) | heuristics | literal substitution 方式の placeholder を新ファイルへ伝播する前に、そのファイルの実行主体が解決経路（Legend / canonical スニペット / 注入値）を持つか確認する。解決経路のない reviewer agent 定義への伝播は literal 残留の全環境回帰を生んだ (PR #1919)。 | 2026-07-20T01:15:00+09:00 | high |
 | [機械的スイープでは挿入先コンテキストを検証してから変更を適用する](pages/patterns/mechanical-sweep-insertion-context-verification.md) | patterns | フラグ一括付与のようなスイープは挿入先ごとに (1) フラグが要求する追加引数 (2) 流用変数の意味論 (3) 名前空間衝突 (4) 同一 block 内 recovery hint との同期、の 4 点を検証してから適用する (PR #1919 の全 3 サイクル指摘がこの 4 類型に還元された)。 | 2026-07-20T01:15:00+09:00 | high |
+| [bash 数値 env override 検証と算術評価の基数不一致（先頭ゼロの8進誤解釈）](pages/anti-patterns/bash-numeric-env-validation-arithmetic-base-mismatch.md) | anti-patterns | env var の数値検証に `^[0-9]+$` を使い、後続で `$(( VAR * N ))` のように bash 算術に渡すと、先頭ゼロ値（例: "010"）が検証は通過しつつ bash 算術では8進数として解釈され、意図と異なる値に silent に変換される（"08"/"09" は基底値エラーで即死）。 | 2026-07-20 | high |
+| [診断WARNINGの宛先（実行エージェント向けかユーザー向けか）を主語で明示する](pages/heuristics/diagnostic-warning-message-audience-ambiguity.md) | heuristics | sandbox 干渉等を明示的に名指しする WARNING 文言は、そのメッセージを読む実行エージェント自身が持つ別のルール（例: sandbox 起因の失敗を検知したら dangerouslyDisableSandbox で自動再試行する）の発火条件を意図せず満たしてしまうことがある。復旧コマンドの宛先（ユーザーが手動実行 / エージェントは再試行禁止）を主語で明示する。 | 2026-07-20 | medium |
 
 ## 統計
 

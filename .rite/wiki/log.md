@@ -1,6 +1,7 @@
 ## 2026-07-21
 
 * **Skip**: [20260720T220115Z-pr-1935.md](raw/reviews/20260720T220115Z-pr-1935.md) — 単一PRの1回限りの観察（reviewer が分類マーカーboundaryを付けつつ内容はdesign_confirmation相当と結論）。再現性のある強いパターンとして複数PRで確認されておらず、新規経験則ページ化の根拠に乏しい
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=273, broken_refs=0
 
 ## 2026-07-20
 

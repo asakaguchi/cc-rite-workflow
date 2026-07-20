@@ -19,6 +19,10 @@
 # - TC-6: 非 -z の --name-only は quotePath がファイル名を C-quote し、pathspec 不一致の
 #   git diff --quiet が exit 0 を返して相違変更が discardable に誤流出、破棄承認で
 #   データ喪失した。非 ASCII 名の相違が divergent に落ちることを pin
+# - TC-9 (#1936, T-05): sandbox の書き込みブロック用 character device マウントが
+#   untracked (`??`) として誤検出され ff_failed_divergent に誤流出しないことを pin。
+#   dirty 判定が lib/git-status-filtered.sh 経由になったことで、ゴーストマウントのみ・
+#   HEAD が origin と同一の状態では ok に分類される
 
 set -uo pipefail
 
@@ -147,6 +151,16 @@ echo "SUBDIR-LOCAL" > file.txt
 r=$(cd sub && bash "$CLASSIFY_SNIPPET" 2>/dev/null | sed -n 's/^\[CONTEXT\] BASE_UPDATE=//p' | head -1)
 [ "$r" = "ff_failed_divergent" ] && pass "TC-8 ($r)" || fail "TC-8: expected ff_failed_divergent, got '$r'"
 git checkout -- :/
+
+# ─── TC-9: sandbox ゴーストマウント (character device) のみ + HEAD == origin → ok (T-05, #1936) ───
+# mknod は root/CAP_MKNOD 必須で本環境では使えないため、/dev/null への symlink で
+# character device を模す (test -c は symlink を辿るため実マウントと等価)。
+echo "TC-9: sandbox ghost-mount only (up-to-date) -> ok"
+git fetch -q origin main && git merge -q --ff-only origin/main
+ln -s /dev/null ghost_devnull
+r=$(classify)
+[ "$r" = "ok" ] && pass "TC-9 ($r)" || fail "TC-9: expected ok, got '$r' (#1936 sandbox ghost mount regression)"
+rm -f ghost_devnull && git checkout -- :/
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

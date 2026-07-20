@@ -464,14 +464,37 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
 `api.github.com` を使う）は影響を受けないため、`gh issue view` 等の issue 操作は成功するのに
 push/fetch だけ失敗する非対称な挙動になる。
 
-**原因**: sandbox のネットワーク許可リストはドメイン名ベース（`github.com` / `*.github.com` 等）
-で構成される。`~/.ssh/config` の `Host` alias は実際の接続先ホスト名としては alias 名（例:
-`github.com-work`）になり、許可リストのいずれのパターンにも一致しない。
+**原因**: 以下の 3 段の因果連鎖で発生する:
 
-**対処**: 上記はコマンド自体の失敗ではなく sandbox のネットワーク制限のため、当該 `git push` /
-`git fetch` コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要
-— 既知の環境制約、Issue #1897）。sandbox のネットワーク許可リストはプラグイン外の環境設定のため、
-rite 側の設定変更では解消できない。SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
+1. sandbox の credentials 保護設定（`~/.claude/settings.json` の `sandbox.credentials.files:
+   [{"path": "~/.ssh", "mode": "deny"}]`。公式のデフォルトは `~/.ssh` を読み取り許可しており、
+   この deny はユーザー側の hardening 設定由来）により、sandbox 内から `~/.ssh` が不可視になる
+2. ssh が `~/.ssh/config` を読めないため、`Host github.com-work` → `HostName github.com` の
+   **alias 解決自体が起きない**（sandbox 内の `ssh -G github.com-work` は `hostname
+   github.com-work` を返す。sandbox 外では `github.com` に解決される）
+3. その結果 CONNECT が alias 名のまま proxy に渡り、sandbox のネットワーク許可リスト（ドメイン名
+   ベース。`github.com` / `*.github.com` 等）のいずれのパターンにも一致せず Bad Gateway になる
+
+**効かない対処**: `network.allowedDomains` へ alias 名（例: `github.com-work`）を追加しても解消
+しない — alias 名は DNS 解決できず、そもそも `~/.ssh` の秘密鍵が読めないため認証も成立しない
+（原因の 1, 2 段目が未解消のまま）。
+
+**恒久策**: `sandbox.excludedCommands`（公式サポート設定。指定したコマンドは sandbox 外で通常の
+permission フローに乗る）へ push/fetch/pull を追加する:
+
+```json
+{
+  "sandbox": {
+    "excludedCommands": ["git push *", "git fetch *", "git pull *"]
+  }
+}
+```
+
+**都度の回避（`excludedCommands` 未設定環境向けのフォールバック）**: 上記設定を追加できない場合
+は、当該 `git push` / `git fetch` コマンドのみ `dangerouslyDisableSandbox: true` で再実行して
+よい（ユーザー確認は不要 — 既知の環境制約、Issue #1897）。sandbox のネットワーク許可リスト・
+credentials 保護設定はプラグイン外の環境設定のため、rite 側の設定変更では解消できない。SSH alias
+remote を使う任意のプロジェクトで同様に起こりうる。
 
 ### worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる
 

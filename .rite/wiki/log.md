@@ -21,6 +21,7 @@
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=270, broken_refs=0
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=270, broken_refs=0
 * **Create**: [hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-session-id-env-leak.md) — raw/reviews/20260720T094042Z-pr-1928.md を新規ページ化
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=270, broken_refs=0
 
 # Wiki 活動ログ
 

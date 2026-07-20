@@ -19,7 +19,10 @@
 #   AC-4: updated_at missing / malformed (non-ISO-8601) -> protected, fail-safe,
 #         no date-incompatible WARNING (that WARNING is reserved for a
 #         well-formed-but-unparseable timestamp — see the 4.5 case below)
-#   AC-6: TTL boundary (age == TTL exactly) -> protected; age == TTL+1s -> reaped
+#   AC-6: TTL boundary — near-boundary within-margin age -> protected;
+#         age == TTL+1s -> reaped (see TC-6's comment for why the literal
+#         age == TTL equality itself is a one-line `-le` inspection rather
+#         than a wall-clock-pinned assertion)
 #   AC-7: an active=false holder is reaped regardless of updated_at (non-regression:
 #         TTL only bounds active=true protection, it does not shorten anything else)
 #   AC-8: Gate 0 self-exclusion still wins even when the self worktree's own TTL
@@ -172,8 +175,16 @@ echo "=== TC-6 (AC-6): TTL 境界近傍 (24h-60s、以内側) -> 保護 ==="
 # a moment later (after subshell + bash startup + test setup latency). That gap
 # pushes the effective age past the exact 24h boundary often enough to flake
 # (reap decided age > ttl, protect assertion fails). A 60s safety margin makes
-# the "protected" side of the boundary immune to that drift while still
-# comfortably exercising the AC-6 pin (see TC-6b for the other side of the line).
+# the "protected" side of the boundary immune to that drift.
+#
+# Honesty note (Issue #1923 cycle 2 review): with this margin, no assertion in
+# this suite pins the literal age == ttl_seconds equality AC-6 describes —
+# TC-6/TC-6b together only pin which side of the comparison is "protect" vs
+# "reap" near the boundary, not the exact integer where it flips. The
+# equality itself (`[ "$age" -le "$ttl_seconds" ]` in _rite_ttl_protects,
+# not `-lt`) is a one-line inspection, not something a wall-clock-driven
+# integration test can pin without a deterministic "now" injection point
+# (not worth adding solely for this — CLAUDE.md シンプルさを死守する).
 R=$(make_repo 206); cleanup_dirs+=("$R")
 set_updated_at "$R" "$(ts_seconds_ago 86340)"
 out=$(run_pcc "$R")
@@ -217,6 +228,18 @@ out=$( cd "$R" && RITE_SESSION_LIVENESS_TTL_HOURS=1 bash "$PCC" 2>"$R/pcc.err"; 
 assert "TC-9 custom 1h TTL: 2.5h-old holder exceeded -> reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-210" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "TC-9 status reports session_worktrees=1" ;; *) fail "TC-9 status: $out" ;; esac
 
+echo "=== TC-9b (env override, error path): RITE_SESSION_LIVENESS_TTL_HOURS が非数値 -> WARNING + 既定 24h へフォールバック ==="
+# Non-numeric override must not raw-bash-error out of the arithmetic; it must
+# WARN and behave exactly as if the (default) override were absent. A 25h-old
+# holder is TTL-exceeded under the 24h fallback, so this also proves the
+# fallback value itself (not just "no crash") by reaping.
+R=$(make_repo 217); cleanup_dirs+=("$R")
+set_updated_at "$R" "$(ts_hours_ago 25)"
+out=$( cd "$R" && RITE_SESSION_LIVENESS_TTL_HOURS="24h" bash "$PCC" 2>"$R/pcc.err"; echo "rc=$?" )
+assert "TC-9b non-numeric TTL override falls back to 24h -> reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-217" ] && echo 1 || echo 0 )"
+assert_grep "TC-9b non-numeric override WARNING emitted" "$R/pcc.err" "正の整数ではありません"
+case "$out" in *"session_worktrees=1"*) pass "TC-9b status reports session_worktrees=1" ;; *) fail "TC-9b status: $out" ;; esac
+
 # ---------------------------------------------------------------------------
 # Signal (B) claim-join in isolation (no flow-state.worktree recorded), mirroring
 # pr-cycle-cleanup-session-reap.test.sh's T-09/T-10 shape but pinning the NEW
@@ -255,6 +278,54 @@ out=$(run_pcc "$R")
 assert "TC-11 claim-join-only TTL within -> protected" "1" "$( [ -d "$R/.rite/worktrees/issue-212" ] && echo 1 || echo 0 )"
 assert_grep "TC-11 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree liveness"
 case "$out" in *"session_worktrees=0"*) pass "TC-11 status reports session_worktrees=0" ;; *) fail "TC-11 status: $out" ;; esac
+
+# ---------------------------------------------------------------------------
+# Signal (A) flow-state.worktree scan in isolation (Issue #1923 cycle 2 review
+# finding: TC-10/TC-11 above isolate signal B alone, but no fixture isolated
+# signal A's "protect" direction — every TC-2/TC-6/TC-13-style "survives"
+# assertion also has a matching claim (make_repo sets both signals together),
+# so signal B's claim-join resolves "protect" BEFORE signal A's loop is even
+# reached. A mutation that made A never protect (regardless of TTL) passed the
+# entire suite above undetected). Here the claim is recorded but points at a
+# DIFFERENT (bogus) worktree, so signal B's exact-match join never fires —
+# only signal A's flow-state.worktree scan can protect this target.
+# ---------------------------------------------------------------------------
+make_repo_flow_state_only() {
+  local n="$1" root
+  root=$(make_sandbox --branch develop)
+  printf 'multi_session:\n  enabled: true\n  worktree_base: ".rite/worktrees"\n' > "$root/rite-config.yml"
+  printf '%s' "$SID_B" > "$root/.rite-session-id"
+  ( cd "$root" && $GIT worktree add -q -b "feat/issue-$n" ".rite/worktrees/issue-$n" >/dev/null 2>&1 )
+  # flow-state.worktree recorded (matches) -> signal (A) can match.
+  RITE_STATE_ROOT="$root" bash "$FS" set --session "$SID_A" --phase implement --issue "$n" \
+    --branch "feat/issue-$n" --next n --worktree "$root/.rite/worktrees/issue-$n" >/dev/null 2>&1
+  # Claim exists (so Gate 2's no-claim/free mtime-age-guard branch, which would
+  # otherwise protect any freshly-created worktree regardless of the liveness
+  # guard's own verdict, is never reached) but points at a bogus, unrelated
+  # worktree path -> signal (B)'s exact worktree-match join never fires.
+  RITE_STATE_ROOT="$root" bash "$IC" claim --issue "$n" --session "$SID_A" \
+    --worktree "$root/.rite/worktrees/issue-${n}-bogus" >/dev/null 2>&1
+  printf '%s' "$root"
+}
+
+echo "=== TC-14 (signal A only): flow-state.worktree scan の TTL 以内 -> protected (claim は別 worktree を指すため signal B は不発) ==="
+# 3h (not 1h): same rationale as TC-2/TC-11 — must clear the 2h claim-staleness
+# window so Gate 2 classifies the (mismatched, but present) claim as "stale"
+# (reapable) rather than "other" (live) — otherwise Gate 2 alone would explain
+# the "survives" assertion and signal A's own TTL gate would remain untested.
+R=$(make_repo_flow_state_only 215); cleanup_dirs+=("$R")
+set_updated_at "$R" "$(ts_hours_ago 3)"
+out=$(run_pcc "$R")
+assert "TC-14 signal-A-only TTL within -> protected" "1" "$( [ -d "$R/.rite/worktrees/issue-215" ] && echo 1 || echo 0 )"
+assert_grep "TC-14 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree liveness"
+case "$out" in *"session_worktrees=0"*) pass "TC-14 status reports session_worktrees=0" ;; *) fail "TC-14 status: $out" ;; esac
+
+echo "=== TC-15 (signal A only): flow-state.worktree scan の TTL 超過 -> reaped (claim は別 worktree を指すため signal B は不発) ==="
+R=$(make_repo_flow_state_only 216); cleanup_dirs+=("$R")
+set_updated_at "$R" "$(ts_hours_ago 25)"
+out=$(run_pcc "$R")
+assert "TC-15 signal-A-only TTL exceeded -> reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-216" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "TC-15 status reports session_worktrees=1" ;; *) fail "TC-15 status: $out" ;; esac
 
 # ---------------------------------------------------------------------------
 # `+00:00` offset format coverage (Issue #1923 review finding F-01). flow-state.sh

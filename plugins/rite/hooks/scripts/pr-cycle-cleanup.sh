@@ -708,10 +708,20 @@ fi
 # silently fall into the "malformed" fail-safe (permanent protect, no WARNING)
 # for any session whose last heartbeat came from one of those, reintroducing
 # this Issue's own dead-lock.
+#
+# Single source of truth (Issue #1923 cycle 2 review finding): this regex is
+# read by BOTH _rite_epoch_of_ts (below) and _rite_ttl_protects's
+# date-incompatible check, to tell "malformed timestamp" (no WARNING, silent
+# fail-safe) apart from "well-formed but this host's date can't parse it"
+# (WARNING). A prior version duplicated the literal in both places — exactly
+# the two-copies-diverge shape that produced this Issue's own cycle-1 CRITICAL
+# bug (a `Z`-only literal in one copy). One readonly variable, referenced by
+# `=~ $var`, makes that drift structurally impossible.
+readonly _RITE_ISO8601_UTC_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$'
 # Returns 0 with epoch on stdout, 1 on any parse failure.
 _rite_epoch_of_ts() {
   local ts="$1" epoch ts_norm ts_nocolon
-  [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$ ]] || return 1
+  [[ "$ts" =~ $_RITE_ISO8601_UTC_RE ]] || return 1
   # Normalize `Z` to `+00:00` (same technique as session-ownership.sh's
   # parse_iso8601_to_epoch) so both parse paths below only ever see an
   # explicit numeric offset.
@@ -741,7 +751,7 @@ _rite_ttl_protects() {
   local updated_at="$1" now_epoch upd_epoch age ttl_seconds
   [ -n "$updated_at" ] || return 0
   if ! upd_epoch=$(_rite_epoch_of_ts "$updated_at"); then
-    if [[ "$updated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$ ]] \
+    if [[ "$updated_at" =~ $_RITE_ISO8601_UTC_RE ]] \
        && [ "$_rite_date_incompat_warned" != "1" ]; then
       echo "WARNING: この環境の date コマンドで updated_at ($(printf '%s' "$updated_at" | neutralize_ctrl)) を解釈できません。worktree liveness の TTL 判定を skip し、従来どおり active=true holder を無期限に保護します。" >&2
       _rite_date_incompat_warned=1

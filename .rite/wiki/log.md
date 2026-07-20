@@ -1,3 +1,7 @@
+## 2026-07-21
+
+* **Skip**: [20260720T220115Z-pr-1935.md](raw/reviews/20260720T220115Z-pr-1935.md) — 単一PRの1回限りの観察（reviewer が分類マーカーboundaryを付けつつ内容はdesign_confirmation相当と結論）。再現性のある強いパターンとして複数PRで確認されておらず、新規経験則ページ化の根拠に乏しい
+
 ## 2026-07-20
 
 * **Create**: [lint のスキャン除外スコープは既知アンチパターンの再発を検出しない盲点になる](pages/anti-patterns/lint-exclusion-scope-permits-known-antipattern-recurrence.md) — raw/reviews/20260720T091826Z-pr-1927.md を新規ページ化

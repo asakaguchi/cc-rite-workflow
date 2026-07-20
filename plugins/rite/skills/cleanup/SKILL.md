@@ -358,12 +358,26 @@ esac
        echo "WARNING: 別のセッションがこの作業ツリー（{flow_wt}）を使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。" >&2
        echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path={flow_wt}" >&2
      else
-       git worktree remove "{flow_wt}" 2>/dev/null || git worktree remove --force "{flow_wt}" 2>/dev/null || echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
+       # git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定し、busy 検出の
+       # substring マッチを安定させる（repo 既存の LC_ALL=C 規約と統一）。stderr を
+       # 一時ファイルに退避するのは、通常 fallback（remove → remove --force）の
+       # どちらで失敗しても最後の失敗理由を busy 判定に使うため（Issue #1923 AC-5）。
+       _wt_rm_err=$(mktemp 2>/dev/null) || _wt_rm_err=""
+       if LC_ALL=C git worktree remove "{flow_wt}" 2>"${_wt_rm_err:-/dev/null}" \
+          || LC_ALL=C git worktree remove --force "{flow_wt}" 2>"${_wt_rm_err:-/dev/null}"; then
+         :
+       else
+         echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
+         if [ -n "$_wt_rm_err" ] && grep -qi "busy" "$_wt_rm_err" 2>/dev/null; then
+           echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force '{flow_wt}' && git worktree prune" >&2
+         fi
+       fi
+       [ -n "$_wt_rm_err" ] && rm -f "$_wt_rm_err"
        git worktree prune 2>/dev/null || true
      fi
      ```
      > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、worktree には自他いずれの cwd も無く `worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op だった経路（`in_worktree_unrecorded` 等）でも、残る live cwd は自セッションのハーネス（`$PPID` subtree）だけなので self-exclusion により rc=1（削除）となり、自己ブロッキングしない。rc=0（遅延）になるのは別セッションのハーネスが実際にこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（Issue #1923 AC-5）。
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（別セッション在席時のみ遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
 
@@ -754,12 +768,13 @@ Status: {projects_status_result}
   - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（別のセッションが作業ツリーを使用中のため削除を見送った）: ` ` + 以下を付記
     ```
     ℹ️ この作業ツリーは別のセッションが使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
-      すぐに消したい場合（別セッションを閉じたあと）: git worktree remove --force {flow_wt} && git worktree prune
+      すぐに消したい場合（別セッションを閉じたあと）: git worktree remove --force '{flow_wt}' && git worktree prune
     ```
   - `WORKTREE_REMOVE_FAILED=1` のとき（削除そのものが失敗）: ` ` + 以下を付記
     ```
     ⚠️ 作業ツリーの削除に失敗しました。次回のセッション開始時に自動で再回収されます。
-      すぐに消したい場合: git worktree remove --force {flow_wt} && git worktree prune
+      すぐに消したい場合: git worktree remove --force '{flow_wt}' && git worktree prune
+      （上記コマンドが「Device or resource busy」で失敗する場合、Step 4-W の sandbox 干渉 WARNING を参照し、sandbox 外のシェルで実行してください）
     ```
   - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
 - `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定（上から評価し最初に一致したものを採用）:

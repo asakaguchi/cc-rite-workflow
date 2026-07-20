@@ -199,10 +199,14 @@ SID_C="cccccccc-9999-aaaa-bbbb-cccccccccccc"
 # keeping active=true + worktree recorded — the exact incident shape (live session,
 # expired claim heartbeat). Without aging, the claim stays "other" (live) and Gate 2
 # alone would protect the worktree, making the new guard's contribution vacuous.
+# "3 hours ago" is deliberate (Issue #1923): it must clear the 2h claim-staleness
+# window (so Gate 2 alone would reap — non-vacuous) while staying WELL within the
+# liveness TTL default of 24h (so the guard this helper exercises still protects).
 age_flow_state() {
-  local sf="$1" tmp
+  local sf="$1" tmp ts
   tmp=$(mktemp) || return 1
-  jq '.updated_at = "2020-01-01T00:00:00Z"' "$sf" > "$tmp" && mv "$tmp" "$sf"
+  ts=$(date -u -d '3 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-3H +"%Y-%m-%dT%H:%M:%SZ")
+  jq --arg ts "$ts" '.updated_at = $ts' "$sf" > "$tmp" && mv "$tmp" "$sf"
 }
 
 echo "=== T-01 (AC-1): live-session flow-state worktree ref → NOT reaped even when claim stale ==="
@@ -316,8 +320,12 @@ R=$(make_repo 82); cleanup_dirs+=("$R")
 # make_repo does NOT set flow-state.worktree, so the (A) flow-state scan cannot
 # match; only the (B) claim-join (claim.worktree==tree AND holder active=true) can
 # save it. Non-vacuous: revert the claim-join and issue-82 reaps (stale, no live cwd).
+# "3 hours ago" (not a fixed old date): must clear the 2h claim-staleness window
+# but stay within the liveness TTL default of 24h (Issue #1923) so claim-join
+# still protects — see age_flow_state()'s comment above for the same rationale.
 hf82="$R/.rite/sessions/$SID_A.flow-state"
-tmp82=$(mktemp); jq --arg ts "2000-01-01T00:00:00Z" '.updated_at=$ts' "$hf82" > "$tmp82" && mv "$tmp82" "$hf82"
+ts82=$(date -u -d '3 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-3H +"%Y-%m-%dT%H:%M:%SZ")
+tmp82=$(mktemp); jq --arg ts "$ts82" '.updated_at=$ts' "$hf82" > "$tmp82" && mv "$tmp82" "$hf82"
 out=$(run_pcc "$R")
 assert "T-09 active+idle(stale-claim) worktree survives (claim-join)" "1" "$( [ -d "$R/.rite/worktrees/issue-82" ] && echo 1 || echo 0 )"
 assert "T-09 claim file survives (not reaped)" "1" "$( [ -f "$R/.rite/state/issue-claims/issue-82.json" ] && echo 1 || echo 0 )"

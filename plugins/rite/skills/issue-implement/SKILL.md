@@ -511,7 +511,7 @@ After implementation is complete, push changes to remote:
 **Commit procedure:**
 
 1. Check changed files with `git status`
-2. Stage changes with `git add`
+2. Stage the changed files explicitly with `git add {changed_files}` (the paths edited/created in this implementation — **not** `git add .`: sandbox 有効環境では read-deny 対象の home dotfile が character-special device としてマスクされ untracked 表示されるため、`git add .` はそれらを拾って `can only add regular files, symbolic links or git-directories` で hard fail する — Issue #1920)
 3. Generate commit message in Conventional Commits format
 4. Commit with `git commit`
 5. Push to remote with `git push origin {branch_name}` (no `-u`: sandbox 環境での upstream tracking 書込拒否を避けるため — Issue #1894)
@@ -541,13 +541,15 @@ Use a free-form commit body. Include the reason for the change ("why") in the co
 - Can be omitted for trivial changes (typo fixes, formatting, etc.)
 
 ```bash
-git add .
+git add {changed_files}
 git commit -m "$(cat <<'EOF'
 {commit_message}
 EOF
 )"
 git push origin {branch_name}
 ```
+
+`{changed_files}` は Claude が本フェーズで Edit/Write した実ファイルパスの明示列挙（`skills/fix/SKILL.md` ステップ 3.3 と同じ規約）。`git status`（手順 1）の出力を diff scope の確認に使ってよいが、`git add` の引数には常に把握済みの実装対象パスを渡す — カレントディレクトリ全体を無条件に stage する `git add .` / `git add -A` は使わない。
 
 **Note**: Commit and push must be completed before invoking `/rite:pr-create`.
 

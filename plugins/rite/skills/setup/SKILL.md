@@ -475,7 +475,7 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-After displaying the status line, exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 事前案内](#phase-48-sandbox-write-allowlist-事前案内multi_session-有効時1896) (non-blocking, self-gated by its own multi_session + sandbox check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
@@ -1073,7 +1073,7 @@ echo "wiki_enabled=$wiki_enabled"
 **When `wiki_enabled=false`**:
 - Display `Wiki が無効化されています（wiki.enabled: false）。Phase 4.7 をスキップします。`
 - Set `wiki_status=skipped_disabled` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
 
 **When `wiki_enabled=true`**: Display `Wiki の自動初期化を開始します...` and proceed to 4.7.2.
 
@@ -1114,7 +1114,7 @@ fi
 **When `WIKI_INITIALIZED=true`**:
 - Display `Wiki は既に初期化されています（検知: {detection}）。スキップします。` (substitute `{detection}` with the matched branch name or file path)
 - Set `wiki_status=already_initialized` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
 
 **When `WIKI_INITIALIZED=false`**: Proceed to 4.7.3.
 
@@ -1167,7 +1167,7 @@ Then:
 - Display `⚠️ Wiki の初期化に失敗しました。/rite:setup 全体は成功扱いで続行します。手動で /rite:wiki-init を実行してください。` (warning only — do NOT exit)
 - Set `wiki_status=failed` (remember in LLM context)
 
-**→ Proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
+**→ Proceed to the next step (new-install: Phase 4.8, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
 
 ---
 
@@ -1195,6 +1195,8 @@ bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
 settings ファイルへの自動書き込みは行わない（案内のみ、MUST NOT）。
+
+**→ Proceed to Phase 5 (new-install) — this Phase is only reached via the new-install exit points in Phase 4.7 (§4.7.1/4.7.2/4.7.4); `--upgrade` invokes this Phase directly from Step 7b and then exits without a Phase 5 report.**
 
 ## Phase 5: Completion Report
 

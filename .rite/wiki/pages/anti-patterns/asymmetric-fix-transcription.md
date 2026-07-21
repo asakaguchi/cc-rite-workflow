@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-21T16:45:00+09:00"
+updated: "2026-07-21T20:15:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260721T004358Z-pr-1937.md"
@@ -522,6 +522,12 @@ sources:
     ref: "raw/fixes/20260721T072425Z-pr-1949.md"
   - type: "reviews"
     ref: "raw/reviews/20260721T074333Z-pr-1949.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260721T102802Z-pr-1955.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260721T103101Z-pr-1955.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260721T104835Z-pr-1955-cycle2.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file"]
 confidence: high
 ---
@@ -1778,3 +1784,7 @@ sandbox 書き込みブロック用マウントの誤検出を防ぐ新規ヘル
 ## 変種: lib/ 一覧の複数箇所重複記載で片方だけが更新される (PR #1949)
 
 同一 docs/SPEC.md 内で lib/ ディレクトリのファイル一覧を2箇所（227行目のディレクトリツリー表記、1326行目の機能一覧テーブル）に重複記載していた。先行する2ファイル追加（`git-remote.sh` / `git-status-filtered.sh`、PR #1913・#1937）に伴いツリー表記側は本PRで更新されたが、離れたテーブル側への伝播が漏れ、tech-writer-reviewer が cycle 1 で HIGH 指摘として検出した（Doc-Heavy PR Mode の Enumeration Completeness カテゴリでの検出）。修正は grep で当該ファイル名の全出現箇所を確認してから両箇所を同期し、伝播スキャンで他に同型の重複列挙が無いことを確認した。cycle 2 のフルレビューで 0 件指摘・mergeable に到達（2 cycle 収束）。同一 cycle 1 で error-handling-reviewer が「本PR自身が新規追加したドキュメント記述（reviewer subagent への `dangerouslyDisableSandbox` 非伝播）の実証可能性」を疑問視する non-blocking design_confirmation を出したが、cycle 2 で tech-writer / error-handling 両者が Task/Agent ツールの実パラメータスキーマ（`description`/`isolation`/`mode`/`model`/`name`/`prompt`/`run_in_background`/`subagent_type`/`team_name` のみで sandbox 関連パラメータなし）を確認し、「メインエージェントが subagent へ渡せるのは prompt のみであり、subagent 自身のツールパラメータ有無とは別問題」という整理で解消された。**教訓**: 同一ファイル内の複数箇所に同種の列挙情報を重複記載する設計自体が Asymmetric Fix Transcription を誘発しやすく、根本対策は単一ソースへの統合だが、それが難しい場合は伝播スキャンで grep によるファイル名一致箇所の全列挙を必須にする。
+
+## 変種: 同型 gate 設置箇所一覧テーブルへの新規 gate 追加漏れ、かつ再レビューで別インスタンスを発見 (PR #1955)
+
+wiki push を ingest フロー末尾に集約する refactor で、wiki-lint/SKILL.md ステップ 8.3 に新規の `{mode}` placeholder 残留 fail-fast gate を追加した際、同ファイル内で既存 gate の設置箇所一覧を列挙する参照テーブル（ステップ 9.3 exit code 一覧等）2箇所への追従が漏れ、prompt-engineer-reviewer が cycle 1 で MEDIUM 指摘として検出した（line 1012 / 1028、既存の「ステップ 1.1 / 1.3」という列挙に新設した 8.3 自身が含まれていなかった）。fix は該当 2 行を「ステップ 1.1 / 1.3 / 8.3」に修正して収束。cycle 2 の再レビューでは同一 reviewer が独立に、同ファイル line 776 の**別の** `{mode}` gate 導入コメントにも同型の列挙漏れ（自身を含まない列挙）が残存していることを新たに発見した。1 件の drift を fix した直後の再レビューで、同一パターンの別インスタンスが見つかった点が本変種の特徴。**教訓**: (1) 「同型 gate」（複数箇所に同一ロジックパターンが適用され、その設置箇所一覧をコメント・参照テーブル複数箇所に重複列挙する規約を持つ）プロジェクトで新規 gate を追加する際は、実装本体だけでなく既存の設置箇所一覧テーブルすべてへの追従を伝播スキャンで確認する必要がある。(2) 1 件の drift を fix した cycle でも、grep で「同一パターンの全出現箇所」を横断確認しないと独立した別インスタンスの drift を見逃す（cycle 1 の修正はステップ 9.3 側の参照テーブルのみを対象にしており、line 776 の gate 導入コメント側は検索範囲外だった）。

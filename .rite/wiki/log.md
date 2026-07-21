@@ -7,6 +7,7 @@
 * **Create**: [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) — raw/fixes/20260721T005522Z-pr-1937.md を新規ページ化
 * **Skip**: [20260721T030014Z-pr-1937-cycle4.md](raw/reviews/20260721T030014Z-pr-1937-cycle4.md) — 4-cycle 収束と Decision Log 運用の確認のみで、構成要素の指摘は既に本日の Update 2 件として経験則化済み
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=274, broken_refs=0
+* **Skip**: [20260721T041957Z-pr-1938.md](raw/reviews/20260721T041957Z-pr-1938.md) — 指摘事項0件、既存Phase 4.8を正しく踏襲したことの確認のみで、既存の sibling-pattern 系ヒューリスティックを超える新規の一般化可能な経験則を含まない
 
 ## 2026-07-20
 

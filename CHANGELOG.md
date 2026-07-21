@@ -31,7 +31,7 @@ that aid upgraders are kept verbatim.
 
 ### Added
 
-- **`setup` proactively detects and warns about two `multi_session` + sandbox environment constraints at `/rite:setup` time, instead of only surfacing them after a failure** — (1) Phase 4.8: a session worktree's cwd is rejected when writing state (`flow-state.sh` / `issue-claim.sh` etc.) into the main checkout after `EnterWorktree`; (2) Phase 4.9: a sandboxed session with an SSH host alias remote (e.g. `git@github.com-work:owner/repo.git`) hits a Bad Gateway failure on `git push`/`fetch`. Sandbox-enabled detection can't be done from bash, so both phases use the same approach (Claude's own execution-context judgment). (#1907, #1925, #1938)
+- **`setup` proactively detects and warns about two sandbox-related environment constraints at `/rite:setup` time, instead of only surfacing them after a failure** — (1) Phase 4.8 (requires `multi_session` enabled): a session worktree's cwd is rejected when writing state (`flow-state.sh` / `issue-claim.sh` etc.) into the main checkout after `EnterWorktree`; (2) Phase 4.9 (independent of `multi_session`): a sandboxed session with an SSH host alias remote (e.g. `git@github.com-work:owner/repo.git`) hits a Bad Gateway failure on `git push`/`fetch`. Sandbox-enabled detection can't be done from bash, so both phases use the same approach (Claude's own execution-context judgment). (#1907, #1925, #1938)
 
 ### Changed
 

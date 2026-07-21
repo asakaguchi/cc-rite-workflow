@@ -288,7 +288,7 @@ If this fails, fall back to the content retained from Phase 1. Retain this conte
 
 ```bash
 # 変更ファイル一覧を取得（ステージング済み + 未ステージング + 未追跡）
-changed_files=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh)
+changed_files=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || echo "WARNING: git-status-filtered.sh failed while collecting changed files; the 変更ファイル section may omit uncommitted changes" >&2
 # ベースブランチからの差分（コミット済みの変更も含む）
 diff_files=$(git diff --name-only origin/{base_branch}...HEAD 2>/dev/null || git diff --name-only HEAD)
 # 両方を結合して重複排除

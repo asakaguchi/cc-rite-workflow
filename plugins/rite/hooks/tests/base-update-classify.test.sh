@@ -23,6 +23,11 @@
 #   untracked (`??`) として誤検出され ff_failed_divergent に誤流出しないことを pin。
 #   dirty 判定が lib/git-status-filtered.sh 経由になったことで、ゴーストマウントのみ・
 #   HEAD が origin と同一の状態では ok に分類される
+# - TC-10 (#1937 cross-validation): lib/git-status-filtered.sh 自体が失敗した場合
+#   （mktemp 枯渇等、旧来の `git status --porcelain` には無かった新規失敗モード）、
+#   `_bu_dirty` の空文字列フォールバックにより ff_failed_clean へ silent に倒れず
+#   ff_failed_divergent（安全側）に分類されることを pin。stub plugin_root で
+#   helper を強制失敗させて検証する
 
 set -uo pipefail
 
@@ -161,6 +166,26 @@ ln -s /dev/null ghost_devnull
 r=$(classify)
 [ "$r" = "ok" ] && pass "TC-9 ($r)" || fail "TC-9: expected ok, got '$r' (#1936 sandbox ghost mount regression)"
 rm -f ghost_devnull && git checkout -- :/
+
+# ─── TC-10: lib/git-status-filtered.sh 自体の失敗時 → divergent (fail-safe, PR #1937 cross-validation) ───
+echo "TC-10: git-status-filtered.sh helper failure -> divergent (fail-safe, not silently clean)"
+advance_origin "v4" ""
+stub_root="$TEST_DIR/stub-plugin-root"
+mkdir -p "$stub_root/hooks/scripts/lib"
+cat > "$stub_root/hooks/scripts/lib/git-status-filtered.sh" << 'STUB_EOF'
+echo "WARNING: git-status-filtered: simulated failure (test stub)" >&2
+exit 1
+STUB_EOF
+CLASSIFY_SNIPPET_FAIL="$TEST_DIR/classify-fail.sh"
+awk '/# retry break 後の成否検証/{f=1} f && /^else$/{exit} f{print}' "$SKILL_MD" \
+  | sed -e 's/{base_branch}/main/g' -e "s|{plugin_root}|$stub_root|g" > "$CLASSIFY_SNIPPET_FAIL"
+r=$(bash "$CLASSIFY_SNIPPET_FAIL" 2>/dev/null | sed -n 's/^\[CONTEXT\] BASE_UPDATE=//p' | head -1)
+if [ "$r" = "ff_failed_divergent" ]; then
+  pass "TC-10 ($r)"
+else
+  fail "TC-10: expected ff_failed_divergent (fail-safe), got '$r' (helper failure must not be silently treated as clean)"
+fi
+git checkout -- :/
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

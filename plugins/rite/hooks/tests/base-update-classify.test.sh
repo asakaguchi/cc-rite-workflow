@@ -19,11 +19,24 @@
 # - TC-6: 非 -z の --name-only は quotePath がファイル名を C-quote し、pathspec 不一致の
 #   git diff --quiet が exit 0 を返して相違変更が discardable に誤流出、破棄承認で
 #   データ喪失した。非 ASCII 名の相違が divergent に落ちることを pin
+# - TC-9 (#1936, T-05): sandbox の書き込みブロック用 character device マウントが
+#   untracked (`??`) として誤検出され ff_failed_divergent に誤流出しないことを pin。
+#   dirty 判定が lib/git-status-filtered.sh 経由になったことで、ゴーストマウントのみ・
+#   HEAD が origin と同一の状態では ok に分類される
+# - TC-10 (#1937 cross-validation): lib/git-status-filtered.sh 自体が失敗した場合
+#   （mktemp 枯渇等、旧来の `git status --porcelain` には無かった新規失敗モード）、
+#   `_bu_dirty` の空文字列フォールバックにより ff_failed_clean へ silent に倒れず
+#   ff_failed_divergent（安全側）に分類されることを pin。stub plugin_root で
+#   helper を強制失敗させて検証する
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+# tests/ -> hooks/ -> rite (2 up), same resolution as _test-helpers.sh's
+# _helpers_resolve_plugin_root. Needed because the extracted classify block
+# now calls lib/git-status-filtered.sh via the {plugin_root} placeholder (#1936).
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -37,7 +50,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 # --- SKILL.md から検証 block を抽出 ({base_branch} は main に置換) ---
 CLASSIFY_SNIPPET="$TEST_DIR/classify.sh"
 awk '/# retry break 後の成否検証/{f=1} f && /^else$/{exit} f{print}' "$SKILL_MD" \
-  | sed 's/{base_branch}/main/g' > "$CLASSIFY_SNIPPET"
+  | sed -e 's/{base_branch}/main/g' -e "s|{plugin_root}|$PLUGIN_ROOT|g" > "$CLASSIFY_SNIPPET"
 if ! grep -q 'BASE_UPDATE=ff_failed_discardable' "$CLASSIFY_SNIPPET"; then
   echo "FAIL: SKILL.md からの検証 block 抽出に失敗しました (アンカーが変更された可能性)"
   echo "  抽出結果: $(wc -l < "$CLASSIFY_SNIPPET") 行"
@@ -142,6 +155,36 @@ echo "TC-8: divergent from subdir cwd -> divergent (root-pinned pathspec)"
 echo "SUBDIR-LOCAL" > file.txt
 r=$(cd sub && bash "$CLASSIFY_SNIPPET" 2>/dev/null | sed -n 's/^\[CONTEXT\] BASE_UPDATE=//p' | head -1)
 [ "$r" = "ff_failed_divergent" ] && pass "TC-8 ($r)" || fail "TC-8: expected ff_failed_divergent, got '$r'"
+git checkout -- :/
+
+# ─── TC-9: sandbox ゴーストマウント (character device) のみ + HEAD == origin → ok (T-05, #1936) ───
+# mknod は root/CAP_MKNOD 必須で本環境では使えないため、/dev/null への symlink で
+# character device を模す (test -c は symlink を辿るため実マウントと等価)。
+echo "TC-9: sandbox ghost-mount only (up-to-date) -> ok"
+git fetch -q origin main && git merge -q --ff-only origin/main
+ln -s /dev/null ghost_devnull
+r=$(classify)
+[ "$r" = "ok" ] && pass "TC-9 ($r)" || fail "TC-9: expected ok, got '$r' (#1936 sandbox ghost mount regression)"
+rm -f ghost_devnull && git checkout -- :/
+
+# ─── TC-10: lib/git-status-filtered.sh 自体の失敗時 → divergent (fail-safe, PR #1937 cross-validation) ───
+echo "TC-10: git-status-filtered.sh helper failure -> divergent (fail-safe, not silently clean)"
+advance_origin "v4" ""
+stub_root="$TEST_DIR/stub-plugin-root"
+mkdir -p "$stub_root/hooks/scripts/lib"
+cat > "$stub_root/hooks/scripts/lib/git-status-filtered.sh" << 'STUB_EOF'
+echo "WARNING: git-status-filtered: simulated failure (test stub)" >&2
+exit 1
+STUB_EOF
+CLASSIFY_SNIPPET_FAIL="$TEST_DIR/classify-fail.sh"
+awk '/# retry break 後の成否検証/{f=1} f && /^else$/{exit} f{print}' "$SKILL_MD" \
+  | sed -e 's/{base_branch}/main/g' -e "s|{plugin_root}|$stub_root|g" > "$CLASSIFY_SNIPPET_FAIL"
+r=$(bash "$CLASSIFY_SNIPPET_FAIL" 2>/dev/null | sed -n 's/^\[CONTEXT\] BASE_UPDATE=//p' | head -1)
+if [ "$r" = "ff_failed_divergent" ]; then
+  pass "TC-10 ($r)"
+else
+  fail "TC-10: expected ff_failed_divergent (fail-safe), got '$r' (helper failure must not be silently treated as clean)"
+fi
 git checkout -- :/
 
 echo ""

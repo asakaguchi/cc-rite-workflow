@@ -335,7 +335,7 @@ cleanup_wt=${detect#CLEANUP_WT=}; cleanup_wt=${cleanup_wt%%;*}
 flow_wt=${detect##*worktree=}
 case "$cleanup_wt" in
   in_worktree|in_worktree_unrecorded)
-    dirty=$(git status --porcelain 2>/dev/null)
+    dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || dirty="?? (dirty-check failed — assume dirty for safety)"
     echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no); main_root=$main_root"
     # dirty 一覧は marker と区別できるようデリミタで囲んで表示する（ファイル名由来の偽 marker 混入防止。Step 4 と同一パターン）
     if [ -n "$dirty" ]; then
@@ -423,7 +423,7 @@ if [ "$cur_branch" = "{base_branch}" ]; then
   if [ "$_head_rc" -eq 0 ] && [ "$_base_rc" -eq 0 ] && [ -n "$_head_rev" ] && [ "$_head_rev" = "$_base_rev" ]; then
     echo "[CONTEXT] BASE_UPDATE=ok"
   else
-    _bu_dirty=$(git status --porcelain 2>/dev/null) || _bu_dirty=""
+    _bu_dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || _bu_dirty="?? (dirty-check failed — assume dirty for safety)"
     if [ -z "$_bu_dirty" ]; then
       echo "[CONTEXT] BASE_UPDATE=ff_failed_clean"
     elif printf '%s\n' "$_bu_dirty" | grep -q '^[^ ]'; then

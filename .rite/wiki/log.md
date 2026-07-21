@@ -1,5 +1,6 @@
 ## 2026-07-21
 
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T102802Z-pr-1955.md, raw/fixes/20260721T103101Z-pr-1955.md, raw/reviews/20260721T104835Z-pr-1955-cycle2.md を統合 — 同型 gate 設置箇所一覧テーブルへの新規 gate 追加漏れ変種を追加。cycle 1 修正後の再レビューで別インスタンス（line 776）を独立発見した点を記録
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T072136Z-pr-1949.md, raw/fixes/20260721T072425Z-pr-1949.md, raw/reviews/20260721T074333Z-pr-1949.md を統合

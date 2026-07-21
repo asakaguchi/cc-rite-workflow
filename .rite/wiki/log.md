@@ -6,6 +6,7 @@
 * **Update**: [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) — raw/reviews/20260721T171603Z-pr-1959.md を統合 — 姉妹型「set -e 下の裸 $? 読みは代入 abort で rc 行が dead code 化」を追加
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T194001Z-pr-1962.md を統合 — ローカル環境の暗黙前提（グローバル git identity）が伝播漏れを長期間マスクする変種を追加
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
 
 ## 2026-07-21
 

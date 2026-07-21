@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-21T23:26:49+09:00"
+updated: "2026-07-22T04:41:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260721T194001Z-pr-1962.md"
   - type: "reviews"
     ref: "raw/reviews/20260721T142649Z-pr-1958-cycle2.md"
   - type: "fixes"
@@ -1798,3 +1800,7 @@ wiki push を ingest フロー末尾に集約する refactor で、wiki-lint/SKI
 ## 変種: ドキュメント新設節が「並列の兄弟節」と明示した既存節への ToC 追従漏れ (PR #1958)
 
 sandbox の write-block マスクマウント現象を文書化する新セクションを `git-worktree-patterns.md` に追加した際、著者は Issue 本文で当該セクションを既存の2つの sandbox 節（SSH host alias 遮断・worktree cwd write 遮断）と「並列の第3セクション」と明示的に位置づけていたにもかかわらず、Table of Contents には新セクション自身のエントリ1件のみを追加し、明示的に並列関係にあるとした兄弟2節への ToC エントリ追従を怠った。tech-writer-reviewer が cycle 1 で MEDIUM 指摘として検出し、revert test（diff を戻せば ToC の非対称も消える＝本 PR 由来）で「既存の ToC 非掲載慣行を踏襲しただけ」という著者の当初の想定と食い違うことを立証した。fix は3節すべてを ToC に追加して収束、cycle 2 のフルレビューで 0 件・mergeable に到達（2 cycle 収束）。cycle 2 で同一 reviewer が「ToC の親 H2 (`## Multi-Session Patterns`) 自体が未掲載」という粒度不整合を design_confirmation として追加提起したが、AC 充足済み・non-blocking のため指摘へ格上げせず著者判断に委ねた（前回指摘を一般化してブロッキング化しない自制の好例）。**教訓**: 実装計画やIssue本文で「既存の X と並列」「Y と対をなす」等、新規追加物が既存の同格要素群に**明示的に位置づけられている**場合、その明示的な並列関係自体が伝播対象の宣言になる。ナビゲーション要素（ToC・索引・一覧テーブル）への追従は、新規追加物自身のエントリだけでなく、宣言された同格要素すべてに及ぶか確認する。
+
+## 変種: ローカル環境の暗黙前提（グローバル git identity）が伝播漏れを長期間マスクする (PR #1962)
+
+`git-status-filtered.test.sh` の T-03（unmerged UU pass-through）セットアップは、コンフリクトを起こす 2 つの `git commit` 呼び出し（100・103 行目）に `-c user.email=t@test.local -c user.name=test` の identity フラグを付与していたが、その直後の `git merge conflict-side`（104 行目）にだけ同じフラグの付与が漏れていた。同一ブロック内の隣接する 3 つの git 操作のうち 1 つだけが慣習から外れる、典型的な対称位置伝播漏れだが、本変種の特徴は **漏れが検出されるまでの経路**にある: テスト追加コミット（3ddab69a / #1937）以降、ローカル環境では開発者の `~/.gitconfig` にグローバル identity が設定されているため merge が identity 未設定を理由に失敗することはなく、drift は一切表面化しなかった。CI（GitHub Actions ubuntu ランナー、グローバル identity 未設定）でのみ merge が `Committer identity unknown`（rc=128）で中断し、UU 状態に到達できず T-03 が決定的に FAIL していた。テスト自体は 4 reviewer（security/application/test/error-handling）のフルレビューで 0 findings、test reviewer が identity 未設定環境（`env -i HOME=<tmp>`）を実機再現して修正前後の挙動差を検証した。**教訓**: (1) 対称位置伝播漏れは、実行環境がその漏れを覆い隠す暗黙の前提（グローバル設定・キャッシュ・OS 依存のデフォルト値等）を持つと、通常の開発ループでは長期間発覚しない。同一ブロック内で同じ慣習（identity 付与、タイムアウト設定、encoding 指定等）を複数の呼び出しに適用する際は、各呼び出しの直接比較（grep で同一ブロック内の全呼び出しを列挙）で漏れを機械確認する — ローカルでの実行成功は伝播の完全性を保証しない。(2) 「ローカルでは常に通るが CI でだけ落ちる」失敗は、対称位置伝播漏れが環境依存の前提でマスクされているケースを疑う優先候補になる。

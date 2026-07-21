@@ -16,10 +16,10 @@ Wiki Ingest エンジン。`.rite/wiki/raw/` の Raw Source を読解し、`.rit
 2. Raw Source の候補列挙と `ingested: false` 判定
 3. 既存 Wiki インデックス (`index.md`) の読み込み
 4. LLM による読解と統合判定（新規 / 更新 / スキップ）
-5. ページの書き込み + commit/push（worktree ベース）
+5. ページの書き込み + commit（worktree ベース。push はステップ 8.6 で 1 回に集約）
 6. `index.md` の更新
 7. `log.md` への append-only 追記
-8. 自動 Lint (`/rite:wiki-lint --auto`)
+8. 自動 Lint (`/rite:wiki-lint --auto`) + push の集約（8.6）
 9. 完了レポート
 
 Raw Source の wiki branch 着地は `wiki-ingest-commit.sh` が `review` / `fix` / `issue-close` から直接呼ばれて完了している前提。本コマンドが扱うのは page 統合の LLM 責務のみ。
@@ -461,7 +461,7 @@ esac
 
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit ツールで実施した後、以下の bash ブロックを実行して worktree 内の変更を commit + push する。commit 処理は `wiki-worktree-commit.sh` に委譲されており、LLM が bash 契約を書く必要はない:
+ステップ 5.0 手順 1-7 を Write/Edit ツールで実施した後、以下の bash ブロックを実行して worktree 内の変更を commit する。**push はここでは行わない**（#1941 wiki push batch/defer: 複数 raw source を処理するループの中で raw source ごとに push すると、SSH host alias 環境で毎回 sandbox バイパスが必要になり同一 push の短時間重複実行も起きていた。ステップ 8.6 で全 raw source 処理後にまとめて 1 回だけ push する）。commit 処理は `wiki-worktree-commit.sh --commit-only` に委譲されており、LLM が bash 契約を書く必要はない:
 
 ```bash
 # ステップ 5.2 と対称に set -euo pipefail を宣言する (strict mode)
@@ -495,7 +495,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 
   # set -e 下で script の非 0 exit を許容して rc を capture する
   set +e
-  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
+  commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message "$commit_msg")
   commit_rc=$?
   set -e
   echo "$commit_out"
@@ -508,12 +508,8 @@ if [ "$branch_strategy" = "separate_branch" ]; then
       echo "  対処: git -C \"$wiki_wt_abs\" status で worktree の状態を確認" >&2
       exit 1
       ;;
-    4)
-      echo "WARNING: commit は landed したが push に失敗しました (rc=4)" >&2
-      echo "  手動回復: git -C \"$wiki_wt_abs\" push origin $wiki_branch" >&2
-      # push 失敗は非 fatal — ユーザーが後で回復可能
-      ;;
     *)
+      # --commit-only は push を行わないため rc=4 (push 失敗) はここでは発生しない。
       echo "ERROR: wiki-worktree-commit.sh が予期しない exit code ($commit_rc) を返しました" >&2
       exit 1
       ;;
@@ -674,7 +670,7 @@ esac
 echo "auto_lint=$auto_lint"
 ```
 
-**`auto_lint=false` の場合**: ステップ 8.2-8.5 を skip しステップ 9 へ進む。Lint カウンタ 6 種はステップ 2.1 で 0 初期化済みのため placeholder 残留は発生しない。ステップ 9 完了レポートの「Wiki 品質警告」行は「スキップ (auto_lint disabled)」、「未登録 raw」行は `0` 件として表示する。
+**`auto_lint=false` の場合**: ステップ 8.2-8.5 を skip する。**ステップ 8.6 (push の集約) はスキップしない** — ステップ 5.1 で `--commit-only` 積んだ raw source の commit を push するのは auto_lint の有無に関わらず必須のため、ステップ 8.6 を実行してからステップ 9 へ進む。Lint カウンタ 6 種はステップ 2.1 で 0 初期化済みのため placeholder 残留は発生しない。ステップ 9 完了レポートの「Wiki 品質警告」行は「スキップ (auto_lint disabled)」、「未登録 raw」行は `0` 件として表示する。
 
 ### 8.2 Lint エンジンの呼び出し
 
@@ -797,6 +793,50 @@ n_warnings += n_contradictions + n_stale + n_orphans + n_missing_concept + n_bro
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
 
+### 8.6 Wiki push の集約（#1941 wiki push batch/defer）
+
+**`auto_lint` の値に関わらず必ず実行する**（ステップ 8.1 参照）。ステップ 5.1 (separate_branch) は raw source ごとに `--commit-only` で commit のみを行い、push を意図的に遅延させてきた。ステップ 8.2 の自動 Lint (`--auto` モード) も同様に `--commit-only` で log.md 追記を積む（[skills/wiki-lint/SKILL.md](../wiki-lint/SKILL.md) ステップ 8.3 参照）。ここで、蓄積されたローカル commit（0 件のこともある）をまとめて 1 回だけ push する（AC-1: 1 回の ingest フローで `git push origin {wiki_branch}` は最大 1 回）。
+
+`same_branch` では worktree を使わず push もこのフローの管轄外（PR ブランチの通常 push に含まれる）のため本ステップは no-op:
+
+```bash
+branch_strategy="{branch_strategy}"
+if [ "$branch_strategy" = "separate_branch" ]; then
+  plugin_root="{plugin_root}"
+  wiki_wt_abs="{wiki_worktree_abs}"; wiki_wt_abs="${wiki_wt_abs:-.rite/wiki-worktree}"
+  wiki_branch="{wiki_branch}"
+
+  if [ ! -x "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" ]; then
+    echo "ERROR: wiki-worktree-commit.sh が見つからないか実行権限がありません: $plugin_root/hooks/scripts/wiki-worktree-commit.sh" >&2
+    exit 1
+  fi
+
+  # set -e 下で script の非 0 exit を許容して rc を capture する
+  set +e
+  push_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --push-only)
+  push_rc=$?
+  set -e
+  echo "$push_out"
+
+  case "$push_rc" in
+    0) echo "[CONTEXT] WIKI_INGEST_PUSH=ok" ;;
+    4)
+      echo "WARNING: 蓄積した wiki commit の push に失敗しました (rc=4)。commit は local wiki branch に landed 済みです（AC-2: 非ブロッキングで継続、次回セッションの push-only 呼び出しが自動で flush する）" >&2
+      echo "  手動回復: git -C \"$wiki_wt_abs\" push origin $wiki_branch" >&2
+      echo "[CONTEXT] WIKI_INGEST_PUSH=failed" >&2
+      ;;
+    *)
+      echo "ERROR: wiki-worktree-commit.sh --push-only が予期しない exit code ($push_rc) を返しました" >&2
+      exit 1
+      ;;
+  esac
+else
+  echo "[CONTEXT] WIKI_INGEST_PUSH=skipped; reason=same_branch"
+fi
+```
+
+`push_out` に含まれる `push=no-op` はそもそも push すべき commit が無かった（今回の全 raw source が skip 判定だった等）ことを示し、失敗ではない (`WIKI_INGEST_PUSH=ok` 扱いで問題ない)。`[CONTEXT] WIKI_INGEST_PUSH=` marker はステップ 9.0 完了レポートの push 状態表示、および `/rite:cleanup` ステップ 9 の push 失敗判定（stdout 中の `push=failed` 部分文字列を検出）に使う。
+
 ---
 
 ## ステップ 9: 完了レポート
@@ -819,6 +859,7 @@ Wiki Ingest が完了しました。
 - スキップした Raw Source: {n_skipped} 件
 - {wiki_warnings_line}
 - 未登録 raw（skip 済、warnings 不加算）: {n_unregistered_raw} 件
+- {wiki_push_line}
 
 新規/更新ページ:
 - {path1} ({action1})
@@ -839,6 +880,15 @@ Wiki Ingest が完了しました。
 「未登録 raw」行は `auto_lint=false` の場合も `0` 件として展開する (ステップ 2.1 で 0 初期化済みの値)。
 
 **等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0` のため 5 カテゴリ合計が `n_warnings` と一致。step 1/3/4 anomaly 経路では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1` となる。
+
+`{wiki_push_line}` の展開ルール (ステップ 8.6 の `[CONTEXT] WIKI_INGEST_PUSH=` marker を上から評価し最初の一致を採用。#1941 AC-2: 未 push の wiki commit があれば回復コマンドを明示する):
+
+| `WIKI_INGEST_PUSH=` | 展開 |
+|---|---|
+| `ok` | `Wiki push: 完了`（`push=no-op` だった場合も含む — push すべき commit が無かっただけで失敗ではない） |
+| `failed` | `⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}` |
+| `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
+| marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
 ### 9.1 Return-to-Caller Signal
 
@@ -862,8 +912,8 @@ sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered 
 | `wiki.enabled: false` | 早期 return（ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |
-| `wiki-worktree-commit.sh` exit 3 (git add/commit 失敗) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
-| `wiki-worktree-commit.sh` exit 4 (push 失敗) | 非 fatal で継続。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復 |
+| `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
+| `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
 | `branch_strategy` が未知の値 | ステップ 5.1 の if/elif/else 末尾 else 分岐で fail-fast (ステップ 5.2 の bash block は same_branch 単独分岐のため未知値はステップ 5.1 の else が catch する。`rite-config.yml` の `wiki.branch_strategy` を確認) |
 | LLM が経験則を抽出できない | 該当 Raw Source の raw frontmatter に `ingest_status: skipped` + `skip_reason` を追記（skip 状態の SoT）、`ingested: true` に変更、log.md に人間向け Skip bullet を追記、`n_skipped` を +1（ステップ 5 step 5 参照） |

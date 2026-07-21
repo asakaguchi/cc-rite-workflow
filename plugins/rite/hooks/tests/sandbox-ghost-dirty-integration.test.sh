@@ -111,6 +111,12 @@ STUB_EOF
 
 CLEANUP_LINE_FAIL=$(grep -m1 '^\s*dirty=\$(bash {plugin_root}' "$CLEANUP_MD")
 CLEANUP_LINE_FAIL=${CLEANUP_LINE_FAIL//\{plugin_root\}/$stub_root}
+BU_DIRTY_LINE_FAIL=$(grep -m1 '_bu_dirty=\$(bash {plugin_root}' "$CLEANUP_MD")
+if [ -z "$BU_DIRTY_LINE_FAIL" ]; then
+  echo "ERROR: cleanup/SKILL.md からの _bu_dirty= 行抽出に失敗しました（アンカーが変更された可能性）" >&2
+  exit 1
+fi
+BU_DIRTY_LINE_FAIL=${BU_DIRTY_LINE_FAIL//\{plugin_root\}/$stub_root}
 RECOVER_LINE_FAIL=$(grep -m1 'git_has_uncommitted=\$(bash {plugin_root}' "$RECOVER_MD")
 RECOVER_LINE_FAIL=${RECOVER_LINE_FAIL//\{plugin_root\}/$stub_root}
 
@@ -129,6 +135,23 @@ err_out=$( cd "$sbx_fail" && eval "$CLEANUP_LINE_FAIL" 2>&1 1>/dev/null )
 case "$err_out" in
   *"git-status-filtered: simulated failure"*) pass "fail-safe: cleanup Step 4-W surfaces the helper's own stderr on failure ($err_out)" ;;
   *) fail "fail-safe: cleanup Step 4-W must surface the helper's own stderr on failure (got: $err_out)" ;;
+esac
+
+# --- cleanup Step 4 (_bu_dirty, base-update classify): same fail-safe /
+#     stderr-visibility pin as Step 4-W above, for the third call site that
+#     had its own `2>/dev/null` removed in cycle 3 (test-reviewer escalation:
+#     TC-10 in base-update-classify.test.sh only pins the classification
+#     outcome, not stderr visibility for this specific line) --------------
+out=$( cd "$sbx_fail" && eval "$BU_DIRTY_LINE_FAIL" && printf '%s' "$_bu_dirty" )
+case "$out" in
+  "") fail "fail-safe: cleanup Step 4 _bu_dirty= must not be empty when the helper fails (got empty — silent clean masking a detection failure)" ;;
+  *) pass "fail-safe: cleanup Step 4 _bu_dirty= is non-empty when the helper fails ($out)" ;;
+esac
+
+err_out=$( cd "$sbx_fail" && eval "$BU_DIRTY_LINE_FAIL" 2>&1 1>/dev/null )
+case "$err_out" in
+  *"git-status-filtered: simulated failure"*) pass "fail-safe: cleanup Step 4 surfaces the helper's own stderr on failure ($err_out)" ;;
+  *) fail "fail-safe: cleanup Step 4 must surface the helper's own stderr on failure (got: $err_out)" ;;
 esac
 
 out=$( cd "$sbx_fail" && eval "$RECOVER_LINE_FAIL" && printf '%s' "$git_has_uncommitted" )

@@ -26,8 +26,11 @@
 # the command.
 #
 # Usage (standalone subprocess only — this file is not meant to be
-# sourced):
-#   dirty=$(bash lib/git-status-filtered.sh 2>/dev/null)
+# sourced). Do not redirect stderr to /dev/null on the call site — that
+# discards this script's own diagnostic WARNING (see Output contract
+# below) and, combined with a caller that also skips the exit-code check,
+# recreates the exact silent-failure bug this script exists to prevent:
+#   dirty=$(bash lib/git-status-filtered.sh) || dirty="<non-empty fallback, e.g. treat as dirty>"
 #
 # Output contract: on success, stdout is porcelain v1 text ("XY path" /
 # "XY orig -> new" lines, newline-separated, empty when clean) and exit is

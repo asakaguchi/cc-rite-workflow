@@ -146,7 +146,7 @@ multi_session:
   1. `git status --porcelain` で dirty 確認。dirty なら AskUserQuestion（stash して続行 / 中止）。stash は common git dir 格納のため worktree 削除後も `git stash pop` 可能。
   2. `ExitWorktree(action: "keep")` で main checkout に復帰（path 入場 worktree は remove でも消えない仕様のため常に keep）。
   3. main から `git worktree remove {path}` → `git worktree prune`。
-  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。
+  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。sandbox が admin dir の `config.worktree` にマスクマウントを張っている場合（Issue #1957）は remove 試行自体が admin dir を半壊させるため、削除前に検知して remove を**一切実行せず** `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` を表示して遅延 reap へ委譲する。
   5. 冪等性: main から再実行された場合は cwd 判定で 1〜2 をスキップ。worktree 既削除なら 3 もスキップ。
 - **Step 4（base pull）の安全化**: main checkout が `{base}` 上にある場合のみ `git pull --ff-only origin {base}`（index.lock 競合 3 回リトライ）。
   別 branch 上なら **switch せず WARNING + skip**（WARNING 文面に「main checkout を {base} に戻す」復旧手順を含める）。従来モード（enabled=false）は現行動作を維持。
@@ -209,7 +209,7 @@ multi_session:
 
 1. `{worktree_base}` 配下かつディレクトリ名が `^issue-[0-9]+$` に**完全一致**（strict regex doctrine 踏襲）
 2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）
-3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）
+3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）。例外（Issue #1957）: **corpse**（admin dir の `HEAD` 欠落 + git 非認識の AND — sandbox マスク下の remove が半壊させた残骸）は status 判定が構造的に不可能なため本ゲートをバイパスし、claim 非 live + 24h age guard 通過後に `rm -rf`（working tree + admin dir）+ `prune` で回収する（HEAD 存在で status rc≠0 のものは従来どおり安全側 skip）
 
 **Gate 0 — self-exclusion（後続で追加された第 4 の保護層）**: 上記 3 ゲートの**前段**に、実行中の自セッション worktree（起動時 cwd、または `RITE_WORKTREE` env が候補 worktree と一致/配下）を reap 対象から除外するガードを設ける。long-lived セッションが review 開始時（review.md Step 1.0.0）に**自分の作業中 worktree**（clean かつ claim free/stale で 3 ゲートを全通過しうる）を削除する事故を防ぐ。dirty(3)/claim(2) 保護とは独立した第 4 の保護層。
 

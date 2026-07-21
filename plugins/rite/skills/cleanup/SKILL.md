@@ -712,6 +712,8 @@ skill return 後、出力から以下のいずれかの sentinel を発火させ
 - 並行 ingest スキップ (ingest 出力に `WIKI_INGEST_SKIPPED reason=concurrent_ingest`): `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest`（別 live セッションが ingest 中。pending raw は wiki branch に残り次回 ingest が冪等回収する — multi-session §9）
 - 失敗: `[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error`
 
+> **#1941 wiki push batch/defer**: ingest.md はページ更新のたびに push していた旧挙動を、raw source ごとに commit のみ行い ingest フロー末尾（ステップ 8.6）で 1 回だけ push する方式に変更した（AC-1）。`push=failed` 部分文字列検出はそのまま機能する — 集約 push が失敗した場合も、その 1 回の push 結果として ingest の stdout に同じ文字列が現れるため、本ステップの検出ロジック自体の変更は不要（ローカル commit は保持され、次回 ingest のステップ 8.6 が自動で flush を試みる — AC-2 / SHOULD）。
+
 ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 ---

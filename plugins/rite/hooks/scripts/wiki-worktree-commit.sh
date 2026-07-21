@@ -6,7 +6,12 @@
 # to origin. Used by skills/wiki-ingest/SKILL.md ステップ 5 after the LLM has
 # written raw-source `ingested: true` updates, new pages under
 # `.rite/wiki/pages/**`, index.md updates, and log.md appendices
-# directly into the worktree tree.
+# directly into the worktree tree. `--commit-only` / `--push-only` (#1941
+# wiki push batch/defer) split this into two calls so a caller looping over
+# several raw sources (wiki-ingest) or delegating to wiki-lint mid-flow can
+# commit each one locally and push ONCE at the end of the flow, instead of
+# once per commit — see skills/wiki-ingest/SKILL.md ステップ 5.1 / 8.6 and
+# skills/wiki-lint/SKILL.md ステップ 8.3.
 #
 # Design rationale: this script replaces the Block A/B
 # shell contract in ingest.md. Because the worktree lives at a stable
@@ -25,25 +30,41 @@
 #
 # Usage:
 # bash wiki-worktree-commit.sh [--message "<msg>"] [--dry-run]
+# bash wiki-worktree-commit.sh --commit-only [--message "<msg>"]
+# bash wiki-worktree-commit.sh --push-only
 #
 # Options:
 # --message MSG Commit message (default: "chore(wiki): ingest page integration")
 # --dry-run Report pending changes and target branch but perform no
-# git operations. Always exits 0.
+# git operations. Always exits 0. Not valid with --push-only
+# (push-only has no "pending changes" to report — it pushes
+# whatever is already committed).
+# --commit-only Stage + commit pending changes but do NOT push (#1941 wiki
+# push batch/defer). Intended for a caller processing several
+# raw sources in a loop: commit each one locally, then push
+# ONCE via --push-only after the loop. Mutually exclusive with
+# --push-only.
+# --push-only Push whatever is already committed on the worktree's branch;
+# does not stage or commit anything. Self-gates on "nothing to
+# push" (no-op, no network call) — safe to call unconditionally
+# at the end of a --commit-only loop. Mutually exclusive with
+# --commit-only and --dry-run.
 #
 # Output (stdout): one structured status line
 # [wiki-worktree-commit] committed=<N>; branch=<wiki>; head=<sha>[; push=<ok|failed>]
+# [wiki-worktree-commit] committed=1; branch=<wiki>; head=<sha>; push=deferred   (--commit-only)
+# [wiki-worktree-commit] branch=<wiki>; head=<sha>; push=<ok|failed|no-op>       (--push-only)
 # [wiki-worktree-commit] committed=0; branch=<wiki>; reason=<no-pending|no-staged-diff|concurrent-invocation>
 #
 # Exit codes:
-# 0 success (committed, or nothing pending)
+# 0 success (committed and/or pushed, or nothing pending/to push)
 # 1 environment / argument error (not a git repo, worktree missing, etc.)
 # 2 wiki feature disabled (skip)
 # 3 git operation failure (add / commit — push NOT included)
-# 4 push failed after successful local commit (caller MUST emit
-# wiki_ingest_push_failed sentinel; commit is preserved on the
-# local wiki branch and can be pushed manually with
-# `git -C .rite/wiki-worktree push origin wiki`)
+# 4 push failed (caller MUST emit wiki_ingest_push_failed sentinel;
+# commit is preserved on the local wiki branch and can be pushed
+# manually with `git -C .rite/wiki-worktree push origin wiki`).
+# Not reachable with --commit-only (no push is attempted).
 #
 # Notes:
 # - All git operations run with `git -C "$worktree_path"` to scope
@@ -63,11 +84,21 @@ export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 # Option parsing
 # -----------------------------------------------------------------------
 DRY_RUN=false
+COMMIT_ONLY=false
+PUSH_ONLY=false
 COMMIT_MSG="chore(wiki): ingest page integration"
 while [[ $# -gt 0 ]]; do
  case "$1" in
  --dry-run)
  DRY_RUN=true
+ shift
+ ;;
+ --commit-only)
+ COMMIT_ONLY=true
+ shift
+ ;;
+ --push-only)
+ PUSH_ONLY=true
  shift
  ;;
  --message)
@@ -88,6 +119,15 @@ while [[ $# -gt 0 ]]; do
  ;;
  esac
 done
+
+if [[ "$COMMIT_ONLY" == "true" ]] && [[ "$PUSH_ONLY" == "true" ]]; then
+ echo "ERROR: --commit-only and --push-only are mutually exclusive" >&2
+ exit 1
+fi
+if [[ "$PUSH_ONLY" == "true" ]] && [[ "$DRY_RUN" == "true" ]]; then
+ echo "ERROR: --push-only and --dry-run are mutually exclusive (push-only has no pending changes to preview)" >&2
+ exit 1
+fi
 
 # Reject commit messages containing newlines or NUL to prevent smuggling
 # extra headers into `git commit -m`.
@@ -197,6 +237,27 @@ fi
 verify_worktree_branch "$worktree_path" "$wiki_branch" "wwc" "" || exit 1
 
 # -----------------------------------------------------------------------
+# --push-only: push whatever is already committed and return. No staging,
+# no commit, no "pending changes" detection — that concept does not apply
+# here (#1941 wiki push batch/defer).
+# -----------------------------------------------------------------------
+if [[ "$PUSH_ONLY" == "true" ]]; then
+ set +e
+ push_out=$(worktree_push_branch "$worktree_path" "$wiki_branch")
+ push_rc=$?
+ set -e
+ echo "[wiki-worktree-commit] branch=${wiki_branch}; ${push_out}"
+ case "$push_rc" in
+ 0) exit 0 ;;
+ 4) exit 4 ;;
+ *)
+ echo "ERROR: worktree_push_branch が予期しない exit code ($push_rc) を返しました" >&2
+ exit 1
+ ;;
+ esac
+fi
+
+# -----------------------------------------------------------------------
 # Detect pending changes within the worktree's .rite/wiki tree.
 # We intentionally scope to the wiki directory so unrelated worktree
 # state (e.g. a stray file left by a contributor) does not accidentally
@@ -290,20 +351,31 @@ if [[ "$DRY_RUN" == "true" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# Stage all changes under .rite/wiki, commit, and push via shared helper.
-# worktree_commit_push (lib/worktree-git.sh) handles the stderr capture +
-# head -n 10 extraction pattern for the caller. Exit codes: 3 = add/commit
-# failure, 4 = commit ok / push failed, 5 = no staged diff after add (no-op).
+# Stage all changes under .rite/wiki, commit, and (unless --commit-only)
+# push via shared helper. worktree_commit_push (lib/worktree-git.sh)
+# handles the stderr capture + head -n 10 extraction pattern for the
+# caller. Exit codes: 3 = add/commit failure, 4 = commit ok / push failed
+# (--commit-only never returns 4 — no push is attempted), 5 = no staged
+# diff after add (no-op).
 # -----------------------------------------------------------------------
 set +e
-wtcp_out=$(worktree_commit_push "$worktree_path" "$wiki_branch" "$COMMIT_MSG" "$wiki_rel")
+if [[ "$COMMIT_ONLY" == "true" ]]; then
+ wtcp_out=$(WTGP_COMMIT_ONLY=1 worktree_commit_push "$worktree_path" "$wiki_branch" "$COMMIT_MSG" "$wiki_rel")
+else
+ wtcp_out=$(worktree_commit_push "$worktree_path" "$wiki_branch" "$COMMIT_MSG" "$wiki_rel")
+fi
 wtcp_rc=$?
 set -e
 
 case "$wtcp_rc" in
  0)
- # "head=<sha>; push=ok"
+ if [[ "$COMMIT_ONLY" == "true" ]]; then
+ # wtcp_out = "head=<sha>" — push is deferred to a later --push-only call
+ echo "[wiki-worktree-commit] committed=1; branch=${wiki_branch}; ${wtcp_out}; push=deferred"
+ else
+ # wtcp_out = "head=<sha>; push=ok"
  echo "[wiki-worktree-commit] committed=1; branch=${wiki_branch}; ${wtcp_out}"
+ fi
  exit 0
  ;;
  4)

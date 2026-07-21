@@ -2,8 +2,14 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-21T20:15:00+09:00"
+updated: "2026-07-21T23:26:49+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260721T142649Z-pr-1958-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260721T141125Z-pr-1958.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260721T140648Z-pr-1958.md"
   - type: "reviews"
     ref: "raw/reviews/20260721T004358Z-pr-1937.md"
   - type: "fixes"
@@ -1788,3 +1794,7 @@ sandbox 書き込みブロック用マウントの誤検出を防ぐ新規ヘル
 ## 変種: 同型 gate 設置箇所一覧テーブルへの新規 gate 追加漏れ、かつ再レビューで別インスタンスを発見 (PR #1955)
 
 wiki push を ingest フロー末尾に集約する refactor で、wiki-lint/SKILL.md ステップ 8.3 に新規の `{mode}` placeholder 残留 fail-fast gate を追加した際、同ファイル内で既存 gate の設置箇所一覧を列挙する参照テーブル（ステップ 9.3 exit code 一覧等）2箇所への追従が漏れ、prompt-engineer-reviewer が cycle 1 で MEDIUM 指摘として検出した（line 1012 / 1028、既存の「ステップ 1.1 / 1.3」という列挙に新設した 8.3 自身が含まれていなかった）。fix は該当 2 行を「ステップ 1.1 / 1.3 / 8.3」に修正して収束。cycle 2 の再レビューでは同一 reviewer が独立に、同ファイル line 776 の**別の** `{mode}` gate 導入コメントにも同型の列挙漏れ（自身を含まない列挙）が残存していることを新たに発見した。1 件の drift を fix した直後の再レビューで、同一パターンの別インスタンスが見つかった点が本変種の特徴。**教訓**: (1) 「同型 gate」（複数箇所に同一ロジックパターンが適用され、その設置箇所一覧をコメント・参照テーブル複数箇所に重複列挙する規約を持つ）プロジェクトで新規 gate を追加する際は、実装本体だけでなく既存の設置箇所一覧テーブルすべてへの追従を伝播スキャンで確認する必要がある。(2) 1 件の drift を fix した cycle でも、grep で「同一パターンの全出現箇所」を横断確認しないと独立した別インスタンスの drift を見逃す（cycle 1 の修正はステップ 9.3 側の参照テーブルのみを対象にしており、line 776 の gate 導入コメント側は検索範囲外だった）。
+
+## 変種: ドキュメント新設節が「並列の兄弟節」と明示した既存節への ToC 追従漏れ (PR #1958)
+
+sandbox の write-block マスクマウント現象を文書化する新セクションを `git-worktree-patterns.md` に追加した際、著者は Issue 本文で当該セクションを既存の2つの sandbox 節（SSH host alias 遮断・worktree cwd write 遮断）と「並列の第3セクション」と明示的に位置づけていたにもかかわらず、Table of Contents には新セクション自身のエントリ1件のみを追加し、明示的に並列関係にあるとした兄弟2節への ToC エントリ追従を怠った。tech-writer-reviewer が cycle 1 で MEDIUM 指摘として検出し、revert test（diff を戻せば ToC の非対称も消える＝本 PR 由来）で「既存の ToC 非掲載慣行を踏襲しただけ」という著者の当初の想定と食い違うことを立証した。fix は3節すべてを ToC に追加して収束、cycle 2 のフルレビューで 0 件・mergeable に到達（2 cycle 収束）。cycle 2 で同一 reviewer が「ToC の親 H2 (`## Multi-Session Patterns`) 自体が未掲載」という粒度不整合を design_confirmation として追加提起したが、AC 充足済み・non-blocking のため指摘へ格上げせず著者判断に委ねた（前回指摘を一般化してブロッキング化しない自制の好例）。**教訓**: 実装計画やIssue本文で「既存の X と並列」「Y と対をなす」等、新規追加物が既存の同格要素群に**明示的に位置づけられている**場合、その明示的な並列関係自体が伝播対象の宣言になる。ナビゲーション要素（ToC・索引・一覧テーブル）への追従は、新規追加物自身のエントリだけでなく、宣言された同格要素すべてに及ぶか確認する。

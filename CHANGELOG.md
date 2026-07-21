@@ -27,7 +27,7 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
-## [0.8.4] - 2026-07-21
+## [0.9.0] - 2026-07-21
 
 ### Added
 
@@ -793,6 +793,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.9.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.0...v0.8.1

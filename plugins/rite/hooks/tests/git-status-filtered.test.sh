@@ -101,7 +101,7 @@ base3u=$( cd "$sbx3u" && git branch --show-current )
   git checkout -q "$base3u"
   echo main > a
   git -c user.email=t@test.local -c user.name=test commit -q -am main
-  git merge conflict-side >/dev/null 2>&1
+  git -c user.email=t@test.local -c user.name=test merge conflict-side >/dev/null 2>&1
 ) >/dev/null 2>&1
 out=$(run_in "$sbx3u")
 case "$out" in

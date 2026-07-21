@@ -39,7 +39,7 @@
 
 - `pr-review.md` ステップ 6.1.a — 現時点では canonical `"1.0.0"` のみを出力する。`"1.1.0"` への canonical write bump は **`_reviewer-base` への Scope Assignment 責務追加** のスコープ。reviewer が scope / pre_existing を出力できるようになった時点で本ドキュメントの書込側 canonical を `"1.1.0"` に bump する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
 
-本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つ義務がある。`plugins/rite/hooks/scripts/distributed-fix-drift-check.sh` / `doc-heavy-patterns-drift-check.sh` は schema_version / accept list の drift を自動検出しないため、本ドキュメントを変更した際は手動で 3 箇所を同期させること。
+本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つ義務がある。この 3 箇所間の drift を自動検出する仕組みはないため、本ドキュメントを変更した際は手動で 3 箇所を同期させること（`plugins/rite/hooks/scripts/review-schema-version-check.sh` は `.rite/review-results/*.json` の schema_version 値を検査するものであり、読取側 3 箇所の accept list リテラル自体の同期は対象外）。
 
 **失敗時の遷移** (Priority 別):
 

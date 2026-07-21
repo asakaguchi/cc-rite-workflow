@@ -44,13 +44,13 @@ Please clarify which recommendation to follow.
 
 ### Contradiction Examples
 
-1. **Code Quality vs Performance**
+1. **Code Quality vs Application**
    - Code Quality: "This function should be split"
-   - Performance: "Inlining improves performance"
+   - Application: "Inlining improves performance"
 
 2. **Security vs Usability**
    - Security: "Input validation should be stricter"
-   - API Design: "Allow flexible input for usability"
+   - Application: "Allow flexible input for usability"
 
 3. **Test Coverage vs Development Speed**
    - Test: "Edge case tests should be added"
@@ -58,77 +58,44 @@ Please clarify which recommendation to follow.
 
 4. **Readability vs Brevity**
    - Code Quality: "Variable names should be more descriptive"
-   - Performance: "Shorter variable names reduce bundle size"
+   - Application: "Shorter variable names reduce bundle size"
 
-## Debate Protocol (Evaluator-Optimizer Pattern)
+## Debate Protocol
 
-When contradictions are detected in cross-validation, attempt automatic resolution through a structured debate before escalating to the user. This phase executes only when `review.debate.enabled: true` in `rite-config.yml`.
+When contradictions are detected in cross-validation, attempt automatic resolution through deliberation before escalating to the user. This phase executes only when `review.debate.enabled: true` in `rite-config.yml`.
 
 ### Trigger Conditions
 
-A debate is triggered when **any** of the following conditions are met:
+矛盾とは、**同じ `file:line` に対する両 reviewer の評価を同時には採用できない**状態を指す。典型例:
 
-| Condition | Description | Example |
-|-----------|-------------|---------|
-| Opposing assessments | Two reviewers give contradictory recommendations for the same `file:line` | One says "fix", another says "OK" |
-| Severity gap ≥ 2 levels | Same `file:line` with severity difference of 2+ levels | CRITICAL vs LOW, HIGH vs LOW |
+- 相反する推奨（一方は "fix"、他方は "OK"）
+- 扱いが変わるほど大きく乖離した severity 判断（CRITICAL vs LOW のような 2 段階以上の乖離が典型だが、段数そのものではなく「どちらの扱いに従うかが決められない」ことが基準）
 
 **Not triggered** when: Findings overlap but do not contradict (e.g., both say "fix" with different details — this is consensus, handled by severity boost).
 
-### Debate Template
+### Deliberation Principle
 
-For each detected contradiction, generate a structured debate prompt:
+各矛盾について、両 reviewer の主張と証拠を実コードと突き合わせて検討する。それぞれの立場から、相手の論点の妥当な部分を認めた上で最終見解を出す（一方の肩を最初から持たない）。
 
-```markdown
-## Debate: {file}:{line}
+**決着判断**:
 
-### Contradiction Summary
-- {Reviewer A} ({reviewer_type_a}): {finding_a} [Severity: {severity_a}]
-- {Reviewer B} ({reviewer_type_b}): {finding_b} [Severity: {severity_b}]
-
-### Round {n} / {max_rounds}
-
-**{Reviewer A} ({reviewer_type_a})**, present your argument:
-1. **Claim**: Restate your finding with supporting evidence
-2. **Evidence**: Cite specific code patterns, best practices, or documentation
-3. **Concession**: Acknowledge any valid points from the opposing reviewer
-4. **Revised position**: State your final recommendation considering both perspectives
-
-**{Reviewer B} ({reviewer_type_b})**, present your counter-argument:
-1. **Claim**: Restate your finding with supporting evidence
-2. **Evidence**: Cite specific code patterns, best practices, or documentation
-3. **Concession**: Acknowledge any valid points from the opposing reviewer
-4. **Revised position**: State your final recommendation considering both perspectives
-```
+- 検討の結果、両論が**同じ対応**（fix / accept / modify）を支持できるなら合意として採用する
+- 対応は一致するが severity の見解が割れる場合は、乖離幅に関わらず**高い方の severity を採用**する（見逃しより過剰警告を許容）
+- `max_rounds` 回検討しても**対応そのものが相反したまま**なら決着不能 — ユーザーへエスカレーションする（下記 Escalation Conditions）
 
 **Note**: `{Reviewer A}`, `{Reviewer B}` use Japanese display names per the [Reviewer Type Identifiers table in SKILL.md](../SKILL.md#reviewer-type-identifiers).
-
-### Resolution Criteria
-
-After each debate round, evaluate whether agreement has been reached:
-
-| Outcome | Condition | Action |
-|---------|-----------|--------|
-| **Agreement** | Both reviewers converge on the same recommendation (severity and action) | Auto-resolve: adopt the agreed finding |
-| **Partial agreement** | Reviewers agree on action but differ on severity by 1 level | Auto-resolve: adopt the higher severity |
-| **No agreement** | Reviewers maintain opposing positions after `max_rounds` | Escalate to user |
-
-**Agreement detection heuristic**: Claude evaluates the "Revised position" from both reviewers:
-- **Agreement**: Both recommend the same action (fix/accept/modify) with the same severity (within 0 levels)
-- **Partial agreement**: Both recommend the same action but differ on severity by exactly 1 level
-- Other cases are treated as **No agreement**
 
 ### Escalation Conditions
 
 Escalation occurs in two stages: a pre-debate guard and post-debate evaluation.
 
-**Pre-debate guard** (evaluated before entering debate):
+**Pre-debate guard** (evaluated before entering deliberation):
 
 | Condition | Action |
 |-----------|--------|
-| Either reviewer's finding is CRITICAL severity | Skip debate entirely, escalate to user immediately |
+| Either reviewer's finding is CRITICAL severity | Skip deliberation entirely, escalate to user immediately |
 
-**Post-debate evaluation** (evaluated after `max_rounds` complete):
+**Post-deliberation evaluation**:
 
 Escalate to user (via `AskUserQuestion`) when:
 
@@ -160,27 +127,6 @@ Escalate to user (via `AskUserQuestion`) when:
 - {Reviewer B} の評価を採用
 - 両方の指摘を統合（最高 severity を採用）
 - この指摘を無視
-```
-
-### Debate Metrics
-
-Record the following metrics for each debate (appended to review metrics in `pr-review.md` ステップ 6.3 — Review Metrics Recording の semantic owner、表示は ステップ 6.1.b 経由):
-
-| Metric | Description |
-|--------|-------------|
-| `debate_triggered` | Number of contradictions processed (including pre-debate guard escalations) |
-| `debate_resolved` | Number resolved through debate (agreement or partial agreement) |
-| `debate_escalated` | Number escalated to user (no agreement after debate, or pre-debate guard CRITICAL escalation) |
-| `debate_resolution_rate` | `debate_resolved / debate_triggered` (percentage) |
-
-**Metrics output format** (included in PR comment):
-
-```
-### 討論メトリクス
-- 矛盾検出: {debate_triggered} 件
-- 自動解決: {debate_resolved} 件
-- エスカレーション: {debate_escalated} 件
-- 解決率: {debate_resolution_rate}%
 ```
 
 ### Configuration

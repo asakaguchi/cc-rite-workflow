@@ -30,6 +30,8 @@ A collection of frequently used GitHub CLI (gh) command patterns in rite workflo
 
 ## Safe Patterns Quick Reference
 
+> 以下の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution (SSH Host Alias Safe)](#ownerrepo-resolution-ssh-host-alias-safe) で解決した `owner/repo`（slash 形式）をリテラル置換する（SSH host alias 環境対応。同節の Propagation 小節参照）。
+
 ### For Issue/PR body (create/edit)
 
 ```bash
@@ -43,7 +45,7 @@ if [ ! -s "$tmpfile" ]; then
   echo "ERROR: body is empty" >&2
   exit 1
 fi
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 ### For comment creation
@@ -54,7 +56,7 @@ trap 'rm -f "$tmpfile"' EXIT
 cat <<'BODY_EOF' > "$tmpfile"
 <comment content here>
 BODY_EOF
-gh issue comment {issue_number} --body-file "$tmpfile"
+gh issue comment {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 ### For comment update (gh api PATCH)
@@ -151,7 +153,7 @@ echo "{\"body\": \"$body\"}" | gh api ... --input -
 # preventing reads from other users, making it secure.
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
-gh issue view {issue_number} --json body --jq '.body' > "$tmpfile"
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' > "$tmpfile"
 
 # Validate retrieval result (confirm non-empty)
 if [ ! -s "$tmpfile" ]; then
@@ -171,7 +173,7 @@ trap 'rm -f "$tmpfile"' EXIT
 
 # ... write updated content to temp file ...
 
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 **Building body dynamically:**
@@ -189,7 +191,7 @@ cat <<'BODY_EOF' > "$tmpfile"
 更新された本文の内容
 BODY_EOF
 
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 #### 3. Pre-Update Validation
@@ -207,7 +209,7 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-gh issue edit {issue_number} --body-file "$tmpfile"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 ### Body Update Rules
@@ -316,13 +318,13 @@ Recommended patterns for operating Issue body checklists (`- [ ] task` / `- [x] 
 ```bash
 # ✅ SAFE: Extract with grep -E (avoid -P option due to environment dependency)
 # Read-only pipe operation, no body loss risk
-gh issue view {issue_number} --json body --jq '.body' | grep -E '^- \[[ xX]\] '
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' | grep -E '^- \[[ xX]\] '
 
 # Exclude Issue references (distinguish from parent-child Issue Tasklist)
-gh issue view {issue_number} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+'
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+'
 
 # Count incomplete check items (for automated checks, excluding Issue references)
-gh issue view {issue_number} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] '
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] '
 ```
 
 ### Checkbox Update
@@ -342,7 +344,7 @@ Execute in 3 stages (Bash → Read+Write → Bash). Shell variables do not persi
 tmpfile_read=$(mktemp)
 tmpfile_write=$(mktemp)
 
-gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body' > "$tmpfile_read"
 
 # Validate retrieval result
 if [ ! -s "$tmpfile_read" ]; then
@@ -366,8 +368,8 @@ echo "tmpfile_write=$tmpfile_write"
 
 ```bash
 # Set paths output by mktemp in Step 1 (shell variables do not carry over between Bash tool calls, so directly write the actual paths from Step 1 output)
-tmpfile_read="/tmp/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output
-tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output
+tmpfile_read="${TMPDIR:-/tmp}/tmp.XXXXXXXXXX"   # ← Replace with the tmpfile_read= value from Step 1 output (literal path)
+tmpfile_write="${TMPDIR:-/tmp}/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value from Step 1 output (literal path)
 
 # Validate update content before applying
 if [ ! -s "$tmpfile_write" ]; then
@@ -376,7 +378,7 @@ if [ ! -s "$tmpfile_write" ]; then
   exit 1
 fi
 
-gh issue edit {issue_number} --body-file "$tmpfile_write"
+gh issue edit {issue_number} -R {owner_repo} --body-file "$tmpfile_write"
 
 # No EXIT trap is set in Step 1 (it would delete these before Step 2), so clean up here
 rm -f "$tmpfile_read" "$tmpfile_write"
@@ -447,7 +449,7 @@ awk 'found == 0 { ... }'
 awk 'in_section == 0 { ... }'
 
 # ✅ SAFE: Restructure to avoid negation entirely
-gh pr diff {pr_number} | awk '
+gh pr diff {pr_number} -R {owner_repo} | awk '
   /^diff --git/ { found=0 }
   /^diff --git.*target_pattern/ { found=1 }
   found { print }
@@ -460,6 +462,75 @@ gh pr diff {pr_number} | awk '
 | `awk '!in_section'` | Bash may interpret 「!」 | `awk 'in_section == 0'` |
 | `awk '!/pattern/'` | Bash may interpret 「!」 before awk | Restructure to positive matching |
 | `awk '/pat/ && \!/other/'` | 「\!」 is invalid awk syntax | Use positive matching with reset logic |
+
+---
+
+## gh pr diff Constraints
+
+`gh pr diff` が対応していないフラグ（silent failure / error になる）と、その安全な代替:
+
+```bash
+# Full diff
+gh pr diff {pr_number} -R {owner_repo}
+
+# File list only
+gh pr diff {pr_number} -R {owner_repo} --name-only
+
+# 🚫 PROHIBITED: gh pr diff does NOT support -- <files> for per-file filtering
+gh pr diff {pr_number} -- path/to/file.md
+# → Silently fails or returns unexpected results
+
+# 🚫 PROHIBITED: gh pr diff does NOT support --stat
+gh pr diff {pr_number} --stat
+# → Error: unknown flag: --stat
+# → Use gh pr view --json files to get per-file additions/deletions instead
+```
+
+Per-file の diff 抽出は上記「awk Negation Patterns」の reset ロジック（`^diff --git` ヘッダごとに `found=0`、対象パターンで `found=1`）を使う。
+
+## git branch --list Exit-Code Gotcha
+
+> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found. Check the **output** instead (non-empty = exists).
+
+```bash
+# Check local branch existence (check OUTPUT, not exit code)
+local_match=$(git branch --list "{branch_name}")
+if [ -n "$local_match" ]; then
+  echo "BRANCH_EXISTS"
+else
+  echo "BRANCH_NOT_FOUND"
+fi
+
+# Check remote branch existence (check OUTPUT, not exit code)
+remote_match=$(git branch -r --list "origin/{branch_name}")
+if [ -n "$remote_match" ]; then
+  echo "REMOTE_EXISTS"
+else
+  echo "REMOTE_NOT_FOUND"
+fi
+```
+
+## Multi-line gh pr create (Canonical Form)
+
+`gh pr create` の複数行形式の正典はバックスラッシュ継続。`hooks/scripts/bash-heaviness-check.sh` の literal-title check は、この形式の継続行を跨いで論理行が終わるまで検査を維持する（インライン特殊文字 title による malformed tool-call の検出のため）:
+
+```bash
+# ✅ SAFE: --body-file + backslash continuation
+# Note: Fixed string HEREDOC guarantees non-empty content at write time, so empty check (defense layer 2) is omitted. Always add empty check for dynamic generation.
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+cat <<'BODY_EOF' > "$tmpfile"
+初期実装
+BODY_EOF
+
+gh pr create \
+  -R {owner_repo} \
+  --title "{title}" \
+  --body-file "$tmpfile" \
+  --base "{base_branch}" \
+  --draft
+```
 
 ---
 
@@ -506,7 +577,7 @@ gh pr diff {pr_number} | awk '
 ```bash
 # Backup current content before any modification
 # backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
+backup_file="${TMPDIR:-/tmp}/rite-wm-backup-${issue_number}-$(date +%s).md"
 printf '%s' "$current_body" > "$backup_file"
 ```
 
@@ -565,9 +636,79 @@ jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
 
 ---
 
-## Extended References
+## Owner/Repo Resolution (SSH Host Alias Safe)
 
-For detailed command reference, see: [`gh-cli-commands.md`](./gh-cli-commands.md)
+`gh repo view` / `gh issue create` など **`--repo`/`-R` 未指定の gh コマンド**は、origin remote が
+SSH host alias（例: `git@github.com-work:owner/repo.git`）のとき
+`none of the git remotes configured for this repository point to a known GitHub host` で失敗する。
+`{owner}` / `{repo}` プレースホルダの解決には、remote URL を直接パースする
+`hooks/scripts/lib/git-remote.sh`（#1899 で導入。host 名に依存しない）を優先し、
+`gh repo view` は fallback に回すこと。
+
+```bash
+# ✅ SAFE: git-remote.sh 優先で owner/repo を解決（SSH host alias 環境でも動く）
+# 出力契約: 成功時 "owner<TAB>repo" の 1 行。失敗時は空 → gh repo view に fallback
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
+
+# 🚫 PROHIBITED: gh repo view 単独での owner/repo 解決（SSH host alias 環境で失敗する）
+# owner=$(gh repo view --json owner --jq '.owner.login')
+# WHY: gh は remote URL の host 部（github.com-work 等）を GitHub host として解決できない
+```
+
+内部スクリプトでの実装例:
+`scripts/watchdog-status-mismatch.sh`（git-remote.sh → gh repo view の 2 段 fallback + 診断 stderr）。
+
+### Propagation to Repo-Context gh Commands (`{owner_repo}`)
+
+解決した owner/repo は「解決箇所」だけで使って終わりにせず、**すべての repo コンテキスト依存
+gh コマンド**（`gh pr create/view/list/edit/merge/ready/comment/review/diff/checks` /
+`gh issue view/list/edit/comment/create/close/reopen/develop` 等）へ `-R` で明示指定する。
+`-R` 指定があれば gh は remote の host 解決を行わないため、SSH host alias 環境でも動く。
+
+実行スニペットでの伝播は次の 2 形式のいずれかを使う:
+
+1. **シェル変数が同一ブロックで解決済み** — canonical スニペット（上記）の直後で使う形式:
+
+   ```bash
+   gh issue view {issue_number} -R "$owner/$repo" --json body
+   ```
+
+2. **`{owner_repo}` プレースホルダ** — `{plugin_root}` と同じ literal substitution 方式。
+   セッション内で一度 canonical スニペット（上記）を実行して `owner/repo`（slash 形式、
+   例: `myorg/myrepo`）を解決し、以降の実行ブロックでは `-R {owner_repo}` をその値で
+   リテラル置換してから実行する。同一ブロックへの解決スニペット複製が不要になるため、
+   単発の gh コマンドにはこちらを優先する:
+
+   ```bash
+   gh pr view {pr_number} -R {owner_repo} --json state
+   ```
+
+   > **⚠️ 注意（名前衝突）**: canonical スニペット（上記）の shell 変数 `$owner_repo` は
+   > **TAB 区切り**（`git-remote.sh` の出力契約 `owner<TAB>repo`）であり、`{owner_repo}`
+   > プレースホルダ（**slash 形式** `owner/repo`）とは別物。`-R "$owner_repo"` と shell 変数値を
+   > そのまま渡してはならない（TAB のまま渡ると gh が `expected the "[HOST/]OWNER/REPO" format`
+   > で失敗する）。shell 変数から slash 形式を組むときは必ず `-R "$owner/$repo"` を使うこと。
+
+適用除外: 🚫 PROHIBITED 例・エラーカタログの失敗再現例（失敗の再現自体が目的のコマンド）には
+`-R` を付与しない（付与すると例の意味が壊れる）。**reviewer agent 定義**（`agents/*-reviewer.md`）も
+適用除外 — spawn される reviewer subagent は `{plugin_root}` / `{owner_repo}` を解決する経路を持たない
+（user prompt には diff / spec / shared principles のみが渡る）ため、`-R {owner_repo}` を付与すると
+literal のまま実行され逆に回帰する。reviewer は repo cwd で動くため gh の remote 推論に任せる。
+
+`gh pr view` への `-R` 伝播では selector（PR 番号または branch 名）を必ず併記する — gh は
+`-R` 指定時に selector を必須とする（`argument required when using the --repo flag`）ため、
+selector なしの `gh pr view` に `-R` だけを足すと必ず失敗する。現在ブランチの PR を対象に
+する場合は `gh pr view "$(git branch --show-current)" -R {owner_repo}` の形を使う。
+
+---
+
+## Extended References
 
 For error pattern catalog, see: [`gh-cli-error-catalog.md`](./gh-cli-error-catalog.md)
 

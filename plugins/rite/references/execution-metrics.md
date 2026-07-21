@@ -128,8 +128,6 @@ Appended to the Issue work memory comment at workflow completion (caller orchest
 
 Recorded in review result comment (ステップ 6.3 of [`pr-review.md`](../skills/pr-review/SKILL.md) — semantic owner で値の決定・記録ロジックの canonical 位置。表示位置は post_comment_mode=true 時に ステップ 6.1.b で append される).
 
-> **Note**: Debate metrics (`debate_triggered`, `debate_resolved`, `debate_escalated`, `debate_resolution_rate`) are **recording-only** — they are not included in the Metrics Definitions table above and have no threshold evaluation. They serve as observational data for reviewing the debate phase's effectiveness.
-
 ```markdown
 ### 📊 レビューメトリクス
 
@@ -140,10 +138,6 @@ Recorded in review result comment (ステップ 6.3 of [`pr-review.md`](../skill
 | 指摘数(MEDIUM) | {count} |
 | 指摘数(LOW) | {count} |
 | ループカウント | {loop_count} |
-| 討論: 矛盾検出 | {debate_triggered} |
-| 討論: 自動解決 | {debate_resolved} |
-| 討論: エスカレーション | {debate_escalated} |
-| 討論: 解決率 | {debate_resolution_rate}% |
 ```
 
 ---

@@ -47,11 +47,12 @@
 #   - `cycle{N}`: orchestrator-created (`/rite:pr-review` cycle worktrees)
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
 #     reviewer-subagent verification experiments (observed in practice).
-#     The reviewer's READ-ONLY contract is enforced primarily by
-#     `pre-tool-bash-guard.sh` Pattern 4 (PreToolUse hook block), and these
-#     names should normally never be created. This regex serves as the
-#     defense-in-depth sweep for cases where the hook fails to fire
-#     (e.g., transcript_path subagent detection edge case).
+#     The reviewer's READ-ONLY contract is the prompt-level Layer 1
+#     (`agents/_reviewer-base.md`; branch-creating git verbs are no longer
+#     machine-gated since Issue #1879), so these names should normally never
+#     be created but cannot be structurally prevented. This regex is the
+#     designed sweep for reviewer-leaked residue (with Layer 3
+#     post-review-state-verify.sh handling in-review detection).
 #
 # Usage:
 #   bash pr-cycle-cleanup.sh [--dry-run]
@@ -177,7 +178,7 @@ trap '_rite_pr_cycle_cleanup; exit 129' HUP
 # branch itself can be deleted (a branch checked out in a worktree cannot
 # be deleted with `git branch -D`).
 # -----------------------------------------------------------------------
-wt_list_err=$(mktemp /tmp/rite-pr-cycle-cleanup-wt-err-XXXXXX 2>/dev/null) || wt_list_err=""
+wt_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-wt-err-XXXXXX" 2>/dev/null) || wt_list_err=""
 if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
   # Parse porcelain output: pair each `worktree <path>` with its `branch refs/heads/<name>`
   current_path=""
@@ -234,7 +235,7 @@ fi
 # Prune any dangling worktree metadata to keep `git worktree list` clean.
 # AC-3 (異常終了経路) の核心ロジックのため、失敗を silent に握り潰さず errors カウンタに加算する。
 if [ "$DRY_RUN" = "0" ]; then
-  prune_err=$(mktemp /tmp/rite-pr-cycle-cleanup-prune-err-XXXXXX 2>/dev/null) || prune_err=""
+  prune_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-prune-err-XXXXXX" 2>/dev/null) || prune_err=""
   # bash の `if ! cmd; then rc=$?` は `!` 演算子が exit status を反転させるため
   # then ブロック内の `$?` は常に 0 になる仕様。`if cmd; then :; else rc=$?; fi` 形式で
   # 元コマンドの非ゼロ exit code を正しく取得する (兄弟スクリプト wt_list / ref と統一)。
@@ -255,7 +256,7 @@ fi
 # `git for-each-ref` is used instead of `git branch --list` because it
 # emits the bare ref name without leading whitespace/asterisks.
 # -----------------------------------------------------------------------
-ref_err=$(mktemp /tmp/rite-pr-cycle-cleanup-ref-err-XXXXXX 2>/dev/null) || ref_err=""
+ref_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-ref-err-XXXXXX" 2>/dev/null) || ref_err=""
 if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>"${ref_err:-/dev/null}"); then
   while IFS= read -r br; do
     [ -z "$br" ] && continue
@@ -395,8 +396,8 @@ _reap_mutation_worktree() {
 
 workdir_tmp_base="${TMPDIR:-/tmp}"
 workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
-workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
-workdir_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-out-XXXXXX 2>/dev/null) || workdir_find_out=""
+workdir_find_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-workdir-err-XXXXXX" 2>/dev/null) || workdir_find_err=""
+workdir_find_out=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-workdir-out-XXXXXX" 2>/dev/null) || workdir_find_out=""
 reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
   _reap_workdir "$workdir_find_out" "$workdir_find_err"
 
@@ -434,16 +435,16 @@ reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
 # -----------------------------------------------------------------------
 mutation_tmp_base="${TMPDIR:-/tmp}"
 mutation_tmp_base="${mutation_tmp_base%/}"  # strip trailing slash
-mutation_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-err-XXXXXX 2>/dev/null) || mutation_find_err=""
-mutation_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-out-XXXXXX 2>/dev/null) || mutation_find_out=""
+mutation_find_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mutation-err-XXXXXX" 2>/dev/null) || mutation_find_err=""
+mutation_find_out=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mutation-out-XXXXXX" 2>/dev/null) || mutation_find_out=""
 # mutation_reaped_any は reaper (_reap_mutation_worktree) が成功時に 1 を立てるグローバル。
 # 走査前に 0 で初期化し、回収が 1 件でも成功したら下記 post-loop prune を起動する。
 mutation_reaped_any=0
 reap_orphan_dirs "orphan mutation worktree" "$mutation_tmp_base" 'rite-review-mutation-*' \
   _reap_mutation_worktree "$mutation_find_out" "$mutation_find_err"
 # 同じ reviewer-tmp 名前空間の `rite-revert-test-*` も同一 reaper / counter で回収する。
-revert_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-revert-err-XXXXXX 2>/dev/null) || revert_find_err=""
-revert_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-revert-out-XXXXXX 2>/dev/null) || revert_find_out=""
+revert_find_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-revert-err-XXXXXX" 2>/dev/null) || revert_find_err=""
+revert_find_out=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-revert-out-XXXXXX" 2>/dev/null) || revert_find_out=""
 reap_orphan_dirs "orphan revert-test worktree" "$mutation_tmp_base" 'rite-revert-test-*' \
   _reap_mutation_worktree "$revert_find_out" "$revert_find_err"
 # rm -rf fallback で残った stale worktree メタデータを掃除する (remove --force 経路では不要だが冪等)
@@ -478,7 +479,7 @@ manifest_path="$repo_root/$TMP_ARTIFACT_MANIFEST"
 # compare could let the guard miss. Resolve once so the compare holds.
 _repo_canon=$( cd -- "$repo_root" 2>/dev/null && pwd -P ) || _repo_canon="$repo_root"
 if [ -f "$manifest_path" ]; then
-  manifest_keep=$(mktemp /tmp/rite-pr-cycle-cleanup-manifest-keep-XXXXXX 2>/dev/null) || manifest_keep=""
+  manifest_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-manifest-keep-XXXXXX" 2>/dev/null) || manifest_keep=""
   if [ -z "$manifest_keep" ]; then
     echo "WARNING: manifest reap 用の一時ファイル mktemp に失敗しました。今回の manifest 回収をスキップします" >&2
     errors=$((errors + 1))
@@ -671,28 +672,135 @@ _rite_dir_is_self() {
 rite_self_dir="${RITE_WORKTREE:-$rite_invocation_pwd}"
 rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
 
+# Liveness TTL (Issue #1923). Both signals below used to protect an
+# active=true holder with NO time bound, which deadlocks this guard forever
+# when a session ends WITHOUT session-end.sh's SessionEnd hook firing (forced
+# quit / crash / terminal close — see session-end.sh header for which exits
+# skip it): its flow-state stays `active=true` and the worktree/branch it
+# holds can never be lazily reaped. TTL_HOURS bounds that: an active=true
+# holder is protected only while its `updated_at` is within the TTL.
+# Overridable via env for ops/troubleshooting (no new rite-config.yml key —
+# CLAUDE.md シンプルさを死守する).
+readonly RITE_SESSION_LIVENESS_TTL_HOURS_RAW="${RITE_SESSION_LIVENESS_TTL_HOURS:-24}"
+# Validate the env override is a positive base-10 integer with no leading zero
+# (ops typo guard, e.g. "24h"): an invalid value must not silently corrupt the
+# `* 3600` arithmetic below with a raw bash error. A leading zero (e.g. "010")
+# would pass a laxer `^[0-9]+$` check yet be parsed as octal by bash arithmetic
+# (`$(( 010 * 3600 ))` = 8h, not 10h) — silently wrong TTL, or a hard arithmetic
+# error for octal-invalid digits like "08". `^[1-9][0-9]*$` rejects both "0"
+# and any leading-zero value outright, so the surviving values are always
+# valid decimal input to `$(( ... * 3600 ))` (this also makes a separate
+# `-gt 0` check redundant — the pattern alone guarantees a positive integer).
+# Falls back to the 24h default with a WARNING (fail-safe, same "protect on
+# anything we can't compute" posture as the rest of this guard).
+if [[ "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" =~ ^[1-9][0-9]*$ ]]; then
+  readonly RITE_SESSION_LIVENESS_TTL_HOURS="$RITE_SESSION_LIVENESS_TTL_HOURS_RAW"
+else
+  echo "WARNING: RITE_SESSION_LIVENESS_TTL_HOURS='$(printf '%s' "$RITE_SESSION_LIVENESS_TTL_HOURS_RAW" | neutralize_ctrl)' は正の整数ではありません（先頭ゼロも不可）。既定値 24 を使用します。" >&2
+  readonly RITE_SESSION_LIVENESS_TTL_HOURS=24
+fi
+
+# _rite_epoch_of_ts: best-effort ISO 8601 UTC (`Z` suffix OR `+HH:MM`/`-HH:MM`
+# offset) -> epoch seconds. Tries GNU `date -d` (Linux) then BSD/macOS
+# `date -j -f` — the same two-step technique as session-ownership.sh's
+# parse_iso8601_to_epoch — but, unlike that helper, reports failure via return
+# code instead of collapsing it to epoch 0. The caller (_rite_ttl_protects)
+# must tell "malformed input" and "this host's date binary can't parse a
+# well-formed timestamp" apart from "genuinely far in the past" — all three
+# would alias to the same huge diff if compared against a fixed epoch-0
+# fallback.
+# The offset alternation (not `Z`-only) matters: flow-state.sh (the canonical
+# writer) emits `Z`, but pre-compact.sh / session-start.sh / session-end.sh
+# emit `+00:00` for the same `updated_at` field — a `Z`-only regex would
+# silently fall into the "malformed" fail-safe (permanent protect, no WARNING)
+# for any session whose last heartbeat came from one of those, reintroducing
+# this Issue's own dead-lock.
+#
+# Single source of truth (Issue #1923 cycle 2 review finding): this regex is
+# read by BOTH _rite_epoch_of_ts (below) and _rite_ttl_protects's
+# date-incompatible check, to tell "malformed timestamp" (no WARNING, silent
+# fail-safe) apart from "well-formed but this host's date can't parse it"
+# (WARNING). A prior version duplicated the literal in both places — exactly
+# the two-copies-diverge shape that produced this Issue's own cycle-1 CRITICAL
+# bug (a `Z`-only literal in one copy). One readonly variable, referenced by
+# `=~ $var`, makes that drift structurally impossible.
+readonly _RITE_ISO8601_UTC_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$'
+# Returns 0 with epoch on stdout, 1 on any parse failure.
+_rite_epoch_of_ts() {
+  local ts="$1" epoch ts_norm ts_nocolon
+  [[ "$ts" =~ $_RITE_ISO8601_UTC_RE ]] || return 1
+  # Normalize `Z` to `+00:00` (same technique as session-ownership.sh's
+  # parse_iso8601_to_epoch) so both parse paths below only ever see an
+  # explicit numeric offset.
+  ts_norm="${ts/%Z/+00:00}"
+  if epoch=$(date -u -d "$ts_norm" +%s 2>/dev/null); then
+    printf '%s' "$epoch"; return 0
+  fi
+  # BSD/macOS date -j -f with %z needs the offset without a colon (+00:00 -> +0000).
+  ts_nocolon="${ts_norm%:*}${ts_norm##*:}"
+  if epoch=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "$ts_nocolon" +%s 2>/dev/null); then
+    printf '%s' "$epoch"; return 0
+  fi
+  return 1
+}
+
+# _rite_ttl_protects: whether an active=true holder last active at
+# `updated_at` (ISO 8601 UTC) is still within the liveness TTL (Issue #1923).
+#   0 = protect: within TTL: OR updated_at missing/malformed (AC-4 fail-safe,
+#       silent) OR this host's `date` cannot parse a well-formed timestamp
+#       (4.5 fail-safe, WARNING emitted once per run — TTL enforcement
+#       degrades to the pre-#1923 always-protect behavior on that host)
+#   1 = TTL exceeded -> not protected by this signal (still subject to the
+#       other liveness signal / Gates 1-3)
+# AC-6: the boundary (age == TTL exactly) counts as "within" -> protect.
+_rite_date_incompat_warned=0
+_rite_ttl_protects() {
+  local updated_at="$1" now_epoch upd_epoch age ttl_seconds
+  [ -n "$updated_at" ] || return 0
+  if ! upd_epoch=$(_rite_epoch_of_ts "$updated_at"); then
+    if [[ "$updated_at" =~ $_RITE_ISO8601_UTC_RE ]] \
+       && [ "$_rite_date_incompat_warned" != "1" ]; then
+      echo "WARNING: この環境の date コマンドで updated_at ($(printf '%s' "$updated_at" | neutralize_ctrl)) を解釈できません。worktree liveness の TTL 判定を skip し、従来どおり active=true holder を無期限に保護します。" >&2
+      _rite_date_incompat_warned=1
+    fi
+    return 0
+  fi
+  now_epoch=$(date -u +%s 2>/dev/null) || return 0
+  age=$(( now_epoch - upd_epoch ))
+  ttl_seconds=$(( RITE_SESSION_LIVENESS_TTL_HOURS * 3600 ))
+  [ "$age" -le "$ttl_seconds" ]
+}
+
 # Worktree liveness guard (Issue #1524 + #1552). The 4th protection layer:
 # extend Gate 0 self-exclusion to ALL sessions that may still resume into this
 # worktree. Two independent signals, either of which protects (skip reap):
 #   (A) flow-state.worktree scan — a session's per-session flow-state records
-#       this worktree as its `active` `worktree` (Issue #1524). No time bound:
-#       an active session protects its tree regardless of idle time.
+#       this worktree as its `active` `worktree` (Issue #1524), protected
+#       while `updated_at` is within the liveness TTL above (Issue #1923;
+#       previously unbounded — "no time bound: an active session protects
+#       its tree regardless of idle time").
 #   (B) claim-join (Issue #1552) — the issue's claim file records this worktree
 #       and its holder session is still `active=true`, EVEN IF the claim's
 #       heartbeat (flow-state `updated_at`) has aged past the 2h staleness window
-#       used by issue-claim.sh `check`. A session that is active=true but idle
-#       >2h has a `stale` claim, which Gate 2 alone would treat as reapable —
-#       reaping a worktree the harness can still resume into and restore as cwd,
-#       breaking `/clear` with `Path does not exist`. (B) closes that window for
-#       sessions whose flow-state.worktree drifted empty/mismatched so (A) misses
-#       them, since the claim reliably records the worktree↔holder binding.
-# Both signals protect ONLY active=true holders: a deactivated/abandoned holder
-# (active=false) stays reapable (subject to the other gates), preserving the
-# lazy-reap purpose and bounding worktree leak. Returns:
-#   0 = an active=true session references $2 (canonical wt_path) → protect
+#       used by issue-claim.sh `check` — but, like (A), only while that SAME
+#       `updated_at` is within the liveness TTL (Issue #1923). A session that
+#       is active=true but idle >2h (and <TTL) has a `stale` claim, which
+#       Gate 2 alone would treat as reapable — reaping a worktree the harness
+#       can still resume into and restore as cwd, breaking `/clear` with
+#       `Path does not exist`. (B) closes that window for sessions whose
+#       flow-state.worktree drifted empty/mismatched so (A) misses them,
+#       since the claim reliably records the worktree↔holder binding.
+# Both signals protect ONLY active=true holders WITHIN the TTL (Issue #1923):
+# a deactivated/abandoned holder (active=false) stays reapable as before, and
+# an active=true holder whose `updated_at` has aged past the TTL also stops
+# being protected — bounding the worktree/branch leak from sessions that end
+# without SessionEnd ever clearing `active`. Returns:
+#   0 = an active=true session references $2 (canonical wt_path) AND its
+#       updated_at is within the TTL (or TTL calc unavailable, fail-safe) → protect
 #   2 = the sessions dir cannot be enumerated, or a flow-state cannot be parsed
 #       → caller skips conservatively (AC-4): cannot prove no live session needs it
-#   1 = no active session references it → reap may proceed (subject to other gates)
+#   1 = no active session references it, or the referencing holder's TTL has
+#       exceeded → reap may proceed (subject to other gates)
 # Reads the shared-root sessions dir + issue-claims dir ($repo_root/.rite/...).
 _rite_worktree_protected_by_flow_state() {
   local issue_num="$1" target_canon="$2"
@@ -704,13 +812,19 @@ _rite_worktree_protected_by_flow_state() {
   # over-protecting on a stray claim read error.
   local cfile="$repo_root/.rite/state/issue-claims/issue-${issue_num}.json"
   if [ -f "$cfile" ] && [ -r "$cfile" ]; then
-    local _holder _cwt _hactive
+    local _holder _cwt _hactive _hupdated
     _holder=$(jq -r '.session_id // ""' "$cfile" 2>/dev/null) || _holder=""
     _cwt=$(jq -r '.worktree // ""' "$cfile" 2>/dev/null) || _cwt=""
     if [ -n "$_holder" ] && [ -n "$_cwt" ] && { [ "$_cwt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_cwt")" = "$target_canon" ]; }; then
       _hactive=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
                  get --session "$_holder" --field active --default "false" 2>/dev/null) || _hactive="false"
-      [ "$_hactive" = "true" ] && return 0
+      if [ "$_hactive" = "true" ]; then
+        # TTL gate (Issue #1923): active=true alone no longer protects — the
+        # holder's updated_at must also be within the liveness TTL.
+        _hupdated=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
+                   get --session "$_holder" --field updated_at --default "" 2>/dev/null) || _hupdated=""
+        _rite_ttl_protects "$_hupdated" && return 0
+      fi
     fi
   fi
   # (A) flow-state.worktree scan (Issue #1524).
@@ -721,15 +835,17 @@ _rite_worktree_protected_by_flow_state() {
   local f parse_failed=0
   for f in "$sdir"/*.flow-state; do
     [ -f "$f" ] || continue   # literal glob (no matches) or non-file → skip
-    local _row _active _wt
+    local _row _active _wt _updated
     # Single composite read so a corrupt flow-state is caught as a parse failure
     # (→ conservative skip) rather than silently degrading active/worktree to empty.
-    _row=$(jq -r '[(.active // false | tostring), (.worktree // "")] | join("")' "$f" 2>/dev/null) || { parse_failed=1; continue; }
-    IFS=$'\x1f' read -r _active _wt <<< "$_row"
+    _row=$(jq -r '[(.active // false | tostring), (.worktree // ""), (.updated_at // "")] | join("")' "$f" 2>/dev/null) || { parse_failed=1; continue; }
+    IFS=$'\x1f' read -r _active _wt _updated <<< "$_row"
     [ "$_active" = "true" ] || continue
     [ -n "$_wt" ] || continue
     if [ "$_wt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_wt")" = "$target_canon" ]; then
-      return 0
+      # TTL gate (Issue #1923): active=true + worktree match alone no longer
+      # protects — this holder's updated_at must also be within the TTL.
+      _rite_ttl_protects "$_updated" && return 0
     fi
   done
   [ "$parse_failed" -eq 1 ] && return 2

@@ -236,12 +236,14 @@ This makes it visually clear that the Issue's work has been completed.
 
 Close the related Issue identified in `cleanup.md` ステップ 2.
 
+> 以下の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)（cleanup.md ステップ 1.4 と同一の canonical 手順）で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応）。
+
 #### 3.6.1 Check Issue State
 
 If a related Issue has been identified, check its current state:
 
 ```bash
-gh issue view {issue_number} --json state --jq '.state'
+gh issue view {issue_number} -R {owner_repo} --json state --jq '.state'
 ```
 
 #### 3.6.2 Close the Issue
@@ -249,7 +251,7 @@ gh issue view {issue_number} --json state --jq '.state'
 If the Issue is OPEN, execute the close:
 
 ```bash
-gh issue close {issue_number} --comment "PR #{pr_number} のマージに伴いクローズしました。"
+gh issue close {issue_number} -R {owner_repo} --comment "PR #{pr_number} のマージに伴いクローズしました。"
 ```
 
 **Note**: `gh issue close` does not error when executed on an already-closed Issue (idempotent).
@@ -430,13 +432,13 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-gh issue comment {parent_issue_number} --body-file "$tmpfile"
+gh issue comment {parent_issue_number} -R {owner_repo} --body-file "$tmpfile"
 ```
 
 **Step 2: Close with short fixed string**
 
 ```bash
-gh issue close {parent_issue_number} --comment "すべての子 Issue 完了のため自動クローズ"
+gh issue close {parent_issue_number} -R {owner_repo} --comment "すべての子 Issue 完了のため自動クローズ"
 ```
 
 **Format of `{sub_issue_list}`:**
@@ -492,7 +494,7 @@ If some child Issues are still OPEN:
 理由: {reason}
 
 手動でクローズする場合:
-gh issue close {parent_issue_number}
+gh issue close {parent_issue_number} -R {owner_repo}
 ```
 
 **Note**: Failure to auto-close the parent Issue does not block the entire cleanup process. Display a warning and continue.

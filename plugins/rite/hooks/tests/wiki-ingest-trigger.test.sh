@@ -686,6 +686,7 @@ echo ""
 
 # ==========================================================================
 # Phase: regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
+#        + $TMPDIR/rite-* arm (Issue #1904 sandbox 対応)
 # ==========================================================================
 
 # /tmp 外ファイルの明示 cleanup (review F-04: TEST_DIR 外は main cleanup() の対象外)
@@ -707,28 +708,37 @@ trap '_rite_issue518_cleanup; cleanup' EXIT
 # pr/pr-review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
 # 呼ぶときに tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX) でファイル生成する必要がある。
 # この TC は /tmp/rite-* prefix でのファイルが正常に受容され、fix が正しく動作することを保証する。
+# NOTE: content-file の /tmp/rite-* literal は被テスト hook の path-containment allowlist
+# ($PWD/* | /tmp/rite-* | /private/tmp/rite-*) に一致させる load-bearing fixture であり、
+# ${TMPDIR:-/tmp} 化してはならない (TMPDIR≠/tmp の環境で hook が正しく拒否し偽 FAIL する)。
+# /tmp 直下が書込不可な sandbox 環境では本 TC は検証不能のため明示 skip する。
 echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (regression)"
-dir36a="$TEST_DIR/tc36a"
-mkdir -p "$dir36a"
-cat > "$dir36a/rite-config.yml" <<'EOF'
+if _probe36a=$(mktemp /tmp/rite-probe-XXXXXX 2>/dev/null); then
+  rm -f "$_probe36a"
+  dir36a="$TEST_DIR/tc36a"
+  mkdir -p "$dir36a"
+  cat > "$dir36a/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
 EOF
-# Create content-file using /tmp/rite-* prefix (pr-review.md / fix.md / close.md と同パターン)
-tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
-_rite_issue518_tmps+=("$tmp_in_rite")
-echo "review body" > "$tmp_in_rite"
-( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 0 ]; then
-  # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
-  target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
-  if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
-    pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
+  # Create content-file using /tmp/rite-* prefix (pr-review.md / fix.md / close.md と同パターン)
+  tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
+  _rite_issue518_tmps+=("$tmp_in_rite")
+  echo "review body" > "$tmp_in_rite"
+  ( cd "$dir36a" && bash "$HOOK" --type reviews --source-ref pr-518 --content-file "$tmp_in_rite" > out.log 2>err.log ) && rc=0 || rc=$?
+  if [ $rc -eq 0 ]; then
+    # review F-06: tr -d [:space:] は stdout 多行時に path を連結してしまう。先頭行のみ取る
+    target_path36a=$(head -1 "$dir36a/out.log" | tr -d '[:space:]')
+    if [ -n "$target_path36a" ] && [ -f "$dir36a/$target_path36a" ]; then
+      pass "/tmp/rite-* prefix content-file → exit 0 + raw file created"
+    else
+      fail "/tmp/rite-* prefix → rc=0 but output file not found (path='$target_path36a')"
+    fi
   else
-    fail "/tmp/rite-* prefix → rc=0 but output file not found (path='$target_path36a')"
+    fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
 else
-  fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
+  echo "  SKIP: TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
 fi
 echo ""
 
@@ -766,6 +776,86 @@ if [ $rc -eq 1 ]; then
 else
   fail "Expected exit 1 for mktemp default, got rc=$rc, stderr=$(cat "$dir36b/err.log")"
 fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036c: Content-file in $TMPDIR/rite-* → exit 0 (Issue #1904 sandbox arm)
+# --------------------------------------------------------------------------
+# sandbox 有効環境では /tmp 直下が読み込み専用のため、caller は
+# mktemp "${TMPDIR:-/tmp}/rite-...-XXXXXX" で $TMPDIR 配下に content-file を作る。
+# 本 TC は realpath 解決後の $TMPDIR/rite-* 受理 arm (正例) を pin する。
+# content-file は $PWD 外・/tmp/rite-* 外に置き、新 arm だけが受理経路になるようにする。
+echo "TC-036c: Content-file in \$TMPDIR/rite-* → exit 0 (sandbox arm)"
+dir36c="$TEST_DIR/tc36c"
+mkdir -p "$dir36c"
+cat > "$dir36c/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+tmpdir36c=$(mktemp -d)
+echo "review body" > "$tmpdir36c/rite-content-1904.md"
+( cd "$dir36c" && TMPDIR="$tmpdir36c" bash "$HOOK" --type reviews --source-ref pr-1904 --content-file "$tmpdir36c/rite-content-1904.md" > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  target_path36c=$(head -1 "$dir36c/out.log" | tr -d '[:space:]')
+  if [ -n "$target_path36c" ] && [ -f "$dir36c/$target_path36c" ]; then
+    pass "\$TMPDIR/rite-* content-file → exit 0 + raw file created"
+  else
+    fail "\$TMPDIR/rite-* → rc=0 but output file not found (path='$target_path36c')"
+  fi
+else
+  fail "Expected rc=0 for \$TMPDIR/rite-* arm, got rc=$rc, stderr=$(cat "$dir36c/err.log")"
+fi
+rm -rf "$tmpdir36c"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036d: Content-file in $TMPDIR but not rite-* prefix → exit 1 (負例)
+# --------------------------------------------------------------------------
+# 新 arm は $TMPDIR 全体を開けるのではなく rite-* namespace に限定する。
+# prefix 制約が落ちると任意の $TMPDIR ファイルが wiki 公開経路に乗るため、
+# 負例で prefix-glob (`${resolved_tmpdir%/}"/rite-*`) の縮小を pin する。
+echo "TC-036d: Content-file in \$TMPDIR without rite-* prefix → exit 1"
+dir36d="$TEST_DIR/tc36d"
+mkdir -p "$dir36d"
+cat > "$dir36d/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+tmpdir36d=$(mktemp -d)
+echo "x" > "$tmpdir36d/other-content.md"
+( cd "$dir36d" && TMPDIR="$tmpdir36d" bash "$HOOK" --type reviews --source-ref pr-1904 --content-file "$tmpdir36d/other-content.md" >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'must be under' "$dir36d/err.log"; then
+  pass "\$TMPDIR non-rite file → exit 1 (prefix constraint enforced)"
+else
+  fail "Expected exit 1 with 'must be under', got rc=$rc, stderr=$(cat "$dir36d/err.log")"
+fi
+rm -rf "$tmpdir36d"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-036e: TMPDIR realpath 失敗 → arm 無効化 (fail-closed) + WARNING + exit 1
+# --------------------------------------------------------------------------
+# TMPDIR が解決不能なとき arm は silent に開かず縮小方向に倒れる (fail-closed)。
+# 同時に診断 WARNING (`$TMPDIR/rite-* arm disabled`) を stderr へ残す契約を pin する
+# (WARNING が消えると rejection message の「$TMPDIR/rite-* も受容」が誤誘導になる)。
+echo "TC-036e: TMPDIR realpath failure → arm disabled + WARNING + exit 1"
+dir36e="$TEST_DIR/tc36e"
+mkdir -p "$dir36e"
+cat > "$dir36e/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+tmpdir36e=$(mktemp -d)
+echo "x" > "$tmpdir36e/rite-content-1904.md"
+( cd "$dir36e" && TMPDIR="/nonexistent/rite-tmpdir-1904" bash "$HOOK" --type reviews --source-ref pr-1904 --content-file "$tmpdir36e/rite-content-1904.md" >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] \
+   && grep -q 'arm disabled' "$dir36e/err.log" \
+   && grep -q 'must be under' "$dir36e/err.log"; then
+  pass "unresolvable TMPDIR → fail-closed reject + diagnostic WARNING"
+else
+  fail "Expected exit 1 with 'arm disabled' WARNING + rejection, got rc=$rc, stderr=$(cat "$dir36e/err.log")"
+fi
+rm -rf "$tmpdir36e"
 echo ""
 
 # ==========================================================================
@@ -901,7 +991,7 @@ echo ""
 # --------------------------------------------------------------------------
 
 echo "[TC-043] chmod 000 rite-config.yml → sed extraction fail → exit 2"
-dir43=$(mktemp -d /tmp/rite-wiki-test-tc043-XXXXXX)
+dir43=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc043-XXXXXX")
 cat > "$dir43/rite-config.yml" <<EOF
 wiki:
   enabled: true
@@ -923,7 +1013,7 @@ rm -rf "$dir43"
 echo ""
 
 echo "[TC-044] binary garbage in wiki section → awk fail → exit 2"
-dir44=$(mktemp -d /tmp/rite-wiki-test-tc044-XXXXXX)
+dir44=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc044-XXXXXX")
 # NUL byte handling differs by platform, so this case may pass-through the
 # tr/sed pipeline. Either outcome is acceptable as long as raw is not silently
 # created when the parser bails: that is the invariant the assertion enforces.
@@ -950,7 +1040,7 @@ rm -rf "$dir44"
 echo ""
 
 echo "[TC-045] wiki.enabled normalization happy path (negative control)"
-dir45=$(mktemp -d /tmp/rite-wiki-test-tc045-XXXXXX)
+dir45=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc045-XXXXXX")
 # Negative control: ensure the strict guards above don't accidentally break
 # the success path. A regression here would mean the safe-default became
 # fail-closed for valid configs too.
@@ -974,7 +1064,7 @@ echo "[TC-046] wiki.enabled: TRUE (uppercase) → normalize lowercase → exit 0
 # Without `tr '[:upper:]' '[:lower:]'` the uppercase value would land in the
 # typo-reject arm and exit 2; the TC pins that the normalization step survives
 # future refactors.
-dir46=$(mktemp -d /tmp/rite-wiki-test-tc046-XXXXXX)
+dir46=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc046-XXXXXX")
 cat > "$dir46/rite-config.yml" <<EOF
 wiki:
   enabled: TRUE
@@ -992,7 +1082,7 @@ echo ""
 echo "[TC-047] wiki.enabled: False (MixedCase) → normalize lowercase → exit 2"
 # Symmetric to TC-046 for the false path. A regression that drops the
 # normalize step would let MixedCase typos bypass the disable guard.
-dir47=$(mktemp -d /tmp/rite-wiki-test-tc047-XXXXXX)
+dir47=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc047-XXXXXX")
 cat > "$dir47/rite-config.yml" <<EOF
 wiki:
   enabled: False
@@ -1011,7 +1101,7 @@ echo "[TC-048] wiki.enabled: tru (typo) → exit 2 + recognised-boolean WARNING"
 # The typo-reject arm (`*)` in the case statement) is the security-net for
 # silent typo-induced enable. Without this TC, future refactors could weaken
 # the arm to no-op and the safety net would vanish silently.
-dir48=$(mktemp -d /tmp/rite-wiki-test-tc048-XXXXXX)
+dir48=$(mktemp -d "${TMPDIR:-/tmp}/rite-wiki-test-tc048-XXXXXX")
 cat > "$dir48/rite-config.yml" <<EOF
 wiki:
   enabled: tru

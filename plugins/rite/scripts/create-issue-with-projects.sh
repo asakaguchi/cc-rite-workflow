@@ -56,6 +56,9 @@
 # Exit 0 = success or non-blocking failure. Exit 1 = fatal error.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
+
 # --- Centralized tmpfile management ---
 # All temporary files live under TMPDIR_WORK; a single EXIT trap cleans them all.
 TMPDIR_WORK=$(mktemp -d)
@@ -195,7 +198,23 @@ if [ -n "$BODY_FILE" ] && [ ! -f "$BODY_FILE" ]; then
 fi
 
 # --- Phase 1: Create Issue ---
+# SSH host alias remote (git@github.com-work:owner/repo.git 等) では --repo 未指定の
+# gh issue create がホスト解決に失敗するため、git-remote.sh で owner/repo を解決して
+# 明示指定する。解決失敗時は従来どおり --repo なしで gh のデフォルト解決に委ねる。
+REPO_SLUG=""
+_git_or_line=$(bash "$PLUGIN_ROOT/hooks/scripts/lib/git-remote.sh" resolve-owner-repo 2>/dev/null) || _git_or_line=""
+if [ -n "$_git_or_line" ]; then
+  _ro=""; _rn=""
+  IFS=$'\t' read -r _ro _rn <<< "$_git_or_line"
+  if [ -n "$_ro" ] && [ -n "$_rn" ]; then
+    REPO_SLUG="$_ro/$_rn"
+  fi
+fi
+
 GH_ARGS=("issue" "create" "--title" "$TITLE")
+if [ -n "$REPO_SLUG" ]; then
+  GH_ARGS+=("--repo" "$REPO_SLUG")
+fi
 
 if [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ]; then
   GH_ARGS+=("--body-file" "$BODY_FILE")

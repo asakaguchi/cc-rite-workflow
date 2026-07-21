@@ -58,7 +58,7 @@ plugins/rite/
 │   ├── (meta/top)      # setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
 │   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
-├── agents/           # Sub-agent definitions for PR review (13 reviewers + _reviewer-base)
+├── agents/           # Sub-agent definitions for PR review (9 reviewers + _reviewer-base)
 ├── hooks/            # Event handler scripts (Bash)
 │   ├── scripts/      #   Internal helper scripts (drift-check, bang-backtick-check, lint scanners, etc.)
 │   └── tests/        #   Shell script tests
@@ -69,11 +69,11 @@ plugins/rite/
 
 ## Adding a New Reviewer
 
-A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3) is machine-checked by `reviewer-registry-drift-check.sh` (run from `/rite:lint` ステップ 3.7.1) with one deliberate gap: a missing **Available Reviewers** row in (2) is indistinguishable from a logic-selected reviewer and is NOT machine-checked (invariant I2 is one-way) — verify edit location 2 against this checklist; (4) is free-form prose covered only by this checklist.
+A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3) is machine-checked by `reviewer-registry-drift-check.sh` (run from `/rite:lint` Phase 3.5) with one deliberate gap: a missing **Available Reviewers** row in (2) is indistinguishable from a logic-selected reviewer and is NOT machine-checked (invariant I2 is one-way) — verify edit location 2 against this checklist; (4) is free-form prose covered only by this checklist.
 
 **Edit locations:**
 
-1. **`plugins/rite/agents/{type}-reviewer.md`** (new file) — the reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format), injected as the named subagent's system prompt. Model an existing reviewer (e.g. `security-reviewer.md`); shared principles live in `_reviewer-base.md` and must not be duplicated.
+1. **`plugins/rite/agents/{type}-reviewer.md`** (new file) — the reviewer's full profile, injected as the named subagent's system prompt. Two shapes are sanctioned: the heavyweight structure (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format — model an existing specialist such as `security-reviewer.md`), or the lens-based structure (persona + first-suspect lenses + output contract, no exhaustive checklist — model `application-reviewer.md`) when the reviewer's checkpoint selection should be delegated to model judgment. Shared principles live in `_reviewer-base.md` and must not be duplicated.
 2. **`plugins/rite/skills/reviewers/SKILL.md` — `Available Reviewers` table** — add a row with the display name, agent filename, and activation file patterns. Skip this table only for logic-selected reviewers that have no file patterns (e.g. `code-quality`, the fallback / co-reviewer).
 3. **`plugins/rite/skills/reviewers/SKILL.md` — `Reviewer Type Identifiers` table** — add a row mapping the `reviewer_type` slug to the 日本語表示名 and agent filename. The slug MUST equal the agent basename minus `-reviewer.md` (e.g. `security-reviewer.md` → `security`); the drift check verifies this per row.
 4. **(Conditional) `plugins/rite/skills/pr-review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.).
@@ -84,14 +84,11 @@ A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3
 # 3-way sync: agents/ files <-> Available Reviewers <-> Type Identifiers
 bash plugins/rite/hooks/scripts/reviewer-registry-drift-check.sh --all
 
-# Only when the Technical Writer row was touched: tech-writer pattern equivalence
-bash plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh --all
-
 # Regression tests for the registry check itself
 bash plugins/rite/hooks/tests/reviewer-registry-drift-check.test.sh
 ```
 
-`/rite:lint` runs both drift checks automatically (ステップ 3.7 / 3.7.1) as non-blocking warnings, so a forgotten Type Identifiers row or agent profile surfaces on the next lint (invariants I1/I3) even if you skip manual verification. A forgotten **Available Reviewers** row is the one gap the check cannot see (indistinguishable from a logic-selected reviewer) — verify edit location 2 manually.
+`/rite:lint` runs this drift check automatically (Phase 3.5 generic loop) as a non-blocking warning, so a forgotten Type Identifiers row or agent profile surfaces on the next lint (invariants I1/I3) even if you skip manual verification. A forgotten **Available Reviewers** row is the one gap the check cannot see (indistinguishable from a logic-selected reviewer) — verify edit location 2 manually. When touching the Technical Writer row's File Patterns column, note it is the SoT for `doc_file_patterns` (`plugins/rite/skills/pr-review/SKILL.md` ステップ 1.2.7 reads it directly rather than duplicating it), so there is no separate pattern-equivalence check to run.
 
 ## Hook Development Guide
 

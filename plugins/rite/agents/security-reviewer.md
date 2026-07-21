@@ -76,7 +76,7 @@ This reviewer is in the **Hypothetical Exception Category** defined in [`referen
 
 The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](./_reviewer-base.md) still apply — only the Likelihood gate is relaxed.
 
-**Scope of the exception**: All security findings (no sub-scope limitation — the entire security domain qualifies as adversarial territory, unlike `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` which limit the exception to migration / deployment / CVE findings only).
+**Scope of the exception**: All security findings (no sub-scope limitation — the entire security domain qualifies as adversarial territory, unlike `application-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` which limit the exception to migration / deployment / CVE findings only).
 
 ## Expertise Areas
 

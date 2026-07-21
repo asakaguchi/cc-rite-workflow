@@ -53,7 +53,7 @@ write_broken_gitignore() {
 
 mk_errfile() {
   local f
-  f=$(mktemp /tmp/rite-vn-err-XXXXXX) || { echo "ERROR: mktemp failed" >&2; exit 1; }
+  f=$(mktemp "${TMPDIR:-/tmp}/rite-vn-err-XXXXXX") || { echo "ERROR: mktemp failed" >&2; exit 1; }
   err_files+=("$f")
   printf '%s' "$f"
 }

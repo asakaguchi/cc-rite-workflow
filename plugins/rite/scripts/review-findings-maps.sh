@@ -46,10 +46,7 @@
 #   severity_map_build_failed         — severity_map 構築用 jq が失敗 (exit 1、caller が [fix:error] に昇格)
 #   scope_map_build_failed            — scope_map 構築用 jq が失敗、scope_map_json="{}" で続行 (非ブロッキング)
 #
-# Eval-order enumeration (Pattern-2 documented-union input — distributed-fix-drift-check.sh の
-# DEFAULT_ALL_TARGETS に本 helper が登録されており、本 enumeration は reason 表と共に Pattern 2 の
-# documented set へ寄与する。どちらか一方にあれば documented とみなすため、厳密な同期や
-# enumeration 側の reverse staleness は機械検証されない):
+# Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
 # emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `low_current_pr_demoted_to_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
 #
 # Exit codes:
@@ -165,7 +162,7 @@ if [ "$auto_demote_low" = "true" ]; then
   norm_demoted_low_count=$(jq '[.findings[]? | select(.severity == "LOW" and .scope == "current-pr")] | length' "$review_source_path" 2>/dev/null || echo 0)
 fi
 if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 0 ] || [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-  if norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX 2>/dev/null); then
+  if norm_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX" 2>/dev/null); then
     # auto_demote_low jq filter: bash 変数を jq 引数で渡し、jq 内で動的判定
     if jq --arg demote_low "$auto_demote_low" '
       .findings |= map(
@@ -215,7 +212,7 @@ fi
 # jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で silent に空文字になる。
 # 重複警告が silent skip し、severity_map 構築が無音で空になる regression を防ぐため、
 # if-else で exit code を独立 capture する。
-jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-jq-err-XXXXXX" 2>/dev/null) || jq_err=""
 
 # line フィールドの nullable sentinel 正規化
 # review-result-schema.md L92 で line は `integer | null` (null が行非依存指摘の sentinel) に変更。

@@ -13,9 +13,9 @@
 # *wholesale* failure):
 #   T-11 → Step 1: `git worktree remove --force` failure (locked worktree)
 #   T-12 → Step 2: `git branch -D` failure (read-only refs/heads)
-#   T-13 → Step 3: `rm -rf` failure (read-only orphan-workdir parent)
+#   T-13 → Step 3: `rm -rf` failure (read-only orphan-workdir itself)
 #   T-16 → Step 4: `git worktree remove --force || rm -rf` failure (read-only
-#                  mutation-worktree parent) — extends the symmetry to the
+#                  mutation-worktree itself) — extends the symmetry to the
 #                  mutation-worktree reap added in Step 4
 #
 # Step 4 mutation worktree reaping — path-based sweep of orphan
@@ -63,10 +63,12 @@ trap '_cleanup_all_test_repos; exit 129' HUP
 # scans an empty, test-owned directory instead of the developer's real /tmp.
 # Without this, a real /tmp/rite-pr-create-* orphan on the host would make T-05
 # (noop assertion) flaky and could even delete a developer's in-flight workdir.
-# The workdir tests (T-06+) populate this directory explicitly. `mktemp -d
-# /tmp/...` and make_temp_repo both use explicit /tmp paths, so they are
-# unaffected by the TMPDIR export below.
-WORKDIR_SCAN_TMP=$(mktemp -d /tmp/rite-pr-cleanup-tmpdir-XXXXXX)
+# The workdir tests (T-06+) populate this directory explicitly. make_temp_repo
+# and the standalone base mktemp calls use HOST_TMPDIR (captured BEFORE the
+# export below) so test repos stay OUTSIDE the scan directory — preserving the
+# isolation invariant while remaining sandbox-compatible (host tmp namespace).
+HOST_TMPDIR="${TMPDIR:-/tmp}"
+WORKDIR_SCAN_TMP=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-tmpdir-XXXXXX")
 TEST_REPOS+=("$WORKDIR_SCAN_TMP")
 export TMPDIR="$WORKDIR_SCAN_TMP"
 
@@ -107,7 +109,7 @@ if [ "$(id -u)" = "0" ]; then IS_ROOT=1; fi
 # Returns the absolute path on stdout.
 make_temp_repo() {
   local tmp
-  tmp=$(mktemp -d /tmp/rite-pr-cleanup-test-XXXXXX)
+  tmp=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-test-XXXXXX")
   TEST_REPOS+=("$tmp")
   (
     cd "$tmp"
@@ -435,23 +437,39 @@ cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
 # T-10: find wholesale 失敗が silent でない
-# Given: TMPDIR が存在しないパスを指し、Step 3 の find が wholesale 失敗する
+# Given: TMPDIR は実在するが read 権限のない (0300: write+execute のみ) ディレクトリを指す
 # When: Cleanup runs
 # Then: find 失敗は WARNING + errors++ で surface され status=failed になる
 #       (process substitution の rc 非伝播による silent no-op 化を防ぐ回帰テスト)
-# TMPDIR override はこの 1 実行に限定する。cleanup script の mktemp は /tmp 直書きのため
-# bogus TMPDIR の影響を受けず、find の base 走査のみが失敗する。
+# 0300 は mktemp によるファイル作成 (write+execute で足りる) を許可しつつ find の readdir
+# (read が必要) だけを失敗させ、mktemp の走査出力先確保と find の wholesale 失敗を分離する。
+# mktemp が TMPDIR を尊重するようになった (Issue #1900) ため、旧来の「存在しないパス」技法
+# では mktemp 自身も失敗し別の WARNING (走査の出力先 mktemp に失敗) に化けてしまう。
+# root は DAC 権限チェックをバイパスするため本テストはスキップする。
 # -----------------------------------------------------------------------
 echo "T-10: find wholesale 失敗が silent でない"
-TEST_REPO=$(make_temp_repo)
-t10_output=$( cd "$TEST_REPO" && TMPDIR=/nonexistent/rite-pr-cleanup-does-not-exist bash "$CLEANUP" 2>&1 )
-if echo "$t10_output" | grep -q 'status=failed' \
-   && echo "$t10_output" | grep -q 'find による orphan workdir 走査が失敗'; then
-  pass "T-10: find 失敗が WARNING + status=failed で surface される (silent 化しない)"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-10: root では perms がバイパスされ強制失敗にならないためスキップ"
 else
-  fail "T-10: status=failed と find WARNING を期待。Output: $t10_output"
+  T10_NOREAD_BASE=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-noread-XXXXXX") || T10_NOREAD_BASE=""
+  if [ -z "$T10_NOREAD_BASE" ]; then
+    fail "T-10: mktemp -d による no-read base 作成に失敗"
+  else
+    TEST_REPOS+=("$T10_NOREAD_BASE")
+    chmod 0300 "$T10_NOREAD_BASE"
+    TEST_REPO=$(make_temp_repo)
+    t10_output=$( cd "$TEST_REPO" && TMPDIR="$T10_NOREAD_BASE" bash "$CLEANUP" 2>&1 )
+    chmod 0700 "$T10_NOREAD_BASE"
+    if echo "$t10_output" | grep -q 'status=failed' \
+       && echo "$t10_output" | grep -q 'find による orphan workdir 走査が失敗'; then
+      pass "T-10: find 失敗が WARNING + status=failed で surface される (silent 化しない)"
+    else
+      fail "T-10: status=failed と find WARNING を期待。Output: $t10_output"
+    fi
+    rm -rf "$T10_NOREAD_BASE" 2>/dev/null || true
+    cleanup_temp_repo "$TEST_REPO"
+  fi
 fi
-cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
 # T-11: Step 1 per-item worktree removal failure -> status=failed
@@ -517,15 +535,20 @@ fi
 
 # -----------------------------------------------------------------------
 # T-13: Step 3 per-item orphan workdir reap failure -> status=failed
-# Given: an aged matching `rite-pr-create-*` workdir whose PARENT dir is read-only
-#        (chmod 0500), so `rm -rf` cannot rmdir the workdir
-# When: cleanup runs with TMPDIR pointed at that locked base
+# Given: an aged matching `rite-pr-create-*` workdir that itself lacks write
+#        permission (chmod 0500) and contains a file, so `rm -rf` cannot
+#        unlink the file inside it
+# When: cleanup runs with TMPDIR pointed at the (fully writable) base
+#       directory containing that workdir
 # Then: WARNING "failed to reap orphan workdir" + errors++ -> status=failed, and
 #       the workdir survives. (T-10 covers the find *wholesale* failure; this is
 #       the symmetric Step 3 gap: the per-item rm failure.)
-# A dedicated locked base (not the shared WORKDIR_SCAN_TMP) is used so the 0500
-# chmod never blocks the other tests; the cleanup script's err-file mktemp uses
-# explicit /tmp paths, so only the find/rm base is affected by the TMPDIR override.
+# The base directory itself stays fully writable (mktemp -d default 0700) so
+# the cleanup script's own mktemp (workdir_find_err/out) and find succeed
+# normally — only the victim workdir's OWN permission blocks its removal.
+# Chmod'ing the shared *base* to 0500 (as an earlier version of this test did)
+# would now also break the script's own TMPDIR-respecting mktemp (Issue #1900),
+# masking this per-item rm failure behind the wholesale mktemp-failure branch.
 # -----------------------------------------------------------------------
 echo "T-13: Step 3 orphan workdir rm 失敗で status=failed"
 if [ "$IS_ROOT" = "1" ]; then
@@ -539,22 +562,23 @@ else
   # letting `mkdir -p "$LOCKED_BASE/..."` target the filesystem root
   # (`/rite-pr-create-victim`). Matches the sibling `|| var=""` convention in
   # pr-cycle-cleanup.sh.
-  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX) || LOCKED_BASE=""
+  LOCKED_BASE=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-locked-XXXXXX") || LOCKED_BASE=""
   if [ -z "$LOCKED_BASE" ]; then
     fail "T-13: mktemp -d による locked base 作成に失敗"
   else
     TEST_REPOS+=("$LOCKED_BASE")
     mkdir -p "$LOCKED_BASE/rite-pr-create-victim"
+    echo "blocked" > "$LOCKED_BASE/rite-pr-create-victim/blocked.txt"
     touch -t 202001010000 "$LOCKED_BASE/rite-pr-create-victim"
-    chmod 0500 "$LOCKED_BASE"
+    chmod 0500 "$LOCKED_BASE/rite-pr-create-victim"
     TEST_REPO=$(make_temp_repo)
     t13_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
     # Restore write permission so the survival check and cleanup can proceed.
-    chmod 0700 "$LOCKED_BASE"
+    chmod 0700 "$LOCKED_BASE/rite-pr-create-victim"
     if echo "$t13_output" | grep -q 'status=failed' \
        && echo "$t13_output" | grep -q 'failed to reap orphan workdir' \
        && [ -d "$LOCKED_BASE/rite-pr-create-victim" ]; then
-      pass "T-13: read-only 親での orphan workdir rm 失敗が WARNING + status=failed で surface"
+      pass "T-13: read-only workdir 自身での rm 失敗が WARNING + status=failed で surface"
     else
       fail "T-13: status=failed と reap WARNING を期待。victim=$([ -d "$LOCKED_BASE/rite-pr-create-victim" ] && echo present || echo gone). Output: $t13_output"
     fi
@@ -620,20 +644,22 @@ cleanup_temp_repo "$TEST_REPO"
 # -----------------------------------------------------------------------
 # T-16: Step 4 per-item mutation worktree reap failure -> status=failed
 # Given: an aged registered detached `rite-review-mutation-*` worktree (as in T-14)
-#        whose PARENT dir is read-only (chmod 0500), so neither
-#        `git worktree remove --force` nor the `rm -rf` fallback can rmdir it
-# When: cleanup runs with TMPDIR pointed at that locked base
+#        that itself lacks write permission (chmod 0500), so neither
+#        `git worktree remove --force` nor the `rm -rf` fallback can delete
+#        its contents (the `.git` file / checked-out files inside it)
+# When: cleanup runs with TMPDIR pointed at the (fully writable) base
+#       directory containing that worktree
 # Then: WARNING "failed to reap orphan mutation worktree" + errors++ -> status=failed,
 #       mutation_worktrees=0 (nothing reaped), and the worktree directory survives.
-#       Note: `git worktree remove --force` deletes the worktree *contents* before
-#       its final rmdir is blocked by the read-only parent, so what survives is a
-#       contents-removed husk (same mechanism T-11's docblock warns about) — the
-#       assertion checks directory *presence* (`-d`), not intactness. This is the
-#       Step 4 analogue of T-13's Step 3 gap: Step 1/2/3 pin per-item delete
-#       failures (T-11/T-12/T-13); Step 4's mutation reap was the missing
+#       This is the Step 4 analogue of T-13's Step 3 gap: Step 1/2/3 pin per-item
+#       delete failures (T-11/T-12/T-13); Step 4's mutation reap was the missing
 #       symmetric case.
-# Mirrors T-13's dedicated locked base + TMPDIR override so the 0500 chmod never
-# blocks other tests (the script's err-file mktemp uses explicit /tmp paths).
+# The base directory itself stays fully writable (mktemp -d default 0700) so
+# the cleanup script's own mktemp (mutation_find_err/out) and find succeed
+# normally — only the victim worktree's OWN permission blocks its removal.
+# Chmod'ing the shared *base* to 0500 (as an earlier version of this test did)
+# would now also break the script's own TMPDIR-respecting mktemp (Issue #1900),
+# masking this per-item reap failure behind the wholesale mktemp-failure branch.
 # -----------------------------------------------------------------------
 echo "T-16: Step 4 mutation worktree reap 失敗で status=failed"
 if [ "$IS_ROOT" = "1" ]; then
@@ -642,7 +668,7 @@ else
   # `|| LOCKED_BASE=""` — see T-13's note: a plain `VAR=$(cmd)` propagates the
   # command-substitution exit status under `set -e`, so the `||` keeps a failed
   # mktemp from aborting the suite and lets the guard fail this test instead.
-  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-mut-locked-XXXXXX) || LOCKED_BASE=""
+  LOCKED_BASE=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-mut-locked-XXXXXX") || LOCKED_BASE=""
   if [ -z "$LOCKED_BASE" ]; then
     fail "T-16: mktemp -d による locked base 作成に失敗"
   else
@@ -651,15 +677,15 @@ else
     # Register the detached mutation worktree inside the base BEFORE locking it.
     ( cd "$TEST_REPO" && git worktree add --detach -q "$LOCKED_BASE/rite-review-mutation-victim" HEAD )
     touch -t 202001010000 "$LOCKED_BASE/rite-review-mutation-victim"
-    chmod 0500 "$LOCKED_BASE"
+    chmod 0500 "$LOCKED_BASE/rite-review-mutation-victim"
     t16_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
     # Restore write permission so the survival check and cleanup can proceed.
-    chmod 0700 "$LOCKED_BASE"
+    chmod 0700 "$LOCKED_BASE/rite-review-mutation-victim"
     if echo "$t16_output" | grep -q 'status=failed' \
        && echo "$t16_output" | grep -q 'mutation_worktrees=0' \
        && echo "$t16_output" | grep -q 'failed to reap orphan mutation worktree' \
        && [ -d "$LOCKED_BASE/rite-review-mutation-victim" ]; then
-      pass "T-16: read-only 親での mutation worktree reap 失敗が WARNING + status=failed (mutation_worktrees=0) で surface"
+      pass "T-16: read-only worktree 自身での reap 失敗が WARNING + status=failed (mutation_worktrees=0) で surface"
     else
       fail "T-16: status=failed と reap WARNING を期待。victim=$([ -d "$LOCKED_BASE/rite-review-mutation-victim" ] && echo present || echo gone). Output: $t16_output"
     fi

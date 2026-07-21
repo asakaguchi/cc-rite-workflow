@@ -15,11 +15,13 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{owner}` | Repository owner (user or organization) | `gh repo view --json owner --jq '.owner.login'` | `asakaguchi` |
-| `{repo}` | Repository name | `gh repo view --json name --jq '.name'` | `cc-rite-workflow` |
-| `{default_branch}` | Repository default branch | `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | `main` or `develop` |
+| `{owner}` | Repository owner (user or organization) | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json owner --jq '.owner.login'`) | `asakaguchi` |
+| `{repo}` | Repository name | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json name --jq '.name'`) | `cc-rite-workflow` |
+| `{default_branch}` | Repository default branch | `gh repo view "$owner/$repo" --json defaultBranchRef --jq '.defaultBranchRef.name'`（`$owner/$repo` は上記 2 行で解決済みの値。明示指定なら SSH host alias 環境でも動く） | `main` or `develop` |
 
 ### Issue Information
+
+> `-R {owner_repo}` は [gh-cli-patterns.md の Owner/Repo Resolution](../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
@@ -27,19 +29,19 @@ Variables use the following formats:
 | `#{number}` | Issue number with `#` prefix | Same as `{number}` with formatting | `#531` |
 | `{issue_number}` | Issue number (alias) | Same as `{number}` | `531` |
 | `#{issue_number}` | Issue number with `#` prefix | Same as `#{number}` | `#531` |
-| `{title}` | Issue title | `gh issue view --json title --jq '.title'` | `Fix workflow diagram` |
+| `{title}` | Issue title | `gh issue view -R {owner_repo} --json title --jq '.title'` | `Fix workflow diagram` |
 | `{issue_title}` | Issue title (alias) | Same as `{title}` | `Fix workflow diagram` |
-| `{state}` | Issue state | `gh issue view --json state --jq '.state'` | `OPEN`, `CLOSED` |
+| `{state}` | Issue state | `gh issue view -R {owner_repo} --json state --jq '.state'` | `OPEN`, `CLOSED` |
 
 ### Pull Request Information
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{pr_number}` | PR number | `gh pr create` output or `gh pr view` | `536` |
+| `{pr_number}` | PR number | `gh pr create` output or `gh pr view "$(git branch --show-current)" -R {owner_repo}` | `536` |
 | `#{pr_number}` | PR number with `#` prefix | Same as `{pr_number}` with formatting | `#536` |
-| `{pr_state}` | PR state | `gh pr view --json state --jq '.state'` | `OPEN`, `MERGED`, `CLOSED` |
-| `{pr_url}` | PR URL | `gh pr view --json url --jq '.url'` | `https://github.com/owner/repo/pull/536` |
-| `{isDraft}` | Whether PR is draft | `gh pr view --json isDraft --jq '.isDraft'` | `true`, `false` |
+| `{pr_state}` | PR state | `gh pr view {pr_number} -R {owner_repo} --json state --jq '.state'` | `OPEN`, `MERGED`, `CLOSED` |
+| `{pr_url}` | PR URL | `gh pr view {pr_number} -R {owner_repo} --json url --jq '.url'` | `https://github.com/owner/repo/pull/536` |
+| `{isDraft}` | Whether PR is draft | `gh pr view {pr_number} -R {owner_repo} --json isDraft --jq '.isDraft'` | `true`, `false` |
 
 ### Branch Information
 
@@ -129,12 +131,20 @@ Variables are replaced at runtime by the command that reads the template:
 
 ### Replacement Implementation
 
-Commands use these methods to replace variables:
+Commands use these methods to replace variables (`{plugin_root}` is resolved per
+[Plugin Path Resolution](../references/plugin-path-resolution.md)):
 
 ```bash
 # Example: Replace {owner} and {repo}
-owner=$(gh repo view --json owner --jq '.owner.login')
-repo=$(gh repo view --json name --jq '.name')
+# SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 # Read template and replace
 sed -e "s/{owner}/$owner/g" \

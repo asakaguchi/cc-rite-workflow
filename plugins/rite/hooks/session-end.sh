@@ -1,6 +1,24 @@
 #!/bin/bash
 # rite workflow - Session End Hook
 # Saves final state when session ends
+#
+# Best-effort deactivation contract (Issue #1923): this hook is Claude Code's
+# SessionEnd lifecycle hook, so it only runs on exit paths the harness itself
+# fires SessionEnd for. It does NOT run on a forced/abrupt termination of the
+# session process (e.g. a killed/crashed process, or the hosting terminal
+# being closed out from under it) — those paths never invoke this script, so
+# the per-session flow-state is left exactly as last written, typically
+# `active=true` with whatever `phase` was in progress. Deactivation
+# (`.active = false` below) is therefore best-effort, NOT a guarantee.
+#
+# Consequently, code elsewhere that treats `active=true` as "do not touch —
+# a live session still owns this" must not assume SessionEnd will eventually
+# clear it. The actual safety net is the liveness TTL in
+# pr-cycle-cleanup.sh's worktree/branch reap guard
+# (`RITE_SESSION_LIVENESS_TTL_HOURS`, default 24h): an `active=true` holder is
+# protected only while its flow-state `updated_at` is within that TTL, so a
+# session whose termination skipped this hook eventually stops blocking reap
+# instead of doing so forever.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)

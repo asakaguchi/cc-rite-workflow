@@ -49,7 +49,7 @@ trap cleanup EXIT
 
 mk_tmp() {
   local f
-  f=$(mktemp /tmp/rite-wlsr-XXXXXX) || { echo "ERROR: mktemp failed" >&2; exit 1; }
+  f=$(mktemp "${TMPDIR:-/tmp}/rite-wlsr-XXXXXX") || { echo "ERROR: mktemp failed" >&2; exit 1; }
   tmp_files+=("$f")
   printf '%s' "$f"
 }

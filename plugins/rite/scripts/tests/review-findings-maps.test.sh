@@ -123,7 +123,7 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
     norm_demoted_low_count=$(jq '[.findings[]? | select(.severity == "LOW" and .scope == "current-pr")] | length' "$review_source_path" 2>/dev/null || echo 0)
   fi
   if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 0 ] || [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-    if norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX 2>/dev/null); then
+    if norm_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX" 2>/dev/null); then
       if jq --arg demote_low "$auto_demote_low" '
         .findings |= map(
           (if has("scope") then . else .scope = (
@@ -164,7 +164,7 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
     fi
   fi
 
-  jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX 2>/dev/null) || jq_err=""
+  jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-jq-err-XXXXXX" 2>/dev/null) || jq_err=""
 
   if duplicate_keys=$(jq -r '[.findings[] | (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end))] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
     if [ -n "$duplicate_keys" ]; then
@@ -362,15 +362,15 @@ fi
 # TC-9: normalization tempfile が leak しない (script 終了時 trap 削除契約)
 # --------------------------------------------------------------------------
 echo "TC-9: norm_tmp leak なし"
-# 共有 /tmp glob の count delta は並列実行時に他プロセスの同 glob tempfile 生成/削除で
+# 共有 tmp glob の count delta は並列実行時に他プロセスの同 glob tempfile 生成/削除で
 # 両方向に flaky 化する。helper の mktemp template は
-# /tmp/rite-fix-normalized-XXXXXX の絶対 path 固定で TMPDIR 隔離が効かないため、
-# before/after の path 集合差分 (after にのみ存在する path) で leak を判定する。
-before_paths=$(ls /tmp/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
+# ${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX で、本テストと同じ TMPDIR 名前空間に
+# 生成されるため、before/after の path 集合差分 (after にのみ存在する path) で leak を判定する。
+before_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
 repo=$(make_sandbox tc9 default)
 write_fixture "$repo/review.json" v10_missing_scope
 run_helper "$repo" local_file "$repo/review.json"
-after_paths=$(ls /tmp/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
+after_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
 leaked_paths=$(LC_ALL=C comm -13 <(printf '%s\n' "$before_paths") <(printf '%s\n' "$after_paths"))
 if [ -z "$leaked_paths" ]; then
   pass "handed_off_norm_tmp が trap EXIT で削除される (leak なし)"

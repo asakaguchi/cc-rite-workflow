@@ -4,12 +4,14 @@
 
 Optimization rules for handling large PRs in `/rite:pr-review`.
 
+> 以下の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応。同節の Propagation 小節参照）。
+
 ## Change Scale Determination
 
 Check the change scale to determine the need for context optimization:
 
 ```bash
-gh pr view {pr_number} --json additions,deletions,changedFiles --jq '{additions: .additions, deletions: .deletions, files: .changedFiles}'
+gh pr view {pr_number} -R {owner_repo} --json additions,deletions,changedFiles --jq '{additions: .additions, deletions: .deletions, files: .changedFiles}'
 ```
 
 **Scale determination table:**
@@ -29,7 +31,7 @@ Conditions are evaluated top-down. `total_changes = additions + deletions`.
 Retrieve the PR diff in bulk:
 
 ```bash
-gh pr diff {pr_number}
+gh pr diff {pr_number} -R {owner_repo}
 ```
 
 ### Medium/Large Scale
@@ -37,7 +39,7 @@ gh pr diff {pr_number}
 Retrieve only the related file diffs per reviewer. First retrieve the changed file list:
 
 ```bash
-gh pr view {pr_number} --json files --jq '.files[].path'
+gh pr view {pr_number} -R {owner_repo} --json files --jq '.files[].path'
 ```
 
 Then extract per-reviewer diffs in Phase 4.3.
@@ -57,7 +59,7 @@ Optimize diff passing based on scale:
 Use file pattern analysis results from Phase 2.2 to narrow down the diff passed to each reviewer.
 
 **Actual behavior:**
-1. Retrieve the entire diff with `gh pr diff {pr_number}`
+1. Retrieve the entire diff with `gh pr diff {pr_number} -R {owner_repo}`
 2. Extract diff sections for files matching each reviewer's Activation pattern
 3. Pass only the extracted diff to each reviewer's Task
 
@@ -98,7 +100,7 @@ For diffs exceeding 2000 lines, pass the following information to each reviewer:
 
 `{relevant_files}` is a different file list for each reviewer depending on their area of expertise. Only files matching the reviewer's Activation pattern are included.
 
-**Example:** Security Expert receives files matching `**/auth/**`, Frontend Expert receives files matching `**/*.tsx`.
+**Example:** Security Expert receives files matching `**/auth/**`, Application Expert receives files matching `**/*.tsx`.
 
 ## Retrieval Guidelines for Large Diffs
 

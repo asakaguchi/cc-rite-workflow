@@ -90,8 +90,15 @@ issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[
 **Fallback (local file missing/corrupt)**: If the local file does not exist or is corrupt, fall back to the Issue comment API:
 
 ```bash
-owner=$(gh repo view --json owner --jq '.owner.login')
-repo=$(gh repo view --json name --jq '.name')
+# SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body'
@@ -122,7 +129,7 @@ If Issue number cannot be retrieved, delegate to Phase 1.4 fallback processing.
 >
 > **DRIFT-CHECK ANCHOR (MUST)**: This bash block is intentionally synchronized between `skills/pr-create/SKILL.md` §1.0 and `skills/ready/SKILL.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
 >
-> **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** PR mutation when the same pattern is present — lint is the early heads-up, this is the final hard gate before submission.
+> **Independent of the `/rite:lint` Phase 3.5 bang-backtick check**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** PR mutation when the same pattern is present — lint is the early heads-up, this is the final hard gate before submission.
 
 Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
 
@@ -207,7 +214,7 @@ Terminate processing.
 ### 1.3 Verify Changes
 
 ```bash
-git status --porcelain
+bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh
 git diff --stat origin/{base_branch}...HEAD
 git log --oneline origin/{base_branch}...HEAD
 ```
@@ -261,8 +268,10 @@ If extraction fails, confirm with `AskUserQuestion`:
 
 ### 1.5 Retrieve Issue Information
 
+> 以降の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応。同節の Propagation 小節参照）。
+
 ```bash
-gh issue view {issue_number} --json number,title,body,state,labels
+gh issue view {issue_number} -R {owner_repo} --json number,title,body,state,labels
 ```
 
 **If the Issue is closed:**
@@ -357,7 +366,7 @@ Extract checklist from the Issue body obtained in Phase 1.5:
 
 ```bash
 # Issue 本文を取得（既に Phase 1.5 で取得済みの場合は再利用）
-gh issue view {issue_number} --json body --jq '.body'
+gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'
 ```
 
 **Extraction pattern:**
@@ -752,8 +761,10 @@ Before finalizing the PR body, gather two additional sources so reviewers start 
 Push the local branch to remote:
 
 ```bash
-git push -u origin {branch_name}
+git push origin {branch_name}
 ```
+
+> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。3.4 の `gh pr create` は `--head` で明示的にブランチを指定するため upstream に依存しない。
 
 ### 3.4 Create Draft PR
 
@@ -800,7 +811,7 @@ if [ ! -s "$pr_workdir/pr_body.md" ]; then
   exit 1
 fi
 
-gh pr create --draft --base "{base_branch}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
+gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
 ```
 
 ### 3.5 Update Work Memory Phase
@@ -968,8 +979,8 @@ URL: {pr_url}
 
 | Error | Resolution |
 |--------|------|
-| Push failure | Check network -> `gh auth status` -> `git pull --rebase` -> retry |
-| PR creation failure | Check existing PRs with `gh pr list` -> verify permissions -> retry |
+| Push failure | Check network -> `gh auth status` -> `git pull --rebase origin {branch_name}` -> retry |
+| PR creation failure | Check existing PRs with `gh pr list -R {owner_repo}` -> verify permissions -> retry |
 | Issue not found | Choose: create without Issue / specify different Issue / cancel |
 ## Language Support
 

@@ -201,7 +201,7 @@ page_err_mktemp_failed=0  # accumulator (失敗件数)
 while IFS= read -r page; do
   [ -z "$page" ] && continue  # blank line guard
 
-  page_err=$(mktemp /tmp/rite-lint-page-err-XXXXXX 2>/dev/null) || { page_err=""; page_err_mktemp_failed=$((page_err_mktemp_failed + 1)); }
+  page_err=$(mktemp "${TMPDIR:-/tmp}/rite-lint-page-err-XXXXXX" 2>/dev/null) || { page_err=""; page_err_mktemp_failed=$((page_err_mktemp_failed + 1)); }
 
   # branch_strategy ごとに 2 経路:
   #   separate_branch: git show (worktree には存在しない、ref から読取)
@@ -224,7 +224,7 @@ while IFS= read -r page; do
     # frontmatter YAML list から sources[].ref を抽出。
     # awk diag mktemp で sources_seen / extracted のカウントを stderr 経由で per-page 可視化
     # (「sources: 節は検出したが ref が 0 件」という YAML 破損を可視化)
-    awk_diag=$(mktemp /tmp/rite-lint-p62-awk-diag-XXXXXX 2>/dev/null) || awk_diag=""
+    awk_diag=$(mktemp "${TMPDIR:-/tmp}/rite-lint-p62-awk-diag-XXXXXX" 2>/dev/null) || awk_diag=""
     if [ -z "$awk_diag" ]; then
       awk_diag_mktemp_failed=$((awk_diag_mktemp_failed + 1))
     fi
@@ -317,7 +317,7 @@ fi
 # sort -u で重複排除 (ステップ 6.0 awk/sort と対称に pipefail + stderr 捕捉)
 if [ -n "$all_source_refs" ]; then
   set -o pipefail
-  sort_err=$(mktemp /tmp/rite-lint-p62-sort-err-XXXXXX 2>/dev/null) || {
+  sort_err=$(mktemp "${TMPDIR:-/tmp}/rite-lint-p62-sort-err-XXXXXX" 2>/dev/null) || {
     echo "WARNING: stderr 退避 tempfile (sort_err) の mktemp に失敗しました。sort/awk pipeline の詳細エラー情報は失われます" >&2
     echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
     echo "  影響: pipeline 失敗時の根本原因 (sort バイナリ異常 / OOM / SIGPIPE 等) が不可視になり、all_source_refs が io_error 降格しても理由が追えません" >&2

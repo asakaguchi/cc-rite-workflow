@@ -220,7 +220,7 @@ if [ -d "$wiki_raw_root" ]; then
   trap '_cleanup; exit 143' TERM
   trap '_cleanup; exit 129' HUP
 
-  find_err=$(mktemp /tmp/rite-wiki-ingest-find-err-XXXXXX 2>/dev/null) || {
+  find_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-find-err-XXXXXX" 2>/dev/null) || {
     echo "WARNING: stderr 退避 tempfile (find_err) の mktemp に失敗しました。find の詳細エラー情報は失われます" >&2
     echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
     echo "  影響: permission denied で raw source が silent 脱落する可能性があります" >&2
@@ -285,7 +285,7 @@ trap '_cleanup; exit 130' INT
 trap '_cleanup; exit 143' TERM
 trap '_cleanup; exit 129' HUP
 
-cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX 2>/dev/null) || {
+cat_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-cat-err-XXXXXX" 2>/dev/null) || {
   echo "WARNING: stderr 退避 tempfile (cat_err) の mktemp に失敗しました。cat の詳細エラー情報は失われます" >&2
   echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
   echo "  影響: file body 読取失敗の根本原因 (permission / IO error) が不可視になります" >&2
@@ -549,7 +549,7 @@ if [ "$branch_strategy" = "same_branch" ]; then
 
   # same_branch 戦略では .gitignore に `!.rite/wiki/` negation が必要。
   # 失敗時は anchor marker (gitignore-wiki-section-start) を案内する。
-  add_err=$(mktemp /tmp/rite-wiki-ingest-add-err-XXXXXX 2>/dev/null) || add_err=""
+  add_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-add-err-XXXXXX" 2>/dev/null) || add_err=""
   if ! git add .rite/wiki/ 2>"${add_err:-/dev/null}"; then
     echo "ERROR: git add .rite/wiki/ failed" >&2
     if [ -n "$add_err" ] && [ -s "$add_err" ]; then
@@ -581,7 +581,7 @@ if [ "$branch_strategy" = "same_branch" ]; then
   if ! git commit -m "$commit_msg"; then
     echo "ERROR: git commit failed" >&2
     echo "  ロールバック: staging area の .rite/wiki/ 変更を unstage します" >&2
-    _reset_err=$(mktemp /tmp/rite-wiki-ingest-reset-err-XXXXXX 2>/dev/null) || {
+    _reset_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-reset-err-XXXXXX" 2>/dev/null) || {
       echo "  WARNING: stderr 退避 tempfile (_reset_err) の mktemp に失敗しました。git reset の詳細エラー情報は失われます" >&2
       echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
       echo "  影響: git reset 失敗の根本原因 (index lock / permission denied 等) が不可視になります" >&2

@@ -181,7 +181,7 @@ with open(out_path, "w") as f:
 
 ```bash
 echo "$content" > .rite-work-memory/issue-123.md
-printf '%s' "$backup" > /tmp/rite-backups/wm-backup.md
+printf '%s' "$backup" > "${TMPDIR:-/tmp}/rite-backups/wm-backup.md"
 ```
 
 **Failure mode**: Parent directory does not exist, producing `そのようなファイルやディレクトリはありません`.
@@ -192,8 +192,8 @@ printf '%s' "$backup" > /tmp/rite-backups/wm-backup.md
 mkdir -p .rite-work-memory
 echo "$content" > .rite-work-memory/issue-123.md
 
-mkdir -p /tmp/rite-backups
-printf '%s' "$backup" > /tmp/rite-backups/wm-backup.md
+mkdir -p "${TMPDIR:-/tmp}/rite-backups"
+printf '%s' "$backup" > "${TMPDIR:-/tmp}/rite-backups/wm-backup.md"
 ```
 
 **Key changes**:
@@ -206,7 +206,7 @@ printf '%s' "$backup" > /tmp/rite-backups/wm-backup.md
 | Directory | Purpose |
 |-----------|---------|
 | `.rite-work-memory/` | Local work memory files |
-| `/tmp/rite-backups/` | Work memory backup files |
+| `${TMPDIR:-/tmp}/rite-backups/` | Work memory backup files |
 | `docs/designs/` | Design documents |
 
 ---

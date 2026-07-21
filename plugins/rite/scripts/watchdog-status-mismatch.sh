@@ -117,12 +117,13 @@ fi
 # gh repo view と gh pr list は別 tempfile (repo_view_err / pr_list_err) に分けて capture し、
 # 前者の non-fatal warning が後者の redirect で truncate されないようにする。
 repo_view_err=""
+git_remote_err=""
 pr_list_err=""
 gql_err=""
 jq_err=""
 reconcile_err=""
 _rite_watchdog_cleanup() {
-  rm -f "${repo_view_err:-}" "${pr_list_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+  rm -f "${repo_view_err:-}" "${git_remote_err:-}" "${pr_list_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
 }
 trap 'rc=$?; _rite_watchdog_cleanup; exit $rc' EXIT
 trap '_rite_watchdog_cleanup; exit 130' INT
@@ -130,31 +131,47 @@ trap '_rite_watchdog_cleanup; exit 143' TERM
 trap '_rite_watchdog_cleanup; exit 129' HUP
 
 # --- Repo info ---
-# gh repo view stderr is captured into a dedicated tempfile (repo_view_err) so
-# the discrimination matches the 2-site contract declared above.
-repo_view_err=$(mktemp /tmp/rite-watchdog-repo-err-XXXXXX) || repo_view_err=""
-if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
-  echo "ERROR: gh repo view failed" >&2
-  if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
-    head -5 "$repo_view_err" | sed 's/^/  /' >&2
-  fi
-  echo "  対処: gh auth status / network 接続を確認してください" >&2
-  exit 1
+# git-remote parse first: works even when `origin` is an SSH Host alias
+# unrecognized by gh's host allowlist (#1899). Falls through to
+# `gh repo view` (stderr captured to repo_view_err per the 2-site contract
+# declared above) whenever the parse fails (no origin remote, unparseable
+# URL, charset-rejected) — its stderr is captured so a two-sided failure
+# can be attributed on both sides.
+REPO_OWNER=""
+REPO_NAME=""
+git_remote_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-git-remote-err-XXXXXX") || git_remote_err=""
+_git_or_line=$(bash "$PLUGIN_ROOT/hooks/scripts/lib/git-remote.sh" resolve-owner-repo 2>"${git_remote_err:-/dev/null}") || _git_or_line=""
+if [ -n "$_git_or_line" ]; then
+  IFS=$'\t' read -r REPO_OWNER REPO_NAME <<< "$_git_or_line"
 fi
-# cycle 8 C7-F02 対応: jq の `// empty` fallback + 明示 fail で `set -euo pipefail` 下の silent abort を防ぐ。
-# `// empty` を付けない素朴な `jq -r '.owner.login'` は auth-scope 縮退時に `null` 文字列を代入するか
-# jq exit 5 で診断情報を破棄する。空文字列で fail-fast し、stderr に root cause を出力する。
-REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
-REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
 if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
-  echo "ERROR: failed to parse owner/name from gh repo view (owner='$REPO_OWNER' name='$REPO_NAME')" >&2
-  echo "  対処: gh auth refresh で scope を更新するか、PAT の repo permission を確認してください" >&2
-  exit 1
+  repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-repo-err-XXXXXX") || repo_view_err=""
+  if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
+    echo "ERROR: gh repo view failed" >&2
+    if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
+      head -5 "$repo_view_err" | sed 's/^/  /' >&2
+    fi
+    if [ -n "$git_remote_err" ] && [ -s "$git_remote_err" ]; then
+      head -3 "$git_remote_err" | sed 's/^/  git-remote: /' >&2
+    fi
+    echo "  対処: gh auth status / network 接続を確認してください" >&2
+    exit 1
+  fi
+  # cycle 8 C7-F02 対応: jq の `// empty` fallback + 明示 fail で `set -euo pipefail` 下の silent abort を防ぐ。
+  # `// empty` を付けない素朴な `jq -r '.owner.login'` は auth-scope 縮退時に `null` 文字列を代入するか
+  # jq exit 5 で診断情報を破棄する。空文字列で fail-fast し、stderr に root cause を出力する。
+  REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
+  REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
+  if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
+    echo "ERROR: failed to parse owner/name from gh repo view (owner='$REPO_OWNER' name='$REPO_NAME')" >&2
+    echo "  対処: gh auth refresh で scope を更新するか、PAT の repo permission を確認してください" >&2
+    exit 1
+  fi
 fi
 
 # --- Scan OPEN, non-draft PRs ---
-pr_list_err=$(mktemp /tmp/rite-watchdog-pr-list-err-XXXXXX) || pr_list_err=""
-if ! PR_LIST=$(gh pr list --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${pr_list_err:-/dev/null}"); then
+pr_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-pr-list-err-XXXXXX") || pr_list_err=""
+if ! PR_LIST=$(gh pr list --repo "$REPO_OWNER/$REPO_NAME" --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${pr_list_err:-/dev/null}"); then
   echo "ERROR: gh pr list failed" >&2
   if [ -n "$pr_list_err" ] && [ -s "$pr_list_err" ]; then
     head -5 "$pr_list_err" | sed 's/^/  /' >&2
@@ -208,8 +225,8 @@ while IFS= read -r pr_entry; do
 
   # Query Issue's current Status in the Project. Capture gh and jq stderr into
   # independent tempfiles so a failed pipeline can be triaged by side (gh vs jq).
-  gql_err=$(mktemp /tmp/rite-watchdog-gql-err-XXXXXX) || gql_err=""
-  jq_err=$(mktemp /tmp/rite-watchdog-jq-err-XXXXXX) || jq_err=""
+  gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-gql-err-XXXXXX") || gql_err=""
+  jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-jq-err-XXXXXX") || jq_err=""
   # Inner `set -o pipefail` mirrors the outer setting; making it explicit keeps
   # the inheritance contract obvious when this block is run in a sub-shell.
   if ! current_status=$(set -o pipefail; gh api graphql -f query='
@@ -256,7 +273,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     if [ "$RECONCILE" = "true" ]; then
       # stderr を tempfile に退避して失敗時の原因 (auth / rate limit / partial failure) を可視化する。
       # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user が失敗原因を triage できない。
-      reconcile_err=$(mktemp /tmp/rite-watchdog-reconcile-err-XXXXXX) || reconcile_err=""
+      reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
         --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \

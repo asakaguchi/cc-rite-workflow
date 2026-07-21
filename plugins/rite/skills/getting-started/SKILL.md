@@ -105,6 +105,13 @@ Stop here if not authenticated.
 gh repo view --json owner,name
 ```
 
+> **Note (SSH host alias remote)**: origin が `git@github.com-work:owner/repo.git` のような
+> SSH host alias の場合、GitHub リポジトリであってもこのコマンドは
+> `none of the git remotes configured for this repository point to a known GitHub host` で失敗する。
+> その場合は `git remote get-url origin` で owner/repo を確認できれば GitHub リポジトリとして扱ってよい
+> （rite の各スキルは `git-remote.sh` による remote URL 直接パースで owner/repo を解決するため動作する。
+> canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）。
+
 **If not a GitHub repository:**
 
 ```
@@ -331,9 +338,13 @@ Common Issues and Solutions:
 1. "gh: command not found"
    Solution: Install gh CLI (see Prerequisites section above)
 
-2. "Could not resolve to a Repository"
+2. "Could not resolve to a Repository" /
+   "none of the git remotes configured for this repository point to a known GitHub host"
    Solution: Ensure you're in a Git repository that's pushed to GitHub
    Check with: gh repo view
+   Note: origin が SSH host alias（git@github.com-work: 等）の場合、gh repo view は
+   GitHub リポジトリでも失敗する。git remote get-url origin で確認すること
+   （rite の実行手順は git-remote.sh 優先の解決で alias 環境でも動作する）
 
 3. "Projects not found" during /rite:setup
    Solution: Projects is optional. Choose "Skip Projects integration"
@@ -422,6 +433,13 @@ Operating rules (important):
   • .rite/worktrees/ must be effectively ignored — a broad .rite/ rule
     suffices (/rite:setup adds an entry only when not already covered;
     /rite:lint warns if it is not ignored while multi_session is enabled).
+
+  • Sandboxed environments: after entering a session worktree, state writes to
+    the main checkout (.rite/sessions/, etc.) can be rejected as read-only.
+    See ../../references/git-worktree-patterns.md, section "worktree cwd から
+    main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる"
+    (Issue #1896), for the fix (/rite:setup surfaces the same guidance when it
+    detects this applies).
 
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
   - parallel  → multiple sub-agents within ONE session (.worktrees/{issue}/{task})

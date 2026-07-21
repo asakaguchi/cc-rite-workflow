@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.8.3-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.8.3)
+[![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.9.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
@@ -34,6 +34,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Implementation Contract**: Structured Issue template format for clear specifications
 - **Assumption Surfacing**: Before generating the Implementation Contract, `/rite:issue-create` surfaces the assumptions the model implicitly filled in and processes them in three categories — derivable (self-resolved from the repository/Wiki), user-specific decisions (confirmed with up to three recommended-option questions), and deferrable (documented as Assumptions / Open Questions in the Issue body). **Design principle**: questions are limited to information that exists only in the user's head; anything derivable from the repository or Wiki is resolved by the model. This keeps implicit guesses from being silently locked into the contract that drives the whole downstream pipeline
 - **Experience Wiki**: LLM-driven project knowledge base, stored as an [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant bundle (`type`/`okf_version` frontmatter, OKF index/log). Auto-ingests review/fix outcomes into topical pages and injects relevant heuristics at the start of each Issue (opt-out). The conformant bundle can be browsed as a concept graph with the upstream OKF static visualizer (not vendored; see `plugins/rite/references/wiki-patterns.md`)
+- **Sandbox-aware**: `/rite:setup` proactively detects and warns about two sandbox environment constraints before they cause a failure — a session worktree's state writes into the main checkout being rejected after `EnterWorktree`, and `git push`/`fetch` being blocked over an SSH host alias remote — with the supported workaround surfaced up front
 
 ## Installation
 

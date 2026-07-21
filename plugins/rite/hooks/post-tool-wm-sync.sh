@@ -242,7 +242,7 @@ case "$_phase" in
 
     # mktemp fallback uses $$ + $RANDOM to avoid TOCTOU collision when two
     # Claude Code sessions share a PID; pure $$ on /tmp is race-prone.
-    _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="/tmp/rite-wm-sync-files.$$.${RANDOM}"
+    _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="${TMPDIR:-/tmp}/rite-wm-sync-files.$$.${RANDOM}"
     _git_diff_err=$(mktemp 2>/dev/null) || _git_diff_err=""
     # State access uses STATE_ROOT (shared main checkout, via the `cd` above), but
     # the progress-table diff MUST run in the SESSION's working tree: under

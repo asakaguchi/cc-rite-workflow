@@ -161,7 +161,7 @@ _rite_log_read_impact_advice() {
   echo "  影響: skipped_refs を空として継続するため、skip 済み raw が誤って missing_concept に計上される可能性あり" >&2
 }
 
-log_err=$(mktemp /tmp/rite-wiki-lint-p60-err-XXXXXX 2>/dev/null) || {
+log_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-lint-p60-err-XXXXXX" 2>/dev/null) || {
   echo "WARNING: stderr 退避 tempfile (log_err) の mktemp に失敗しました。raw 走査の詳細エラー情報は失われます" >&2
   echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
   echo "  影響: stderr pattern match が実行不能になり io_error 側に倒れ、false positive note が常に表示される regression が起き得ます" >&2

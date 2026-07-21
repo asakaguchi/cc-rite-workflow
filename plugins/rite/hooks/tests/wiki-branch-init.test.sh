@@ -108,7 +108,7 @@ if [ "$branch_strategy" = "separate_branch" ]; then
     exit 1
   }
 
-  git push -u origin "$wiki_branch" || {
+  git push origin "$wiki_branch" || {
     echo "ERROR: git push failed for branch '$wiki_branch'" >&2
     echo "  対処: gh auth status / ネットワーク接続 / リモートリポジトリの権限を確認してください" >&2
     exit 1
@@ -353,7 +353,7 @@ fi
 
 # --------------------------------------------------------------------------
 # TC-8: leading-`-` の wiki_branch → fail-fast gate + exit 1
-#   `--force` が `git push -u origin` の option として解釈される argument injection
+#   `--force` が `git push origin` の option として解釈される argument injection
 #   経路を git 操作到達前に遮断することの検証。gate は git 操作より前に発火するため
 #   ブランチ未作成・main 滞在の end state も pin する。
 # --------------------------------------------------------------------------

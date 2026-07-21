@@ -7,25 +7,36 @@
 #   1. gh pr diff --stat  (unsupported flag)
 #   2. gh pr diff -- <path>  (unsupported file filter)
 #   3. != null in jq/awk  (history expansion breaks !)
-#   4. Reviewer subagent running state-mutating git commands
-#      Enforced only when transcript_path contains "/subagents/".
+#   4. Reviewer subagent .git-write gate — enforced only in subagent contexts.
+#      Four sub-checks serving one guarantee (no writes into a .git directory):
+#        (L) oversized command → deny (timeout-based bypass prevention)
+#        (Z) shell-command wrapper (eval / sh -c / ...) → deny (opaque quoting
+#            can hide a .git write)
+#        (N) native .git-writing git subcommand (config write forms / mutating
+#            remote / update-ref / symbolic-ref) → deny (writes .git/config or
+#            .git refs with no redirect or file verb for (H) to see)
+#        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
 #
-# Exit behavior:
-#   exit 0 — allow (no output)
-#   stdout JSON with permissionDecision: "deny" — block
+# Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
+# are deliberately NOT machine-gated here (Issue #1879). They are visible and
+# recoverable via `git status`; their guarantee is Layer 1 (the reviewer prompt
+# READ-ONLY contract, plugins/rite/agents/_reviewer-base.md) + Layer 3
+# (post-review-state-verify.sh drift detection after each review). Only the
+# .git-write path keeps a machine gate: it is invisible to `git status`,
+# effectively irreversible, and plants arbitrary code execution in the
+# non-sandboxed main session (.git/hooks/*, .git/config core.hooksPath /
+# alias.*=!sh / core.fsmonitor) — strictly worse than a source edit.
+#
+# Exit behavior: exit 0 — allow (no output); stdout JSON with
+# permissionDecision: "deny" — block.
 #
 # Fail direction is pattern-specific: Patterns 1-3 (convenience) fail OPEN so an
 # edge-case parse crash never false-blocks a legitimate command; Pattern 4 (the
-# reviewer state-mutating-git security boundary) fails CLOSED so a parse crash
-# never silently bypasses the guard. See the two ERR traps below.
+# reviewer .git-write security boundary) fails CLOSED so a parse crash never
+# silently bypasses the guard. See the two ERR traps below.
 #
-# hooks.json timeout: this hook is registered in hooks.json (PreToolUse:Bash) with
-# a 10s timeout. hooks.json is strict JSON (no comments), so the rationale lives
-# here: the guard is a fast, synchronous pre-execution gate that runs on every
-# Bash command using only bash built-ins plus a couple of jq calls, so 10s is a
-# generous ceiling that bounds a pathological hang without risking false timeouts —
-# aligned with the other lightweight synchronous gates (Stop=10s, the Edit/Write
-# bang-backtick hook=10s).
+# hooks.json timeout: 10s — a generous ceiling for a bash-builtins gate, aligned
+# with the other lightweight synchronous gates (Stop=10s, bang-backtick hook=10s).
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -36,13 +47,11 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 # neutralize_ctrl --c0-only (deny フォールバックの JSON エスケープ用)。
-# guard なし source は意図的な設計判断: 本 hook は Pattern 1-3 の ERR trap
-# (_rite_btg_pattern13_fail_open) が exit 0 = allow を選ぶ設計上 fail-open であり、helper
-# 欠落 (= plugin 破損) による source 失敗の exit 1 も PreToolUse では non-blocking = allow
-# として同じ fail-open に収束する (flow-state.sh / stop-loop-continuation.sh の必須依存
-# precedent と同一)。`|| true` を付けてはならない — neutralize_ctrl 未定義のまま deny
-# フォールバックに到達すると command not found で reason を失い placeholder へ縮退する
-# だけで、guard を付ける利点がない。
+# guard なし source は意図的: helper 欠落 (= plugin 破損) による source 失敗の exit 1
+# も PreToolUse では non-blocking = allow として Pattern 1-3 と同じ fail-open に収束する
+# (flow-state.sh / stop-loop-continuation.sh の必須依存 precedent と同一)。`|| true` を
+# 付けてはならない — neutralize_ctrl 未定義のまま deny フォールバックに到達すると
+# command not found で reason を失い placeholder へ縮退するだけで、guard を付ける利点がない。
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Deny フォールバック JSON 用の reason エスケープ。適用順序が契約:
@@ -75,38 +84,23 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# Reviewer subagent detection.
-# Claude Code routes subagent sessions to jsonl files under a "subagents/"
-# directory inside the project transcript root; the main session does not.
-# When the PreToolUse hook runs inside a subagent, transcript_path therefore
-# contains the "/subagents/" path component. Pattern 4 below uses this as a
-# heuristic to scope state-mutating git denylist checks to reviewer contexts.
-#
-# Three-tier detection (future-proofing against SDK convention drift):
-#   Tier 1 (primary):  transcript_path glob `*/subagents/*` — current Claude Code
-#                      convention. Most reliable signal today.
-#   Tier 2 (fallback): hook input JSON `subagent_type` / `agent_type` field —
-#                      reserved for future SDK schemas that surface subagent
-#                      identity in the hook envelope rather than the path.
+# Reviewer subagent detection — three-tier (future-proofing against SDK drift):
+#   Tier 1 (primary):  transcript_path glob `*/subagents/*` — Claude Code routes
+#                      subagent sessions under a "subagents/" directory; the main
+#                      session does not.
+#   Tier 2 (fallback): hook input JSON `subagent_type` / `agent_type` field.
 #                      Presence-only check on STRING values; numeric/array/object
-#                      values are rejected via `| strings` filter to avoid jq's
-#                      `//` operator treating only null/false as falsy.
-#   Tier 3 (fallback): environment variables CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE —
-#                      catch-all if a future SDK exposes subagent context via
-#                      env vars before updating the hook input schema. Presence-only.
+#                      values are rejected via `| strings` so jq's `//` operator
+#                      (only null/false falsy) cannot let them through.
+#   Tier 3 (fallback): env vars CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE.
+# Caveat: presence-only fires on any non-empty string. If a future SDK emits
+# sentinel values (`"main"` / `"none"`) on main-session hooks, upgrade to an
+# allow-list check (e.g. `*-reviewer` glob). The deny-message recovery text
+# covers the Tier 3 `unset` path.
 #
-# Forward-compatibility caveat: presence-only check fires on any non-empty string.
-# If a future SDK starts emitting `subagent_type: "main"` / `"none"` / `"null"`
-# sentinel values on main-session hooks, every main-session git command in this
-# block would be blocked (false positive). When such a convention appears,
-# upgrade to an allow-list check (e.g. `*-reviewer` glob) here. Tier 3 env vars
-# share the same risk — see BLOCKED_ALTERNATIVE recovery text for `unset` guidance.
-#
-# All three field extractions share a single jq invocation; the original
-# three-jq layout would triple subprocess fork overhead on the PreToolUse hot path.
-# jq 失敗時の空 fallback は subagent 判定経路を silent に外す危険があるため、stderr を
-# tempfile capture し、RITE_DEBUG 設定時は失敗詳細を debug log へ追記する。security 防御層
-# (subagent 限定の Tier 3 ガード等) が silent bypass される経路を観測できるようにする。
+# All three field extractions share a single jq invocation (fork overhead on the
+# PreToolUse hot path). jq 失敗時の空 fallback は subagent 判定経路を silent に外す
+# 危険があるため、RITE_DEBUG 設定時は失敗詳細を debug log へ追記して観測可能にする。
 _jq_input_err=$(mktemp 2>/dev/null) || _jq_input_err=""
 JQ_OUT=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>"${_jq_input_err:-/dev/null}") || JQ_OUT=$'\t\t'
 if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_jq_input_err" ] && [ -s "$_jq_input_err" ]; then
@@ -143,26 +137,22 @@ _rite_btg_pattern13_fail_open() {
   fi
   exit 0
 }
-# Fail-closed ERR trap for Pattern 4 (the reviewer state-mutating-git security
-# boundary): if normalization / token-loop evaluation crashes on edge-case input,
-# DENY the command (deny JSON + exit 2 + stderr WARNING) instead of allowing it.
-# This is the OPPOSITE failure direction from the fail-open trap above: convenience
-# patterns must not false-block, but the security pattern must not false-allow — a
-# single parse crash must never silently bypass the reviewer read-only guard. This
-# trap is installed only for the Pattern 4 block (swapped in at block entry,
-# restored to the fail-open trap at block exit), so non-reviewer sessions — which
-# never enter that block — are never denied by it.
+# Fail-closed ERR trap for Pattern 4 (the reviewer .git-write security boundary):
+# a crash while evaluating a reviewer command DENIES (deny JSON + exit 2 + stderr
+# WARNING) instead of allowing — the opposite direction from the fail-open trap:
+# convenience patterns must not false-block, the security pattern must not
+# false-allow. Installed only for the Pattern 4 block (swapped in at block entry,
+# restored at block exit), so non-reviewer sessions are never denied by it.
 _rite_btg_pattern4_fail_closed() {
   local _rc=$?
   trap - ERR  # prevent re-entrancy while emitting the deny
-  # Visibility: record that the security boundary crashed and we fell closed.
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer git guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer .git-write guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
   if [ -n "${RITE_DEBUG:-}" ]; then
     printf '[%s] pre-tool-bash-guard: Pattern 4 ERR trap fired (rc=%s) — deny fail-closed\n' \
       "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_rc" \
       >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
   fi
-  local _reason="BLOCKED (reviewer-state-mutating-git): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer read-only guard. See the bash-guard stderr WARNING for the crash context."
+  local _reason="BLOCKED (reviewer-gitdir-write): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer .git-write guard. See the bash-guard stderr WARNING for the crash context."
   # Mirror the result-section emit contract: jq for the payload, printf fallback
   # via _bash_guard_escape_deny_reason so a jq failure still emits a valid deny.
   if ! jq -n --arg reason "$_reason" '{
@@ -174,7 +164,7 @@ _rite_btg_pattern4_fail_closed() {
     }' 2>/dev/null; then
     local _escaped
     _escaped=$(_bash_guard_escape_deny_reason "$_reason" 2>/dev/null) \
-      || _escaped="BLOCKED: reviewer git command denied (Pattern 4 crash, fail-closed)."
+      || _escaped="BLOCKED: reviewer command denied (Pattern 4 crash, fail-closed)."
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_escaped"
   fi
   exit 2
@@ -186,49 +176,32 @@ trap '_rite_btg_pattern13_fail_open' ERR
 BLOCKED_PATTERN=""
 BLOCKED_REASON=""
 BLOCKED_ALTERNATIVE=""
-# Sub-kind tag for the deny message. Stays empty for git-verb blocks (A)-(G);
-# the (Z) shell-wrapper sub-block sets it to "shell-wrapper" so the final deny
-# message can explain why a read-only wrapper probe is blocked.
-BLOCKED_SUBKIND=""
 
-# --- Reviewer command length guard (O(1), primary fail-closed bound) ---
-# Runs BEFORE the heredoc strip and every pattern check because that downstream work
-# is whole-string and at least two operations degrade to catastrophically slow on a
-# large enough input: the `${COMMAND%%<<*}` heredoc strip below is O(n²) in bash
-# (empirically ~45s on ~1.3MB), and Pattern 2's `[[ =~ ]]` regex is O(n²) on a few MB
-# of meta chars (empirically >2min). A timed-out PreToolUse hook fails OPEN (Claude
-# Code cancels it and lets the tool run), so a reviewer subagent could pad a
-# state-mutating git — with huge flag VALUES, thousands of flags, or a giant meta-char
-# string — until one of those operations times out, dropping the deny and bypassing
-# the guard. The ERR trap cannot catch a timeout (the process is killed externally). A
-# legitimate reviewer git command is at most a few KB, so any oversized command is
-# denied fail-closed here, before ANY O(n) work: setting BLOCKED_PATTERN both skips the
-# O(n²) heredoc strip (below) and short-circuits Patterns 1-4 (all now guarded by
-# `[ -z "$BLOCKED_PATTERN" ]`). Guards on the RAW ${#COMMAND} (fast, O(1)-ish) so the
-# check itself never triggers the slow path. Scoped to reviewer subagents
-# (IS_SUBAGENT=1), so normal main-session Bash is never blocked by size (MUST NOT — the
-# pre-existing main-session slowdown on huge input is a separate, out-of-scope
-# convenience-pattern concern). The per-flag iteration cap inside the Pattern 4 block
-# is a secondary bound on fork COUNT for sub-ceiling commands padded with many flags.
+# --- (L) Reviewer command length guard (O(1), primary fail-closed bound) ---
+# Runs BEFORE the heredoc strip and every pattern check: that downstream work is
+# whole-string, and the `${COMMAND%%<<*}` strip / Pattern 2 regex are O(n²) on
+# MB-scale input (empirically ~45s / >2min). A timed-out PreToolUse hook fails
+# OPEN (Claude Code cancels it and lets the tool run), so a reviewer could pad a
+# .git write until parsing times out, dropping the deny. The ERR trap cannot
+# catch a timeout (the process is killed externally), so the bound must be
+# up-front and O(1): guard on the RAW ${#COMMAND}. A legitimate reviewer command
+# is at most a few KB. Setting BLOCKED_PATTERN here short-circuits the heredoc
+# strip and Patterns 1-4 (all guarded by `[ -z "$BLOCKED_PATTERN" ]`). Scoped to
+# IS_SUBAGENT=1 — main-session Bash is never blocked by size.
 _RITE_BTG_MAX_SUBAGENT_CMD_BYTES=65536
 if [ "$IS_SUBAGENT" = "1" ] && [ "${#COMMAND}" -gt "$_RITE_BTG_MAX_SUBAGENT_CMD_BYTES" ]; then
-  BLOCKED_PATTERN="reviewer-state-mutating-git"
-  # This path builds its own reason/alternative below and never reaches the Pattern 4
-  # block's message section (that block is skipped because BLOCKED_PATTERN is now set),
-  # so BLOCKED_SUBKIND is intentionally left unset here — it would be an inert write.
-  BLOCKED_REASON="This reviewer command is abnormally large (${#COMMAND} bytes, ceiling ${_RITE_BTG_MAX_SUBAGENT_CMD_BYTES}). A command this size could make the guard's parsing exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so oversized reviewer commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard."
-  BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
+  BLOCKED_PATTERN="reviewer-oversized-command"
+  BLOCKED_REASON="This reviewer command is abnormally large (${#COMMAND} bytes, ceiling ${_RITE_BTG_MAX_SUBAGENT_CMD_BYTES}). A command this size could make the guard's parsing exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so oversized reviewer commands are denied fail-closed to prevent a timeout-based bypass of the reviewer .git-write guard."
+  BLOCKED_ALTERNATIVE="Simplify the command — reviewer operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
 fi
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
-# PR descriptions, etc. Only check the command prefix before the first heredoc marker.
-# Known limitation: Piped heredoc patterns (e.g., `cat <<EOF | gh pr diff`) bypass
-# this stripping because the command before `<<` is `cat`, not the target pattern.
-# Risk is limited since such patterns are rare in practice.
-# Skipped for an already-denied (oversized) command: `${COMMAND%%<<*}` is O(n²) on
-# huge input and would itself time out the fail-open hook (the whole reason the length
-# guard runs first). CMD_CHECK is unused in that case (the command is already denied).
+# PR descriptions, etc. Only check the command prefix before the first heredoc
+# marker. Known limitation: piped heredocs (`cat <<EOF | gh pr diff`) bypass the
+# strip (the pre-`<<` command is `cat`); rare in practice. Skipped for an
+# already-denied (oversized) command — the strip is O(n²) on huge input and
+# CMD_CHECK is unused in that case.
 if [ -z "$BLOCKED_PATTERN" ]; then
   CMD_CHECK="${COMMAND%%<<*}"
 else
@@ -236,9 +209,6 @@ else
 fi
 
 # Pattern 1: gh pr diff --stat
-# Guarded by `[ -z "$BLOCKED_PATTERN" ]` so the length guard above short-circuits it
-# (the `*A*B*` glob would otherwise run over an oversized string). Normally
-# BLOCKED_PATTERN is empty here, so this runs exactly as before.
 if [ -z "$BLOCKED_PATTERN" ]; then
   case "$CMD_CHECK" in
     *"gh pr diff"*" --stat"*)
@@ -252,7 +222,6 @@ fi
 # Pattern 2: gh pr diff -- <path> (file filter)
 # `[^|]*` (zero-or-more) covers both forms: `gh pr diff 123 -- file` and
 # `gh pr diff -- file` (when invoked from a PR branch with no positional arg).
-# An earlier `[^|]+` (one-or-more) silently missed the bare form.
 if [ -z "$BLOCKED_PATTERN" ]; then
   if [[ "$CMD_CHECK" =~ gh[[:space:]]+pr[[:space:]]+diff[[:space:]]+[^|]*[[:space:]]?--[[:space:]] ]]; then
     BLOCKED_PATTERN="gh-pr-diff-file-filter"
@@ -272,66 +241,31 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   esac
 fi
 
-# Pattern 4: Reviewer subagent running state-mutating git commands.
-# Scope: only when IS_SUBAGENT=1 (transcript_path contains "/subagents/").
-# Main-session git operations (branch switch, commit, etc. performed by
-# /rite:open → implement.md Phase 5.1) are NOT affected because IS_SUBAGENT=0 there.
-#
-# Allowed read-only git commands (NOT matched below):
-#   - git diff / git log / git show / git blame / git status / git ls-files /
-#     git ls-remote / git rev-parse / git cat-file
-#   - git worktree add / git worktree list
-#   - git fetch (bare — must NOT include --prune or --force)
-#   - git branch with display-only flags: --list / --show-current / -a / -r / -v
-#   - git tag -l / git tag --list
-#   - git stash list / git stash show
-#   - git reflog (bare list, no expire/delete)
-#
-# Denylist design:
-#   (1) Shell meta-character boundary recognition: `;`, `&`, `|`, `(`, backtick,
-#       `$` are also treated as word boundaries — prevents bypass via
-#       `true;git reset` / `$(git commit)` / `(git checkout ...)` forms.
-#   (2) Sub-action precision: `git tag -l` / `git stash list` / `git reflog` (bare)
-#       / `git worktree list` must stay allowed. The denylist targets only
-#       state-mutating sub-actions of these verbs.
-#   (3) Bare new-branch creation: `git branch <name>` (without any flag) creates
-#       a new ref and is therefore blocked. `git branch` and `git branch -a`
-#       (display) remain allowed.
-#   (4) Long-form flag coverage: `git branch --delete/--force/--move/--copy`
-#       are treated the same as the short forms `-d/-f/-m/-c/-C`.
+# Pattern 4: Reviewer subagent .git-write gate.
+# Scope: only when IS_SUBAGENT=1. Main-session operations are never affected.
+# This block does NOT enumerate working-tree-mutating git verbs (Issue #1879) —
+# see the header. It holds one machine guarantee (no writes into .git) via the
+# (Z) wrapper check, the (N) native-subcommand gate, and the (H) write
+# detection below, inside a fail-CLOSED trap region.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
-  # Pattern 4 is the security boundary: swap the Patterns 1-3 fail-OPEN trap for a
-  # fail-CLOSED one so an unexpected crash while evaluating a reviewer's git command
-  # denies rather than allows. Restored to the fail-open trap at block exit (below)
-  # so the shared result-emit section keeps its original fail-open behavior.
   trap '_rite_btg_pattern4_fail_closed' ERR
-  # Test-only fault injection for the fail-CLOSED region (no effect in production):
-  # Pattern 4 uses only bash built-ins, so — unlike the deny-emit path (see test
-  # TC-118) — it cannot be crashed by faking an external binary. This lets the
-  # fail-closed regression test raise an ERR deterministically inside the guarded
-  # region. Gated on an env var that is never set outside the test suite.
-  # Deliberately fail-CLOSED-only: if the env var is ever set in production, the
-  # only effect is a DENY (the guard becomes more restrictive) — it can never turn
-  # the guard into allow-all. A symmetric fail-OPEN injection was intentionally NOT
-  # added, because an env-triggered fail-open path would be an allow-all backdoor to
-  # a security boundary. AC-3 (Patterns 1-3 stay fail-open) is instead pinned
-  # structurally by the test (default trap is fail-open + restored at block exit).
+  # Test-only fault injection for the fail-CLOSED region (no effect in
+  # production): the block uses only bash built-ins, so — unlike the deny-emit
+  # path (test TC-118) — it cannot be crashed by faking an external binary. This
+  # lets the fail-closed regression test raise an ERR deterministically inside
+  # the guarded region. Deliberately fail-CLOSED-only: if the env var is ever
+  # set in production the only effect is a DENY — it can never turn the guard
+  # into allow-all. A symmetric fail-OPEN injection was intentionally NOT added
+  # (an env-triggered fail-open would be an allow-all backdoor to a security
+  # boundary).
   if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4" ]; then
     false
   fi
-  # Secondary bound: cap the global-flag normalization iterations (see the loops
-  # below). The PRIMARY bound is the length guard above, which denies any command
-  # large enough to time out before it is normalized; this cap additionally bounds
-  # the fork COUNT for sub-ceiling commands padded with many small global flags (so
-  # the per-flag regex+fork loop can't run thousands of times within the byte
-  # ceiling). A legitimate reviewer git command has well under this many global
-  # flags, so 128 (>10x the realistic maximum) denies such padding while never
-  # tripping on a real command. Bounded together with the length guard, the total
-  # normalization work is at most ~128 iterations over a <64KB string.
-  _RITE_BTG_MAX_GLOBAL_FLAG_NORM=128
   # Normalize whitespace AND shell meta-characters into a single space so that
-  # `;git reset` / `(git checkout ...)` / `$(git commit)` / multi-line commands
-  # are recognized as `git <verb>` with proper word boundaries.
+  # `;eval …` / `(eval …)` / multi-line commands are recognized with proper word
+  # boundaries by the wrapper check, and so the .git-write tokenizer sees
+  # redirect targets as separable tokens. `>` / `<` survive (the tokenizer
+  # surfaces them as standalone tokens itself).
   CMD_NORMALIZED="${CMD_CHECK//$'\t'/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//$'\n'/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//$'\r'/ }"
@@ -344,125 +278,20 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   CMD_NORMALIZED="${CMD_NORMALIZED//\}/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\`/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\$/ }"
-  # Snapshot for sub-block (H) .git-write detection, taken HERE — after meta-char collapse but
-  # BEFORE the `/git`→` git` path-corrupting substitution below (Issue #1864 fix). The `/git`
-  # munge (next block) exists to normalize git INVOCATION forms (`/usr/bin/git`, `\git`) for the
-  # (A)-(G) verb globs, but it also splits any redirect-target path whose ancestor contains a
-  # literal `/git` segment — `> /srv/git/repo/.git/config` becomes `> /srv git/repo/.git/config`,
-  # detaching `>` from the `.git` token so (H)'s adjacency test misses (silent allow of an RCE
-  # write). (H) needs the path INTACT, so it tokenizes from this pre-munge snapshot instead of the
-  # verb-normalized CMD_NORMALIZED. (`set -u` safety at the (H) use site is via `${_gd_src:-}`.)
-  _gd_src="$CMD_NORMALIZED"
-  # Absolute-path / explicit-invocation bypass guard:
-  # Pattern 4 全体は `*" git <verb> "*` glob に依存するため、`git` を直接呼び出さない
-  # 形式 (絶対パス指定 `/usr/bin/git checkout`、`command git checkout`、`exec git checkout`、
-  # backslash-escaped `\git checkout` 等) は match せず bypass 可能になる。これらを ` git ` に
-  # 正規化することで既存 (A)〜(G) sub-block の glob を改変せずに防御範囲を拡大する。
-  #   - `/usr/bin/git` / `/opt/homebrew/bin/git` 等の絶対パス → ` git`
-  #   - `command git` / `exec git` / `builtin git` (builtin は構文 invalid だが safety) → ` git`
-  #   - `\git` (backslash-escaped) → ` git`
-  # Residual gap: alias / function indirection (`alias gg='git'`, `my_git() { ... }`)
-  # は parent shell 解決後の独立トークンとして渡るため、本 hook の静的 glob では検出不能。
-  # Layer 2 の責務は「静的 token として `git` を含むコマンド」に限定し、一次防御は agent prompt、
-  # 三次防御は Layer 3 post-condition state-verify gate に委ねる三層構造を維持する。
-  #
-  # `/git` substring 全置換の boundary 設計:
-  # 本 line は `/git` を ` git` に置換するため `/home/user/.config/git/config` のような
-  # path 構成要素も置換対象になる (例: `grep -r foo /home/user/.config/git/config` →
-  # `grep -r foo /home/user/.config git/config`)。実装上、現状 false positive は発生しない。
-  # 主要因 (全サブブロック共通): path 由来トークンは置換後 ` git/<X>` 形 (前 boundary に leading
-  # space、`/` で verb 境界が崩れる) となり、(A)〜(G) すべての deny glob (trailing space 必須形 /
-  # 省略形いずれも) が要求する連続 token `git <verb>` シーケンスに到達しないため別経路で safe。
-  # 補強要因 (サブブロック別の trailing space): (A) Always-deny verbs の case-glob は
-  # `*" git <verb> "*` 形式で trailing space 必須 (verb 末尾の token boundary も二重に保護)。
-  # (B) stash / (C) tag / (D) reflog の case-glob、および (E) worktree の case-glob (remove/move/
-  # prune 等) は `*" git <verb>"*` 形式で trailing space 省略。(E) worktree の token-loop
-  # precondition (`add` 等) は ` git worktree add ` で trailing space 必須。(G) branch は混在で、
-  # 短形式 (`-D` / `-d` / `-f` / `-m` / `-M` / `-c` / `-C` 等) は trailing space あり、long-form
-  # (`--delete` / `--force` / `--move` / `--copy` 等) は trailing space 省略。
-  # 将来、本正規化を `/git ` (後続スペース必須: `${CMD_NORMALIZED//\/git / git }`) に変更すべき
-  # ケース: (A) Always-deny に新規 verb を追加し末尾境界条件を緩める設計変更時。(B)-(G) を変更
-  # する場合も path 由来トークンとの衝突を再検証する必要がある。
-  CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
-  CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
-  CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"
-  CMD_NORMALIZED="${CMD_NORMALIZED// exec git/ git}"
-  CMD_NORMALIZED="${CMD_NORMALIZED// builtin git/ git}"
-  # 注: quote 正規化 (`"` / `'` → space) は false positive 過剰 (TC-061 `echo "git checkout"`
-  # のような log 出力経路を阻害) のため採用せず、代わりに quote-shell 経路 (`eval` / `sh -c` /
-  # `bash -c` / `zsh -c`) を別 sub-block で明示 block する設計に統一。
-  # Collapse multiple spaces into one.
-  while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
-    CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
-  done
-
-  # Git global flag normalization:
-  # `git -C <dir> checkout -b` / `git --git-dir=<X> checkout -b` 等の global flag が介在する形式は
-  # 後続の case glob `*" git checkout "*` / token-loop `[[ " git worktree add " ]]` に match せず
-  # Pattern (A)〜(G) を bypass する。global flag 群を ` git ` に圧縮することで、後続の sub-block 全体が
-  # flag-presence に関わらず一律に match できる。
-  #
-  # The substitution `${CMD_NORMALIZED/$_lit/git }` interprets $_lit as a glob pattern (bash
-  # parameter-expansion semantics), so a `-C <dir>` value containing `*` / `?` / `[` would be
-  # treated as a wildcard and could either overmatch or fail to match. Escape those metacharacters
-  # before substituting to keep the normalization literal regardless of input content.
-  _escape_glob_meta() {
-    local s="$1"
-    s="${s//\*/\\*}"
-    s="${s//\?/\\?}"
-    s="${s//\[/\\[}"
-    printf '%s' "$s"
-  }
-  # Global-flag normalization iteration cap (fail-closed on abnormally many flags).
-  # The per-flag regex + fork loops below are super-linear in the number of git
-  # global flags, and the PreToolUse hook timeout is fail-OPEN (a timed-out hook
-  # allows the command — Claude Code cancels the hook and lets the tool proceed). A
-  # reviewer subagent could therefore pad a state-mutating git with thousands of
-  # `-C x` global flags so this normalization exceeds the hook timeout; the deny is
-  # never emitted and the padded git executes, bypassing the guard. The ERR trap
-  # cannot catch a timeout (the process is killed externally), so this iteration cap
-  # is what keeps that failure mode fail-CLOSED. A legitimate reviewer git command
-  # has only a handful of global flags, so exceeding the cap means the input is
-  # adversarial → deny. The counter is shared across both loops so the total work is
-  # bounded regardless of which flag family is padded.
-  _gf_norm_iters=0
-  while [[ " $CMD_NORMALIZED " =~ \ git\ (-C|--git-dir|--work-tree|--exec-path|--namespace|-c|--config-env)(=[^[:space:]]+|[[:space:]]+[^[:space:]]+)\  ]]; do
-    _gf_norm_iters=$((_gf_norm_iters + 1))
-    if [ "$_gf_norm_iters" -gt "$_RITE_BTG_MAX_GLOBAL_FLAG_NORM" ]; then
-      BLOCKED_PATTERN="reviewer-state-mutating-git"
-      BLOCKED_SUBKIND="oversized-normalization"
-      break
-    fi
-    _matched="${BASH_REMATCH[0]}"
-    _lit=$(_escape_glob_meta "${_matched# }")
-    CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
-  done
-  while [[ " $CMD_NORMALIZED " =~ \ git\ (--bare|--no-replace-objects|--paginate|--no-pager|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--info-path|--man-path|--html-path)\  ]]; do
-    _gf_norm_iters=$((_gf_norm_iters + 1))
-    if [ "$_gf_norm_iters" -gt "$_RITE_BTG_MAX_GLOBAL_FLAG_NORM" ]; then
-      BLOCKED_PATTERN="reviewer-state-mutating-git"
-      BLOCKED_SUBKIND="oversized-normalization"
-      break
-    fi
-    _matched="${BASH_REMATCH[0]}"
-    _lit=$(_escape_glob_meta "${_matched# }")
-    CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
-  done
-  # Re-collapse spaces after global-flag normalization.
   while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
     CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
   done
 
   PADDED=" $CMD_NORMALIZED "
 
-  # --- (Z) Quote-shell bypass guard ---
-  # `eval` / `sh -c` / `bash -c` / `zsh -c` 経由で git command を実行する経路は、
-  # quote 内の content が (A)-(G) glob と word-boundary を共有しないため bypass 可能。
-  # 例: `eval "git checkout -b evil"` は (A) Always-deny に match しない。
-  # reviewer subagent が `eval` / shell `-c` を実行する legitimate な理由はほぼない
-  # (read-only な script 実行は `bash <script>` で十分) ため、これらの shell-wrapper を直接 block する。
-  # 注: `bash <script.sh>` (引数 1 個目が `-c` でない) は allow し続ける必要があるため、`-c` flag の
-  # 直前トークンが shell 名であるパターンのみを block する。
+  # --- (Z) Shell-command wrapper guard ---
+  # `eval` / `sh -c` / `bash -c` 等の quoted argument は静的 matching と
+  # word-boundary を共有しないため、(H) の .git-write 検出を
+  # `bash -c 'echo x > .git/hooks/y'` の形で trivially bypass できる。reviewer が
+  # wrapper を使う legitimate な理由はほぼない (read-only な script 実行は
+  # `bash <script>` で十分) ため、中身に関係なく一律 block する。
+  # `bash <script.sh>` は allow し続ける必要があるため、`-c` の直前トークンが
+  # shell 名であるパターンのみを block する。
   case "$PADDED" in
     *" eval "*|\
     *" sh -c "*|\
@@ -471,356 +300,229 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     *" ksh -c "*|\
     *" dash -c "*|\
     *" fish -c "*)
-      BLOCKED_PATTERN="reviewer-state-mutating-git"
-      # 中身が read-only でも block するため、deny message 側で理由を明示する。
-      # pattern 名は既存テスト (assert_subagent_deny が reason に "reviewer-state-mutating-git"
-      # を要求) との互換のため変えず、subkind タグで message だけを分岐する。
-      BLOCKED_SUBKIND="shell-wrapper"
+      BLOCKED_PATTERN="reviewer-shell-wrapper"
+      BLOCKED_REASON="Shell-command wrappers (eval / bash -c / sh -c / zsh -c / ksh -c / dash -c / fish -c) are blocked in reviewer contexts because their quoted argument is opaque to this guard's word-boundary matching and can hide forbidden operations (e.g. a write into a .git directory). They are therefore blocked unconditionally — even when the wrapped command is read-only. Reviewers are bound by the READ-ONLY contract in plugins/rite/agents/_reviewer-base.md."
+      BLOCKED_ALTERNATIVE="For a read-only probe, drop the wrapper: run the command directly, group multiple commands in a subshell '( cmd1; cmd2 )', or put them in a file and run 'bash <script.sh>'. If this block fires on a main session (not a reviewer subagent), check whether CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE env vars are accidentally set; recover with: unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE"
       ;;
   esac
 
-  # --- (A) Always-deny verbs (no read-only sub-action exists) ---
-  case "$PADDED" in
-    *" git checkout "*|\
-    *" git reset "*|\
-    *" git add "*|\
-    *" git rm "*|\
-    *" git restore "*|\
-    *" git commit "*|\
-    *" git push "*|\
-    *" git pull "*|\
-    *" git merge "*|\
-    *" git rebase "*|\
-    *" git cherry-pick "*|\
-    *" git revert "*|\
-    *" git clean "*|\
-    *" git gc "*|\
-    *" git prune "*|\
-    *" git update-ref "*|\
-    *" git symbolic-ref "*|\
-    *" git am "*|\
-    *" git apply "*|\
-    *" git mv "*|\
-    *" git notes "*|\
-    *" git config "*|\
-    *" git remote "*|\
-    *" git bisect "*|\
-    *" git filter-branch "*|\
-    *" git filter-repo "*|\
-    *" git replace "*)
-      BLOCKED_PATTERN="reviewer-state-mutating-git"
-      ;;
-  esac
-
-  # --- (B) Sub-action precision: git stash push/pop/drop/apply/clear only ---
-  if [ -z "$BLOCKED_PATTERN" ]; then
-    case "$PADDED" in
-      *" git stash push"*|\
-      *" git stash pop"*|\
-      *" git stash drop"*|\
-      *" git stash apply"*|\
-      *" git stash clear"*|\
-      *" git stash save"*|\
-      *" git stash create"*|\
-      *" git stash store"*|\
-      *" git stash branch"*)
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-        ;;
-    esac
-  fi
-
-  # --- (C) Sub-action precision: git tag (creation/deletion only) ---
-  # Allowed: `git tag -l`, `git tag --list`, `git tag` (bare list)
-  # Denied:  `git tag <name>`, `git tag -a`, `git tag -d`, `git tag --delete`,
-  #          `git tag -f`, `git tag --force`
-  if [ -z "$BLOCKED_PATTERN" ]; then
-    case "$PADDED" in
-      *" git tag -a"*|\
-      *" git tag --annotate"*|\
-      *" git tag -d"*|\
-      *" git tag --delete"*|\
-      *" git tag -f"*|\
-      *" git tag --force"*|\
-      *" git tag -s"*|\
-      *" git tag -u"*|\
-      *" git tag -m"*)
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-        ;;
-    esac
-  fi
-
-  # --- (D) Sub-action precision: git reflog (only expire/delete block) ---
-  # Allowed: `git reflog`, `git reflog show`
-  # Denied:  `git reflog expire`, `git reflog delete`
-  if [ -z "$BLOCKED_PATTERN" ]; then
-    case "$PADDED" in
-      *" git reflog expire"*|\
-      *" git reflog delete"*)
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-        ;;
-    esac
-  fi
-
-  # --- (E) Sub-action precision: git worktree remove/prune/move + add-with-new-branch ---
-  # Allowed: `git worktree list`, `git worktree add --detach <path> <ref>`,
-  #          `git worktree add <path> <existing-branch>` (2 positional args: path + existing ref)
-  # Denied:  `git worktree remove`, `git worktree prune`, `git worktree move`,
-  #          `git worktree add -b <newbranch> ...` (any position) / `-B`, attached forms
-  #          `-bNAME` / `-b=NAME` / `--new-branch=NAME`, bare `git worktree add <path>` (1 positional
-  #          arg only — Git auto-creates a new named branch matching basename(path)).
+  # --- (N) Native .git-writing git subcommands ---
+  # `git config <key> <value>` / mutating `git remote` / `git update-ref` /
+  # `git symbolic-ref` write .git/config or .git refs directly — no shell
+  # redirect and no file-mutating verb, so (H) cannot see them. `git config
+  # core.hooksPath / core.fsmonitor / alias.*=!cmd` (and the inline `git -c
+  # core.hooksPath=… <cmd>` form, which needs NO config subcommand) is the exact
+  # RCE vector the header invariant names, so the write forms keep a machine
+  # gate. This is a FIXED closed set whose only write target is .git itself — a
+  # .git-write gate, NOT a revival of the working-tree verb enumeration
+  # (Issue #1879 removed working-tree verbs; these were never in that class:
+  # .git/config writes are invisible to `git status` and Layer 3 has no
+  # config/ref axis, so Layer 1 would be the sole backstop without this gate).
   #
-  # Failure mode: a reviewer subagent creates a new named branch via `git worktree add -b`,
-  # then runs `git checkout` to traverse states, replacing the parent session's working tree
-  # with a clean reference. `git checkout` is already blocked by (A) Always-deny, but
-  # `git worktree add -b` had been permitted by (E), leaving a structural gap that this
-  # sub-block closes.
+  # Global-flag handling is REQUIRED, not optional: `git -C x config …` /
+  # `git --git-dir=x config …` place the subcommand after a flag, and `git -c
+  # key=val <cmd>` injects config with no subcommand at all — both bypass a naive
+  # "subcommand right after git" match. The removed (A)-(G) code normalized
+  # global flags for exactly this reason; dropping it entirely would ship a
+  # WEAKER gate than pre-PR — this block re-scopes that handling to the four
+  # .git-write subcommands. The token loop below is a per-occurrence FSM: it
+  # skips leading global flags, then classifies each `config`/`remote`/`update-
+  # ref`/`symbolic-ref` occurrence AS IT APPEARS (deciding read-vs-write on the
+  # token right after `config`/`remote`), and re-recognizes every fresh `git`
+  # invocation. It replaced a flatten-then-substring-match approach that let a
+  # co-located read-form exempt a real write in the same command line and let a
+  # second invocation slip. Inline `-c` / `--config-env` deny immediately (a
+  # reviewer never needs to SET config — "値を設定する git config は一律 deny").
   #
-  # Initial `add -b ` glob required a trailing space and silently passed forms like
-  # `add -bNAME`, `add -b=NAME`, `add --track -b NAME` (mid-flag), and `add /tmp/d -b newbr HEAD`
-  # (positional after path). The token loop below identifies `-b` / `-B` as standalone flag
-  # tokens, with the case glob retained as a first-line defense.
+  # `git config` read forms stay allowed via a small allow-list (--list / -l /
+  # --get / --get-all / --get-regexp) — checked at the first non-flag token after
+  # `config` / `remote`; every other form denies — no strict option parsing (an
+  # exotic mis-denied read form, or `config`/`remote` with no arg immediately
+  # followed by a fresh `git`, is rare and recoverable via the deny message;
+  # strict parsing would re-open the static-parse churn this hook just removed).
+  #
+  # RESIDUAL (Layer 1 backstop ONLY — same class as the (H) SCOPE limitations):
+  #   - env-var config indirection (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/
+  #     `GIT_CONFIG_VALUE_n`, `GIT_DIR`) and `--config-env=<key>=<envvar>`
+  #     chained through an env var (the flag itself is denied above, but the
+  #     value it names lives in the environment);
+  #   - aliases already persisted in .git/config;
+  #   - an UNKNOWN separate-arg global flag (one not in the skip_arg list above)
+  #     whose value absorbs the subcommand slot. The skip_arg list is
+  #     git-version-dependent, not provably exhaustive: git can add flags, and
+  #     older gits accept flags 2.43 rejects. This is NOT a regression (develop's
+  #     enumeration could not catch unknown flags either), so it does not lower
+  #     the gate strength vs pre-PR — it is an inherent static-matcher limit
+  #     backstopped by Layer 1. Re-audit the list on a git upgrade.
+  # Runtime-resolved subcommand/flag tokens (`$VAR`/`$(cmd)`) are already
+  # collapsed to spaces upstream. Handled above (NOT residual):
+  # path/quoted/backslashed git invocations and every KNOWN separate-arg flag.
   if [ -z "$BLOCKED_PATTERN" ]; then
-    case "$PADDED" in
-      *" git worktree remove"*|\
-      *" git worktree prune"*|\
-      *" git worktree move"*)
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-        ;;
-    esac
-  fi
-  # Token-loop based detection for `git worktree add` forms — covers all bypass paths:
-  #   - bare `add <path>` (1 positional arg, no --detach) → leak
-  #   - any token equal to `-b` / `-B` / `--new-branch` / `--force-new-branch` / `--orphan` → leak
-  #     (regardless of where it appears in args)
-  #   - attached forms `-bNAME` / `-BNAME` / `-b=NAME` / `--new-branch=NAME` /
-  #     `--force-new-branch=NAME` / `--orphan=NAME` → leak
-  # Allowed:
-  #   - `--detach` flag present (token equal to `--detach` or attached form `--detach=...`
-  #     which is not a real git option but harmless to recognize)
-  #   - 2+ positional args (path + existing branch/ref) AND no new-branch flag
-  if [ -z "$BLOCKED_PATTERN" ]; then
-    if [[ "$PADDED" =~ " git worktree add " ]]; then
-      WT_ARGS="${PADDED##* git worktree add }"
-      WT_ARGS="${WT_ARGS% }"
-      WT_POSITIONAL_COUNT=0
-      WT_HAS_DETACH=0
-      WT_NEW_BRANCH_FLAG=0
-      # noglob-scope the unquoted `$WT_ARGS` word-split loop (mirrors the (H) tokenizer at
-      # ~line 789, Issue #1866 follow-up to #1864). Without `set -f`, glob metachars (`*`/`?`/`[`)
-      # surviving the meta-char normalization undergo pathname expansion against the hook CWD,
-      # exposing two failure modes the sibling (H) loop already closed:
-      #   (a) OVER-DENY — a `*` that expands to a CWD entry named like a new-branch flag (e.g. a
-      #       file `-b`) makes a legit `git worktree add <path> <ref>` mis-detect as a branch-
-      #       creating form and get wrongly DENIED (violates AC-1 "read-only git not mis-detected").
-      #   (b) TIMEOUT→FAIL-OPEN — glob expansion is NOT bounded by the 64KB length guard, so a
-      #       large-dir glob makes this loop iterate unboundedly → the PreToolUse hook times out →
-      #       fails OPEN → the worktree-add branch-leak check it exists to enforce is bypassed.
-      # `case` pattern matching is unaffected by noglob (it is filename generation only), so the
-      # detection logic below is unchanged. Save/restore the prior noglob state (drift-safe; this
-      # hook leaves it off today). No `break` in the loop, so the restore after `done` always runs.
-      case $- in *f*) _wt_noglob_was_set=1 ;; *) _wt_noglob_was_set=0 ;; esac
-      set -f
-      for tok in $WT_ARGS; do
-        case "$tok" in
-          --detach|--detach=*)
-            WT_HAS_DETACH=1
-            ;;
-          -b|-B|--new-branch|--force-new-branch|--orphan)
-            # standalone new-branch flag (next token is the branch name)
-            WT_NEW_BRANCH_FLAG=1
-            ;;
-          -b*|-B*|--new-branch=*|--force-new-branch=*|--orphan=*)
-            # attached form: `-bNAME` / `-BNAME` / `-b=NAME` / long-form `=NAME`
-            # Note: `-b*` glob also catches `-b` alone (handled above by exact-match first
-            # branch in case statement, but bash case falls through in order — first match wins,
-            # so the standalone variant is matched before this attached-form branch).
-            WT_NEW_BRANCH_FLAG=1
-            ;;
-          -*)
-            : ;;  # other flag (--track / --quiet / --guess-remote etc.), skip
-          *)
-            WT_POSITIONAL_COUNT=$((WT_POSITIONAL_COUNT + 1)) ;;
-        esac
-      done
-      # Restore the prior noglob state (only re-enable globbing if this hook had it on before).
-      [ "$_wt_noglob_was_set" = "1" ] || set +f
-      # Deny logic:
-      #   (a) new-branch flag present at any position → leak (regardless of --detach)
-      #   (b) positional_count <= 1 AND no --detach → bare `add <path>`, auto-creates branch → leak
-      if [ "$WT_NEW_BRANCH_FLAG" -eq 1 ]; then
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-      elif [ "$WT_POSITIONAL_COUNT" -le 1 ] && [ "$WT_HAS_DETACH" -eq 0 ]; then
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-      fi
+    # Per-occurrence state machine — evaluate EACH git invocation independently
+    # rather than flattening the command to one string and substring-matching it.
+    # A flattened match let a co-located read-form mask a real write in the SAME
+    # command line (`git config --list; git config core.hooksPath /x` → the
+    # ` git config --list ` substring exempted the whole string, including the
+    # write) and let a second invocation slip (`git; /usr/bin/git config …`).
+    # Walking token-by-token with a small FSM decides read-vs-write at each
+    # `config`/`remote` occurrence and re-recognizes every fresh `git` invocation,
+    # so neither evasion survives.
+    #
+    # noglob for the unquoted `for … in $CMD_NORMALIZED` tokenizer (same reason
+    # as the (H) loop: an un-noglobbed `*` token would pathname-expand against
+    # the hook CWD → over-DENY / timeout). Save/restore the prior state.
+    case $- in *f*) _gn_noglob_was_set=1 ;; *) _gn_noglob_was_set=0 ;; esac
+    set -f
+    _gn_hit=""
+    _gn_state=scan        # scan | flags | cfgarg | remarg
+    _gn_skip_arg=0        # 1 = drop this token (an arg-taking global flag's value)
+    for _gn_tok in $CMD_NORMALIZED; do
+      # Dequote the way the shell does before the flag/subcommand is interpreted,
+      # so `"git"` / `\git` / `'add'` normalize to their bare forms. `*/git` below
+      # then catches path invocations (`/usr/bin/git`, `./git`). Trade-off: a
+      # search over git's own source (`grep -rn 'git config' plugins/`) tokenizes
+      # to a bare ` git config `, so it over-DENYs (fail-closed, rare, recoverable
+      # — break the adjacency: `grep -rn git plugins/ | grep config`). Precise
+      # narrowing would need the separator tracking #1879 deliberately removed.
+      _gn_t="${_gn_tok//[\"\']/}"; _gn_t="${_gn_t//\\/}"
+      if [ "$_gn_skip_arg" = "1" ]; then _gn_skip_arg=0; continue; fi
+      case "$_gn_state" in
+        cfgarg)
+          # Previous token was `config`; this token decides read vs write.
+          case "$_gn_t" in
+            --list|-l|--get|--get-all|--get-regexp) _gn_state=scan ;;   # read → OK, keep scanning
+            *) _gn_hit="git config (non-read form)"; break ;;           # anything else → write → deny
+          esac ;;
+        remarg)
+          # Previous token was `remote`. Fail-CLOSED default like cfgarg, but the
+          # grammar differs and the asymmetry matters: a `config` read option
+          # (`--list`/`--get`) is a TERMINAL action (git errors if a write
+          # follows), whereas `git remote -v`/`--verbose` is a MODIFIER that
+          # precedes the sub-action (`git remote -v add …` still mutates). So a
+          # flag here must NOT be treated as a read — it stays in remarg and the
+          # real sub-action is classified next. Only `show`/`get-url` are terminal
+          # read sub-actions. Everything else — the mutating sub-actions AND any
+          # unrecognized/future one — denies (a mutating remote persists
+          # `remote.<n>.url = ext::sh -c …` into .git/config → RCE on next fetch).
+          # Trade-off: separators (`|`/`;`/`&`) are collapsed to spaces upstream,
+          # so a read pipe (`git remote -v | grep origin`) tokenizes as `-v grep`
+          # and the `grep` hits `*)` → over-DENY (fail-closed, recoverable — run
+          # bare `git remote -v` / `git remote get-url <n>`, or break the
+          # adjacency). Do NOT "fix" it by re-allowing an unknown token after a
+          # flag: that is exactly the `git remote -v add …` bypass this arm closed.
+          case "$_gn_t" in
+            -*) : ;;                          # modifier flag (-v/--verbose/…): stay in remarg for the sub-action
+            show|get-url) _gn_state=scan ;;   # terminal read sub-action → OK, keep scanning
+            git|*/git) _gn_state=flags ;;     # `remote` had no sub-action; fresh invocation
+            *) _gn_hit="git remote (mutating sub-action)"; break ;;   # mutating / unknown → deny
+          esac ;;
+        flags)
+          # After a git invocation, strip leading global flags, then classify the
+          # subcommand. The skip_arg list is a SUPERSET of the flags the removed
+          # (A)-(G) normalization covered (`-C`/`--git-dir`/`--work-tree`/
+          # `--exec-path`/`--namespace`/`-c`/`--config-env`) plus the git-2.43
+          # plumbing flags `--attr-source`/`--shallow-file` and the legacy
+          # `--super-prefix` (retired in git 2.43, kept for older-git coverage),
+          # so (N) never allows a carrier form develop denied — not a regression
+          # by construction. The list is git-version-dependent: an UNKNOWN
+          # separate-arg flag whose value absorbs the subcommand is the
+          # Layer-1-backstop residual noted above, not a claimed-complete gate.
+          case "$_gn_t" in
+            -c|-c*|--config-env|--config-env=*)
+              _gn_hit="git inline config (-c / --config-env)"; break ;;   # `git -c key=val <cmd>` needs no subcommand
+            -C|--git-dir|--work-tree|--namespace|--exec-path|--attr-source|--super-prefix|--shallow-file)
+              _gn_skip_arg=1 ;;                    # arg-taking global flag: drop its value too
+            -*) : ;;                               # self-contained / =-form / boolean global flag → skip
+            git|*/git) _gn_state=flags ;;          # back-to-back invocation (previous git had no subcommand)
+            update-ref|symbolic-ref) _gn_hit="git $_gn_t"; break ;;
+            config) _gn_state=cfgarg ;;            # decide read/write on the next token
+            remote) _gn_state=remarg ;;            # decide mutating/read on the next token
+            *) _gn_state=scan ;;                   # non-dangerous subcommand (log / diff / status / …)
+          esac ;;
+        *)  # scan: looking for the next git invocation
+          case "$_gn_t" in
+            git|*/git) _gn_state=flags ;;
+          esac ;;
+      esac
+    done
+    [ "$_gn_noglob_was_set" = "1" ] || set +f
+
+    if [ -n "$_gn_hit" ]; then
+      BLOCKED_PATTERN="reviewer-gitdir-write"
+      BLOCKED_REASON="Reviewer subagents must not WRITE into Git internals via native git subcommands. This command uses ${_gn_hit}, which writes .git/config or .git refs directly (or injects config inline) — no redirect or file-mutating verb involved, so the redirect/file-verb write detection cannot see it. Planting 'git config core.hooksPath / core.fsmonitor / alias.*=!cmd' (or 'git -c core.hooksPath=… <cmd>') executes arbitrary code in the non-sandboxed main session on the next git operation, and .git/config is invisible to 'git status' (no Layer 3 axis covers it). This is a fixed .git-write gate (config write forms incl. inline -c / mutating remote / update-ref / symbolic-ref, global-flag-normalized), not a working-tree verb denylist (Issue #1879)."
+      BLOCKED_ALTERNATIVE="Read-only inspection stays allowed: 'git config --list', 'git config --get <key>', 'cat .git/config', 'git rev-parse --symbolic-full-name HEAD', 'git remote -v', 'git ls-remote'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi
 
-  # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---
-  # CRITICAL: `-p` / `-f` must be matched as **standalone flag tokens**, not as
-  # substrings inside branch names like `hot-fix` / `release-patch` /
-  # `v1.0-rc-final` / `main-pipeline`.
+  # --- (H) reviewer WRITE into a .git directory (redirect / file-mutating verb) ---
+  # pre-tool-edit-guard.sh blocks the Edit/Write path into a parent .git; this
+  # closes the sibling Bash-tool gap (Issue #1864). Only WRITES into a .git dir
+  # component are denied; READING .git (cat/ls/grep .git/config, `dd if=.git/…`)
+  # stays allowed.
   #
-  # Use a single bash regex with an optional "leading args" group:
-  #   ([^[:space:]]+[[:space:]]+)*
-  # This matches zero or more "non-space token + trailing spaces" — allowing
-  # the flag to appear either directly after `git fetch ` or after any number
-  # of positional args. The flag group `(--prune|--force|-p|-f)` requires an
-  # exact token match, so branch names containing `-p`/`-f` as substrings are
-  # NOT matched.
+  # SCOPE (deliberate — best-effort hardening, NOT full closure): a static bash
+  # matcher cannot decide "does this command write to .git" in general. Matched
+  # here: a redirect operand (`>`/`>>`), a positional argument of a common
+  # file-writing verb (tee/cp/mv/ln/install/rsync/truncate/sponge/patch), and
+  # `dd of=<path>` (`of=` is dd's sole output form). The verb list is a
+  # COMMON-SET, deliberately NOT exhaustive. Out of scope for a static matcher —
+  # covered by Layer 1 (reviewer prompt) ONLY, NOT by this hook and NOT by
+  # Layer 3 (`.git` writes are invisible to `git status --porcelain`; a complete
+  # guarantee needs filesystem permissions / sandbox):
+  #   - Runtime-resolved / `$`-expanded targets (`> $VAR`, `> $(cmd)`, ANSI-C
+  #     `$'\x2egit/…'`) — the `$`/`(`/`)` are collapsed to spaces above.
+  #   - Glob-expanded targets (`> .git*/config`) — the tokenizer runs under
+  #     `set -f`; un-noglobbing would re-open the hook-CWD pathname-expansion
+  #     DoS (→ timeout → fail-open), and `.git*` is statically indistinguishable
+  #     from a legit `.github` expansion.
+  #   - Interpreter-embedded writes (`python3 -c "open('.git/…','w')"`).
+  #   - Heredoc-body redirects (`cat <<EOF > .git/x`) — CMD_CHECK cuts at `<<`
+  #     (`cat > .git/x <<EOF` IS caught); scanning raw $COMMAND would false-match
+  #     `>.git` text inside heredoc/PR bodies → spurious fail-closed denies.
+  #   - Flag-glued targets other than `dd of=` (`install -t.git/hooks`,
+  #     `--target-directory=.git/…`) — only a .git path surfacing as its OWN
+  #     token is matched (`install -t .git/hooks src` IS caught).
+  # Documented traits (not gaps): a `>` or .git path inside a quoted string can
+  # false-match (rare, recoverable via the deny message); `.git` is matched as a
+  # genuine path COMPONENT only (`foo.git/` does not match); cp/mv/… fire even
+  # when the .git path is the SOURCE; the file-verb latch persists across the
+  # space-collapsed command, so it can over-DENY a later .git READ on the same
+  # line (fail-closed, rare, accepted).
   if [ -z "$BLOCKED_PATTERN" ]; then
-    if [[ "$PADDED" =~ " git fetch "([^[:space:]]+[[:space:]]+)*(--prune|--force|-p|-f)([[:space:]=]|$) ]]; then
-      BLOCKED_PATTERN="reviewer-state-mutating-git"
-    fi
-  fi
-
-  # --- (G) git branch: display-only flags allowed, everything else denied ---
-  # Display-only flags: --list / --show-current / -a / --all / -r / --remotes /
-  #                     -v / -vv / --verbose / -q / --quiet
-  # Denied: -D / -d / -f / -m / -M / -c / -C / --delete / --force / --move /
-  #         --copy, bare `git branch <name>` (new ref creation)
-  if [ -z "$BLOCKED_PATTERN" ]; then
-    # Short/long-form deletion and move flags
-    case "$PADDED" in
-      *" git branch -D "*|\
-      *" git branch -d "*|\
-      *" git branch -f "*|\
-      *" git branch -m "*|\
-      *" git branch -M "*|\
-      *" git branch -c "*|\
-      *" git branch -C "*|\
-      *" git branch --delete"*|\
-      *" git branch --force"*|\
-      *" git branch --move"*|\
-      *" git branch --copy"*|\
-      *" git branch --set-upstream"*|\
-      *" git branch --unset-upstream"*|\
-      *" git branch --edit-description"*)
-        BLOCKED_PATTERN="reviewer-state-mutating-git"
-        ;;
-    esac
-  fi
-  if [ -z "$BLOCKED_PATTERN" ]; then
-    # Bare new-branch creation: `git branch <non-flag-token>` after the verb.
-    # Use a bash regex to detect `git branch` followed by a token that does NOT
-    # start with `-` (which would indicate a flag). Bare `git branch`
-    # (no argument) and `git branch -<flag>` stay in the regex's non-match path.
-    if [[ "$PADDED" =~ " git branch "[[:space:]]*[^[:space:]-] ]]; then
-      BLOCKED_PATTERN="reviewer-state-mutating-git"
-    fi
-  fi
-
-  # --- (H) reviewer WRITE into a .git directory (shell redirect / file-mutating verb) ---
-  # pre-tool-edit-guard.sh structurally blocks the Edit/Write/MultiEdit/NotebookEdit path into a
-  # parent .git; this closes the sibling Bash-tool gap (Issue #1864 AC-1). A reviewer subagent can
-  # `echo pwned > <repo>/.git/hooks/pre-commit` (or via tee/cp/mv/ln/install/rsync/truncate/dd/sponge/patch) to
-  # plant a hook or rewrite .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) — either
-  # runs arbitrary code in the non-sandboxed MAIN session on the next git op, strictly worse than a
-  # source edit and invisible to `git status`. This block runs INSIDE the Pattern-4 fail-CLOSED
-  # trap region (before the restore below), so a crash here denies rather than allows. Only WRITES
-  # into a .git dir component are denied; READING .git (cat/ls/grep .git/config, `dd if=.git/…`)
-  # stays allowed (no write operator/verb targeting .git).
-  #
-  # SCOPE (deliberate — this is best-effort hardening, per AC-1 "可能な範囲で", NOT full closure):
-  # a static bash matcher cannot decide "does this command write to .git" in general. This block
-  # matches only STATICALLY-IDENTIFIABLE write targets: a redirect operand (`>`/`>>`), a positional
-  # argument of a common file-writing verb (tee/cp/mv/ln/install/rsync/truncate/sponge/patch), and
-  # `dd of=<path>`. The file-verb list is a COMMON-SET, deliberately NOT exhaustive — any write
-  # tool outside it (in-place editors `sed -i`/`perl -pi`/`ed`/`ex`/`gawk -i inplace`, and other
-  # exotic writers) is Layer-1-only, exactly like the interpreter class below. Enumerating every
-  # write-capable program is impossible for a static matcher, so the guarantee for the tail is the
-  # reviewer prompt, not this hook. The following are OUT OF SCOPE for a static matcher and are
-  # covered by Layer 1 (the reviewer prompt / _reviewer-base.md READ-ONLY contract) ONLY — NOT by
-  # this hook and NOT by Layer 3:
-  #   - Targets needing RUNTIME resolution or `$`-EXPANSION: `> $VAR`, `> $(cmd)`, and ANSI-C
-  #     quoting `> $'\x2egit/hooks/x'` (`\x2e`→`.`) — the `$`/`(`/`)` are collapsed to spaces by the
-  #     meta-char normalization, so the path is not visible statically (ANSI-C escape decoding is a
-  #     `$`-expansion, not plain quote-removal, so it is NOT dequoted below).
-  #   - GLOB-expanded write targets: `> .git*/config`, `> .gi?/config`, `cp x .git*/hooks/y` — the
-  #     `*`/`?`/`[` survive meta-char normalization, but the tokenizer below runs under `set -f`
-  #     (noglob), so the token stays LITERAL (`.git*/config`) and does not match the `.git`-component
-  #     globs. Catching this would mean un-noglobbing, which re-opens the hook-CWD pathname-expansion
-  #     DoS (→ timeout → fail-open) and the over-DENY this fix closes — and `.git*` is statically
-  #     indistinguishable from a legit `.git*`→`.github` expansion anyway. Same Layer-1-only class as
-  #     `$VAR`/`$(cmd)` above.
-  #   - INTERPRETER-embedded writes: `python3 -c "open('.git/hooks/x','w')"`, `perl -e ...` — the
-  #     write is inside an opaque quoted argument.
-  #   - HEREDOC-body redirects: `cat <<EOF > .git/hooks/x` — CMD_CHECK cuts at `<<`, so a redirect
-  #     target after the marker is stripped (`cat > .git/hooks/x <<EOF` IS caught). Scanning raw
-  #     $COMMAND to fix this would false-match `>.git` text inside heredoc/PR bodies and, under this
-  #     fail-CLOSED region, turn those into spurious denies — so it is deliberately not done.
-  #   - FLAG-embedded write targets other than `dd of=`: a target GLUED to a flag — `install
-  #     --target-directory=.git/hooks` / `install -t.git/hooks`, GNU `cp --target-directory=.git/…`
-  #     — is NOT parsed. Only a .git path that surfaces as its OWN token is matched, i.e. a
-  #     positional arg or a SPACE-separated flag argument (`install src .git/hooks/x` and
-  #     `install -t .git/hooks src` — the standalone `.git/hooks` token — ARE caught). `dd of=` is
-  #     the one glued-target special-cased, because `of=` is dd's SOLE output form (dd has no
-  #     positional destination); adding per-flag parsing for every verb (`-t`/`--target-directory=`
-  #     /…) is scope creep, so those stay Layer-1-only.
-  #   Note: Layer 3 (post-review-state-verify.sh) does NOT backstop these — `.git` writes are
-  #   invisible to `git status --porcelain`. A complete guarantee needs a different layer
-  #   (filesystem permissions / sandbox), which is out of scope for this hook.
-  # Other documented traits (not gaps):
-  #   - A `>` or a .git path inside a quoted string (`echo "text > .git/x"`) can false-match. Rare
-  #     in a read-only reviewer command; the deny message explains the block so it is recoverable.
-  #   - `.git` is matched as a genuine path COMPONENT only (`(^|/).git(/|$)` via the case globs),
-  #     so a dir literally named `foo.git/` (e.g. a bare-repo clone) is NOT matched.
-  #   - cp/mv/ln/rsync/install fire even when the .git path is the SOURCE (`cp .git/config /tmp/x`),
-  #     not only the destination — a read-copy a reviewer should do with `cat` instead; accepted to
-  #     keep the matcher simple (an explicit `< .git/x` input redirect IS excluded as a read).
-  #   - The file-verb latch is set by a matching token ANYWHERE and persists across the (space-
-  #     collapsed) command, so it can over-DENY a later .git READ in the same command line — both a
-  #     cross-boundary read (`cp a b ; cat .git/config`) and a path ARG whose basename is a verb
-  #     (`grep x /tmp/cp .git/config` → `/tmp/cp` basename `cp` latches). This is fail-CLOSED (it
-  #     denies a read, never allows a write), rare, and recoverable via the deny message; accepted
-  #     rather than track command boundaries (which the meta-char collapse has already erased).
-  if [ -z "$BLOCKED_PATTERN" ]; then
-    # Tokenize from _gd_src (the PRE-`/git`-munge snapshot captured above), NOT CMD_NORMALIZED:
-    # the `/git`→` git` invocation-normalization corrupts any redirect-target path with a literal
-    # `/git` ancestor (`/srv/git/…`, `~/github/…`), splitting `>` from the `.git` token (Issue #1864
-    # fix). Meta-chars ;&|(){}`$ are already collapsed to spaces in _gd_src; `>`/`<` survive.
-    # Surface `>>`/`>`/`<` as standalone tokens so `x>.git/y` and `x >> .git/y` both tokenize.
-    # Append order matters: `>>` before `>`.
-    _gdw=" ${_gd_src:-} "
+    # Surface `>>`/`>`/`<` as standalone tokens so `x>.git/y` and `x >> .git/y`
+    # both tokenize. Append order matters: `>>` before `>`.
+    _gdw=" $CMD_NORMALIZED "
     _gdw="${_gdw//>>/ > }"
     _gdw="${_gdw//>/ > }"
     _gdw="${_gdw//</ < }"
     while [[ "$_gdw" == *"  "* ]]; do _gdw="${_gdw//  / }"; done
     _gd_prev=""
     _gd_fileverb=0
-    # noglob for the tokenizer: `for _gd_tok in $_gdw` is UNQUOTED, so without `set -f` a reviewer
-    # command's glob metachars (`*`/`?`/`[`, which survive the meta-char collapse above — only
-    # ;&|(){}`$ are collapsed) undergo pathname expansion against the hook's CWD. Two fail modes:
-    # (a) FALSE-POSITIVE / over-DENY — a `*` expands to CWD entries; if a file named like a write-verb
-    #     (cp/tee/…) sits in CWD it latches _gd_fileverb, so a legit `.git` READ carrying a bare glob
-    #     (`cat .git/config *`) is wrongly denied. Violates AC-1 "read-only git/test not mis-detected".
-    # (b) TIMEOUT→FAIL-OPEN (RCE) — glob expansion happens AFTER the 64KB length guard, so the token
-    #     count is NOT bounded by it. `touch f{1..1000000}` then `echo x /bigdir/* > .git/hooks/pre-commit`
-    #     makes this loop iterate ~1M times (~9s measured, +glob readdir/sort) → the PreToolUse hook
-    #     times out → fails OPEN → the very `.git` write this block exists to deny then lands. The
-    #     sibling git-flag loop (~line 440) is iteration-capped for exactly this reason; noglob bounds
-    #     THIS loop's token count to the length-guarded input instead. `case` / `[[ == ]]` pattern
-    #     matching is unaffected by noglob, so the detection logic below is unchanged (Issue #1864
-    #     follow-up). Save/restore the prior noglob state (drift-safe; this hook leaves it off today).
-    #     The sibling `for tok in $WT_ARGS` loop (~line 608) shares the unquoted pattern but is
-    #     pre-existing (out of this fix's scope).
+    # noglob for the tokenizer: `for _gd_tok in $_gdw` is UNQUOTED, so without
+    # `set -f` glob metachars (`*`/`?`/`[` survive the meta-char collapse) undergo
+    # pathname expansion against the hook CWD. Two fail modes closed by noglob:
+    # (a) over-DENY — a `*` expanding to a CWD file named like a write-verb
+    #     latches _gd_fileverb, wrongly denying a legit `.git` READ;
+    # (b) TIMEOUT→FAIL-OPEN (RCE) — glob expansion is not bounded by the 64KB
+    #     length guard; a large-dir glob makes this loop iterate ~1M times → hook
+    #     timeout → the very .git write this block exists to deny lands.
+    # `case` / `[[ == ]]` matching is unaffected by noglob. Save/restore the
+    # prior noglob state (drift-safe); the restore after `done` runs on both
+    # break and normal exit.
     case $- in *f*) _gd_noglob_was_set=1 ;; *) _gd_noglob_was_set=0 ;; esac
     set -f
     for _gd_tok in $_gdw; do
-      # Dequote the token the way the SHELL does before opening the path, THEN strip a leading `of=`
-      # (dd's write-target argument), so `dd … of=.git/hooks/x` is detected while `dd if=.git/config
-      # …` (read source) is not. POSIX quote-removal strips exactly THREE characters wherever they
-      # sit — `"`, `'`, and unquoted `\` — so ALL three are removed globally here. A fixed
-      # surrounding strip, or removing only the quotes, leaves an obfuscated write vector: quotes
-      # ANYWHERE (`of='.git/x'`, `of=''.git/x''`, `of=.g'i't/hooks/x`, `> '.git'/hooks/x`) and
-      # backslashes ANYWHERE (`> .g\it/hooks/x`, `> \.git/x`, `dd of=.g\it/…`) all still open the
-      # real `.git` for the shell. Backslash removal runs BEFORE the `of=` strip so `\of=.git/x`
-      # (escaped `o`) normalizes to `of=.git/x` first (Issue #1864 cycle-3/4 fix — interior/nested
-      # quotes and backslash-escaped path components were fail-open .git-write bypasses). Only the
-      # `.git` component match uses `_gd_p`; `_gd_prev` (redirect / `<` read-skip) and `_gd_verb`
-      # (file-verb latch) below use the RAW `_gd_tok`.
-      # Note: `$'…'` ANSI-C escape decoding (`$'\x2egit'` → `.git`) is NOT done — that is a
-      # `$`-triggered EXPANSION, already class-B out-of-scope (the `$` is collapsed to a space by
-      # the meta-char normalization above, same as `$VAR` / `$(cmd)`), covered by Layer 1.
+      # Dequote the token the way the SHELL does before opening the path, THEN
+      # strip a leading `of=` (dd's write target), so `dd … of=.git/hooks/x` is
+      # detected while `dd if=.git/config` (read source) is not. POSIX
+      # quote-removal strips `"`, `'`, and unquoted `\` wherever they sit, so all
+      # three are removed globally — a fixed surrounding strip would leave
+      # obfuscated vectors (`of='.git/x'`, `> .g\it/hooks/x`) that still open the
+      # real .git for the shell. Backslash removal runs BEFORE the `of=` strip so
+      # `\of=.git/x` normalizes first (Issue #1864 cycle-3/4 fix). Only the
+      # `.git` component match uses `_gd_p`; `_gd_prev` and `_gd_verb` use the
+      # RAW `_gd_tok`. `$'…'` ANSI-C decoding is NOT done — that is a
+      # `$`-expansion, already out-of-scope above.
       _gd_p="${_gd_tok//[\"\']/}"
       _gd_p="${_gd_p//\\/}"
       _gd_p="${_gd_p#of=}"
@@ -828,64 +530,37 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       case "$_gd_p" in
         .git|.git/*|*/.git|*/.git/*) _gd_is_gitpath=1 ;;
       esac
-      # A .git path that is an INPUT redirect source (`… < .git/config`) is a READ → never a write.
+      # A .git path that is an INPUT redirect source (`… < .git/config`) is a READ.
       if [ "$_gd_prev" = "<" ]; then _gd_prev="$_gd_tok"; continue; fi
-      # Redirect vector: the previous surfaced token was `>` and this token is a .git path.
+      # Redirect vector: previous surfaced token was `>` and this token is a .git path.
       if [ "$_gd_prev" = ">" ] && [ "$_gd_is_gitpath" = "1" ]; then
-        BLOCKED_PATTERN="reviewer-gitdir-write"; BLOCKED_SUBKIND="gitdir-write"; break
+        BLOCKED_PATTERN="reviewer-gitdir-write"; break
       fi
-      # File-mutating-verb vector: a write verb seen earlier + a .git path arg now. Resolve the verb
-      # to its bare form the SAME way the shell does before executing it: strip quotes and
-      # backslashes (POSIX quote-removal, mirroring the path dequoting above), THEN take the
-      # basename. Dequoting the verb token is required for the same reason as the path token —
-      # otherwise an obfuscated verb (`'tee'`, `t\ee`, `t"e"e`) evades the latch while the shell
-      # still runs it, re-opening the fail-open on the VERB axis (Issue #1864 cycle-5 fix). The
-      # basename after dequote catches absolute-path invocations (`/usr/bin/tee`); `command cp` /
+      # File-mutating-verb vector: a write verb seen earlier + a .git path arg now.
+      # Resolve the verb to its bare form the SAME way the shell does: strip
+      # quotes/backslashes, then basename — otherwise an obfuscated verb
+      # (`'tee'`, `t\ee`) evades the latch while the shell still runs it (Issue
+      # #1864 cycle-5 fix). The basename catches `/usr/bin/tee`; `command cp` /
       # `exec cp` already reach here as a bare `cp` token.
       _gd_verb="${_gd_tok//[\"\']/}"; _gd_verb="${_gd_verb//\\/}"; _gd_verb="${_gd_verb##*/}"
       case "$_gd_verb" in
         tee|cp|mv|ln|install|rsync|truncate|dd|sponge|patch) _gd_fileverb=1 ;;
       esac
       if [ "$_gd_is_gitpath" = "1" ] && [ "$_gd_fileverb" = "1" ]; then
-        BLOCKED_PATTERN="reviewer-gitdir-write"; BLOCKED_SUBKIND="gitdir-write"; break
+        BLOCKED_PATTERN="reviewer-gitdir-write"; break
       fi
       _gd_prev="$_gd_tok"
     done
-    # Restore the prior noglob state (only re-enable globbing if this hook had it on before).
+    # Restore the prior noglob state.
     [ "$_gd_noglob_was_set" = "1" ] || set +f
-  fi
-
-  if [ -n "$BLOCKED_PATTERN" ]; then
-    BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash push/restore/commit/push/merge/rebase/cherry-pick/revert/tag -a -d -f/clean/gc/branch -D --delete/update-ref/symbolic-ref/am/apply/mv/notes/config/remote/bisect/filter-branch/replace/reflog expire/worktree remove/fetch --prune/--force/etc.) are forbidden inside reviewer contexts."
-    BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory, 'git tag -l' / 'git stash list' / 'git reflog' / 'git branch --list' for display-only queries, or bare 'git fetch' (without --prune/--force) for ref sync. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list. If this block fires on a main session (not a reviewer subagent), check whether CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE env vars are accidentally set; recover with: unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE"
-    # (Z) shell-wrapper の場合は、wrapper 専用の理由・代替を前置する。
-    # 汎用 git message だけだと、git を含まない read-only probe (例: `bash -c 'echo x'`) が
-    # "State-changing git commands ... forbidden" と表示され、reviewer には over-broad で
-    # 不可解な block に見える。なぜ wrapper を一律 block するか / read-only probe をどう書き
-    # 直すかを先頭で説明する (既存 git ガイダンスは wrapper が git を包む場合に有効なので残す)。
-    if [ "$BLOCKED_SUBKIND" = "shell-wrapper" ]; then
-      BLOCKED_REASON="Shell-command wrappers (eval / bash -c / sh -c / zsh -c / ksh -c / dash -c / fish -c) are blocked in reviewer contexts because their quoted argument is opaque to this guard's word-boundary matching and can hide state-mutating git commands. They are therefore blocked unconditionally — even when the wrapped command is read-only. $BLOCKED_REASON"
-      BLOCKED_ALTERNATIVE="For a read-only probe, drop the wrapper: run the command directly, group multiple commands in a subshell '( cmd1; cmd2 )', or put them in a file and run 'bash <script.sh>'. $BLOCKED_ALTERNATIVE"
-    fi
-    # (oversized-normalization) The command has an abnormally large number of git
-    # global flags, which would make normalization exceed the fail-open hook timeout.
-    # Denied fail-closed to prevent a timeout-based bypass — explain that rather than
-    # showing the generic state-mutating message (the command may even be read-only).
-    if [ "$BLOCKED_SUBKIND" = "oversized-normalization" ]; then
-      BLOCKED_REASON="This reviewer command carries an abnormally large number of git global flags (e.g. many repeated -C / -c). Normalizing that many flags could exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so such oversized commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard. $BLOCKED_REASON"
-      BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations never need this many global flags. $BLOCKED_ALTERNATIVE"
-    fi
-    # (gitdir-write) Reviewer writing into a .git directory via shell redirect / file-op (H).
-    # REPLACE (not prepend) the generic git-verb message — this is not a git command, and the
-    # generic "State-changing git commands …" text would mislabel a plain `echo > .git/hooks/x`.
-    if [ "$BLOCKED_SUBKIND" = "gitdir-write" ]; then
+    if [ "$BLOCKED_PATTERN" = "reviewer-gitdir-write" ]; then
       BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of= / sponge / patch). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap (Issue #1864)."
       BLOCKED_ALTERNATIVE="Reviewers are strictly read-only — never write into .git. To INSPECT it, read instead: 'cat .git/config', 'git config --list', 'git cat-file -p <obj>', 'git show <ref>:<file>', 'git rev-parse'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi
+
   # Restore the Patterns 1-3 fail-open trap for the shared result-emit section
-  # below: a crash there keeps the original (pre-fix) fail-open behavior, and the
-  # section already has its own fail-closed fallback for the deny-emit path.
+  # below (it has its own fail-closed fallback for the deny-emit path).
   trap '_rite_btg_pattern13_fail_open' ERR
 fi
 

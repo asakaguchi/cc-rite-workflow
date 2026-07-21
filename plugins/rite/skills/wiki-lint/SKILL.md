@@ -226,7 +226,7 @@ raw_list=""
 
 case "$branch_strategy" in
   separate_branch)
-    ls_err=$(mktemp /tmp/rite-wiki-lint-ls-err-XXXXXX 2>/dev/null) || {
+    ls_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-lint-ls-err-XXXXXX" 2>/dev/null) || {
       echo "WARNING: stderr 退避 tempfile の mktemp に失敗しました。ls-tree の詳細エラー情報は失われます" >&2
       ls_err=""
     }
@@ -658,7 +658,7 @@ echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
-> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.12（`comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。本ステップは `/rite:wiki-lint` 単体実行時にも Wiki ページの番号参照を可視化するための Wiki レイヤ固有のチェックである。
+> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.5（generic loop の `comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。本ステップは `/rite:wiki-lint` 単体実行時にも Wiki ページの番号参照を可視化するための Wiki レイヤ固有のチェックである。
 
 ---
 
@@ -823,13 +823,13 @@ case "$branch_strategy" in
 
     # mktemp 失敗時の loud WARNING (Pattern 3 規範): silent fallback では pre-commit hook /
     # gpg sign / index lock 等の根本原因が不可視になる。
-    add_err=$(mktemp /tmp/rite-lint-add-err-XXXXXX 2>/dev/null) || {
+    add_err=$(mktemp "${TMPDIR:-/tmp}/rite-lint-add-err-XXXXXX" 2>/dev/null) || {
       echo "WARNING: stderr 退避 tempfile (add_err) の mktemp に失敗しました。git add の詳細エラー情報は失われます" >&2
       echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
       echo "  影響: index lock / permission denied 等の根本原因が不可視になります" >&2
       add_err=""
     }
-    commit_err=$(mktemp /tmp/rite-lint-commit-err-XXXXXX 2>/dev/null) || {
+    commit_err=$(mktemp "${TMPDIR:-/tmp}/rite-lint-commit-err-XXXXXX" 2>/dev/null) || {
       echo "WARNING: stderr 退避 tempfile (commit_err) の mktemp に失敗しました。git commit の詳細エラー情報は失われます" >&2
       echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
       echo "  影響: pre-commit hook / gpg sign / author config 失敗の根本原因が不可視になります" >&2

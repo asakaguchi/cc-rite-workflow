@@ -18,10 +18,19 @@ Example: `feat/issue-288-checkpoint-removal` → Issue #288
 
 ### 3. Work Memory Retrieval
 
+> `{plugin_root}` は [Plugin Path Resolution](../../../references/plugin-path-resolution.md) で解決する。
+
 ```bash
-# First, get {owner} and {repo} (execute before variable expansion):
-gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'
-# → {"owner":"asakaguchi","repo":"cc-rite-workflow"}
+# First, get {owner} and {repo} (execute before variable expansion).
+# SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
+# (canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 # Use the retrieved values to search for work memory:
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments \

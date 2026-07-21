@@ -17,7 +17,7 @@
 #   check-no-direct-gh-issue-create.sh --all [--repo-root DIR]
 #
 #   --all expands to every `plugins/rite/skills/**/*.md` file under the
-#   resolved repository root. Use this from /rite:lint Phase 3.14 to enforce
+#   resolved repository root. Use this from /rite:lint Phase 3.5 (generic loop) to enforce
 #   the guard across all command/sub-skill files in a single invocation.
 #   Additional files can be appended after --all.
 #

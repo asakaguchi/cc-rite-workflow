@@ -145,7 +145,7 @@ _emit_skipped() {
 # sibling helpers と同じ規約)。読出失敗は legitimate absence / IO error を区別せず
 # index_unreadable に一本化する (index_read_ok=false の単一経路に集約する。
 # 孤児検出は index.md が無ければ全ページ orphan 誤検出になるため、いずれの失敗でも skip が正解)。
-index_err=$(mktemp /tmp/rite-wiki-lint-orphans-err-XXXXXX 2>/dev/null) || {
+index_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-lint-orphans-err-XXXXXX" 2>/dev/null) || {
   echo "WARNING: stderr 退避 tempfile (index_err) の mktemp に失敗しました。index.md 読出の詳細エラー情報は失われます" >&2
   echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
   index_err=""

@@ -13,7 +13,7 @@
 #   2. The DRIFT-CHECK ANCHOR between create.md §1.0 and ready.md §1.0
 #      (the bash literal MUST be byte-for-byte identical between the
 #      two files — Wiki 経験則「Asymmetric Fix Transcription」予防).
-#   3. The non-regression of `/rite:lint` Phase 3.6 — lint.md must
+#   3. The non-regression of `/rite:lint` Phase 3.5 (generic loop) — lint.md must
 #      still invoke `bang-backtick-check.sh --all` AND treat its exit
 #      code as a warning rather than an error (AC-4).
 #
@@ -172,15 +172,15 @@ else
   fail "TC-4 skip-note mismatch (create=$skipnote_create, ready=$skipnote_ready)"
 fi
 
-# ----- TC-5: AC-4 — /rite:lint Phase 3.6 still invokes the same scanner ----
-echo "TC-5: AC-4 — /rite:lint Phase 3.6 unchanged (non-regression)"
+# ----- TC-5: AC-4 — /rite:lint Phase 3.5 generic loop still invokes the same scanner ----
+echo "TC-5: AC-4 — /rite:lint Phase 3.5 generic loop unchanged (non-regression)"
 lint_inv=$(grep -c 'bang-backtick-check.sh --all' "$LINT_MD" || true)
 if [ "$lint_inv" -ge 1 ]; then
   pass "TC-5 lint.md still invokes 'bang-backtick-check.sh --all'"
 else
   fail "TC-5 lint.md missing scanner invocation (regression)"
 fi
-# Lint must keep treating findings as warnings (Phase 3.6 contract: exit 1
+# Lint must keep treating findings as warnings (Phase 3.5 generic loop contract: exit 1
 # yields `bang_backtick_status: warning`, not error).
 if grep -q 'bang_backtick_status' "$LINT_MD"; then
   pass "TC-5 lint.md retains bang_backtick_status warning record"

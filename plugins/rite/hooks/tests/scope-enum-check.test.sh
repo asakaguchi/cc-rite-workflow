@@ -145,7 +145,7 @@ cat > "$T3_DIR/.rite/review-results/300-20260101000000.json" <<'EOF'
 EOF
 
 # Capture stderr for diagnostic purposes (F-14)
-T3_STDERR=$(mktemp /tmp/rite-scope-enum-t3-stderr-XXXXXX) || { fail "T-3 stderr tmpfile mktemp failed"; T3_STDERR=""; }
+T3_STDERR=$(mktemp "${TMPDIR:-/tmp}/rite-scope-enum-t3-stderr-XXXXXX") || { fail "T-3 stderr tmpfile mktemp failed"; T3_STDERR=""; }
 T3_RC=0
 if [ -n "$T3_STDERR" ]; then
   REPO_ROOT="$T3_DIR" bash "$MIGRATE_SCRIPT" >/dev/null 2>"$T3_STDERR"

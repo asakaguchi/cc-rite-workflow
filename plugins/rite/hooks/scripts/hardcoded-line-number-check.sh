@@ -2,9 +2,9 @@
 # hardcoded-line-number-check.sh
 #
 # Detect hardcoded line-number references in rite-workflow procedural
-# markdown files (skills/**/*.md). Complements distributed-fix-drift-check.sh
-# by catching prose-level references that drift when content is added or
-# removed but the references are not updated in lockstep.
+# markdown files (skills/**/*.md). Catches prose-level references that drift
+# when content is added or removed but the references are not updated in
+# lockstep.
 #
 # Detects prose-form drifts (e.g., 本セクション直前の line N, file.md:N) that
 # escape a simpler `(line N, M)` regex. Lockstep drift is the failure mode;

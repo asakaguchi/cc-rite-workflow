@@ -138,18 +138,14 @@ rite-workflow/
 ├── agents/ # Subagent definitions for /rite:pr-review
 │ ├── _reviewer-base.md # Shared reviewer principles (not a subagent)
 │ ├── security-reviewer.md
-│ ├── performance-reviewer.md
+│ ├── application-reviewer.md
 │ ├── code-quality-reviewer.md
-│ ├── api-reviewer.md
-│ ├── database-reviewer.md
 │ ├── devops-reviewer.md
-│ ├── frontend-reviewer.md
 │ ├── test-reviewer.md
 │ ├── dependencies-reviewer.md
 │ ├── prompt-engineer-reviewer.md
 │ ├── tech-writer-reviewer.md
-│ ├── error-handling-reviewer.md
-│ └── type-design-reviewer.md
+│ └── error-handling-reviewer.md
 ├── skills/ # Claude Code auto-discovered skills (各スキル = 薄い SKILL.md + co-located references/)
 │ # --- PR lifecycle ---
 │ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end)
@@ -162,7 +158,7 @@ rite-workflow/
 │ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
 │ ├── pr-create/ # /rite:pr-create (draft PR 作成) — sub-skill
 │ # --- Issue 管理 ---
-│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / fingerprint-cycling / slug-generation)
+│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation)
 │ ├── issue-list/ # /rite:issue-list
 │ ├── issue-update/ # /rite:issue-update
 │ ├── issue-close/ # /rite:issue-close
@@ -180,7 +176,7 @@ rite-workflow/
 │ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html)
 │ ├── investigate/ # /rite:investigate (構造化コード調査)
 │ ├── learn/ # /rite:learn (Socratic 理解度チェック)
-│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用)
+│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md)
 │ ├── recover/ # /rite:recover (中断した作業の再開)
 │ ├── skill-suggest/ # /rite:skill-suggest
 │ ├── template-reset/ # /rite:template-reset
@@ -223,12 +219,12 @@ rite-workflow/
 │ │ ├── rite-tmp-artifact.sh # 一時成果物 manifest 記録 (name 非依存 reap 用)
 │ │ ├── review-schema-version-check.sh # review-result schema drift 検出
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
-│ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
-│ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.7.1 reviewer registry 3-way 同期検証
+│ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.5 reviewer registry 3-way 同期検証
 │ │ ├── gitignore-health-check.sh
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
-│ │ ├── number-reference-check.sh # lint Phase 3.19 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
-│ │ ├── lib/ # 共有ライブラリ (wiki-config.sh / worktree-git.sh)
+│ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
+│ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
+│ │ ├── lib/ # 共有ライブラリ (git-remote.sh / git-status-filtered.sh / wiki-config.sh / worktree-git.sh)
 │ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # Hook-level test suite (shell-based)
 ├── templates/
@@ -252,7 +248,6 @@ rite-workflow/
 │ ├── check-no-direct-gh-issue-create.sh # 直接 `gh issue create` 禁止の static guard
 │ ├── decompose-issues.sh # 親 + Sub-Issues 一括作成
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
-│ ├── extract-verified-review-findings.sh / measure-review-findings.sh
 │ ├── projects-status-update.sh / projects-items-fetch.sh
 │ ├── review-findings-maps.sh # fix.md severity_map build 委譲
 │ ├── review-source-resolve.sh # fix.md 1.2.0 review source Priority chain 解決
@@ -260,7 +255,7 @@ rite-workflow/
 │ ├── watchdog-status-mismatch.sh # Projects Status 不整合 watchdog
 │ └── tests/ # Script-level test suite
 └── references/ # Cross-cutting references used by skills
-  ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
+  ├── gh-cli-patterns.md / gh-cli-error-catalog.md
   ├── graphql-helpers.md / projects-integration.md
   ├── severity-levels.md / epic-detection.md
   ├── review-result-schema.md / investigation-protocol.md
@@ -273,6 +268,7 @@ rite-workflow/
   ├── box-display-width.md # 罫線 box の表示幅ルール (SoT)
   ├── session-id-validation-contract.md # Session ID validation contract (SoT)
   ├── state-read-evolution.md # state-read.sh の変遷史 (rationale 保存)
+  ├── stop-loop-continuation-contract.md # Stop hook handoff 機構の解説 SoT (iterate/pr-review/fix/cleanup/ready から参照)
   └── bottleneck-detection.md
   # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
   # en.yml, and the ja/ + en/ split files) were deleted entirely —
@@ -286,7 +282,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.8.3",
+ "version": "0.9.0",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "asakaguchi" },
  "license": "MIT"
@@ -371,25 +367,21 @@ Agent documentation...
 | `model` | No | Model selection (default: inherit from parent session) |
 | `tools` | No | List of available tools (default: inherit all tools from parent; omit to enable all tools) |
 
-**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. 9 of the 13 reviewers are pinned to `model: opus`; users can override per-agent frontmatter to opt out.
+**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. 7 of the 9 reviewers are pinned to `model: opus`; users can override per-agent frontmatter to opt out.
 
 **Current Agents:**
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | `security-reviewer` | opus | Security vulnerabilities, authentication, data handling |
-| `performance-reviewer` | inherit | N+1 queries, memory leaks, algorithm efficiency |
+| `application-reviewer` | opus | Application code end-to-end: API/type contracts, performance (N+1, indexes), data operations/migrations, UI safety (XSS, accessibility) |
 | `code-quality-reviewer` | inherit | Duplication, naming, error handling, structure |
-| `api-reviewer` | opus | API design, REST conventions, interface contracts |
-| `database-reviewer` | opus | Schema design, queries, migrations, data operations |
 | `devops-reviewer` | opus | Infrastructure, CI/CD pipelines, deployment configurations |
-| `frontend-reviewer` | opus | UI components, styling, accessibility, client-side code |
 | `test-reviewer` | opus | Test quality, coverage, testing strategies |
 | `dependencies-reviewer` | opus | Package dependencies, versions, supply chain security |
 | `prompt-engineer-reviewer` | opus | Claude Code skill, command, and agent definitions |
 | `tech-writer-reviewer` | opus | Documentation clarity, accuracy, completeness |
 | `error-handling-reviewer` | inherit | Error handling patterns, silent failures, recovery logic |
-| `type-design-reviewer` | inherit | Type design, encapsulation, invariant expression |
 
 ---
 
@@ -936,18 +928,14 @@ Analyze files and select appropriate reviewers
  ↓
 Spawn subagents in parallel (Task tool)
  ├─ security-reviewer: Security perspective
- ├─ performance-reviewer: Performance perspective
+ ├─ application-reviewer: Application code perspective (API/type contracts, performance, data operations, UI safety)
  ├─ code-quality-reviewer: Code quality perspective
- ├─ api-reviewer: API design perspective
- ├─ database-reviewer: Database perspective
  ├─ devops-reviewer: DevOps perspective
- ├─ frontend-reviewer: Frontend perspective
  ├─ test-reviewer: Test quality perspective
  ├─ dependencies-reviewer: Dependencies perspective
  ├─ prompt-engineer-reviewer: Prompt quality perspective
  ├─ tech-writer-reviewer: Documentation perspective
- ├─ error-handling-reviewer: Error handling perspective
- └─ type-design-reviewer: Type design perspective
+ └─ error-handling-reviewer: Error handling perspective
  ↓
 Collect results from each subagent
  ↓
@@ -1194,6 +1182,12 @@ Registered as a PreToolUse hook. Blocks known incorrect Bash command patterns th
 | `gh pr diff --stat` | `--stat` flag is unsupported | `gh pr view {n} --json files --jq '.files[]'` |
 | `gh pr diff -- <path>` | File filter is unsupported | `gh pr diff {n} \| awk` for filtering |
 | 「!= null」 (in jq/awk) | Bash history expansion interprets 「!」 | `select(.field)` or `select(.field == null \| not)` |
+| Reviewer subagent: write into a `.git` dir (`> .git/…`, `tee`/`cp`/`dd of=` etc.) | Invisible to `git status`, irreversible, RCE via `.git/hooks` / `.git/config` | Read-only inspection (`cat .git/config`, `git config --list`) |
+| Reviewer subagent: native `.git`-writing git subcommand (`git config <key> <val>`, mutating `git remote`, `git update-ref`, `git symbolic-ref`) | Writes `.git/config` / refs with no redirect for the write-detection to see; `git config core.hooksPath` is an RCE vector | Read forms stay allowed (`git config --list/--get`, `git remote -v`, `git rev-parse`) |
+| Reviewer subagent: shell wrapper (`eval` / `sh -c` / `bash -c` …) | Opaque quoting can hide a `.git` write | Direct execution, subshell `( … )`, or `bash <script.sh>` |
+| Reviewer subagent: oversized command (>64KB) | Parsing could exceed the hook timeout, which fails open | Simplify the command |
+
+Reviewer working-tree git verbs (`checkout` / `reset` / `commit` / `branch` / …) are **not** machine-gated (Issue #1879): they are visible and recoverable via `git status`, so their guarantee is the reviewer prompt READ-ONLY contract (`_reviewer-base.md`, Layer 1) plus `post-review-state-verify.sh` drift detection (Layer 3).
 
 **Heredoc Safety:**
 
@@ -1307,12 +1301,11 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | — |
 | `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | — |
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
-| `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
-| `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | — |
-| `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.7.1 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
+| `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.5 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
 | `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | — |
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
-| `number-reference-check.sh` | `/rite:lint` Phase 3.19 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
+| `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
+| `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |
 | `wiki-branch-init.sh` | `/rite:wiki-init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | — |
 | `wiki-lint-skipped-refs.sh` | `/rite:wiki-lint` ステップ 6.0 — raw frontmatter (`ingest_status: skipped`) を走査して skipped_refs 集合を marker block + `log_read_ok` 4 値 enum で構築 (Issue #1520 で skip SoT が log.md から raw frontmatter へ移行。6.2 `wiki-lint-source-refs.sh` と対称) | — |
 | `wiki-lint-source-refs.sh` | `/rite:wiki-lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | — |
@@ -1328,9 +1321,9 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `orphan-reference-check.sh` | plugins/rite/ 配下の未参照 (orphan) ファイル検出 | — |
 | `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | — |
 | `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | — |
-| `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 | — |
+| `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 (`fix.md` ステップ 3.1.1 の pre-commit gate から直接呼び出される) | `review.loop.pre_commit_drift_check` |
 | `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、setup.md Phase 4.5.0.2) | — |
-| `lib/` (`wiki-config.sh` / `worktree-git.sh`) | wiki 系 helper の共有ライブラリ (config 読取 / worktree git 操作) | — |
+| `lib/` (`git-remote.sh` / `git-status-filtered.sh` / `wiki-config.sh` / `worktree-git.sh`) | 汎用 git helper + wiki 系 helper の共有ライブラリ (owner/repo 解決 / sandbox ghost mount 除外 git status / wiki config 読取 / worktree git 操作) | — |
 | `tests/` | hooks/scripts レベルのテストスイート | — |
 
 ---
@@ -1405,7 +1398,7 @@ The per-session flow-state structure above isolates the **state** layer; **Workt
 
 | Stage | Command | Action |
 |---|---|---|
-| Create / enter | `/rite:open N` | `git worktree add -b {branch} {worktree_base}/issue-{N} origin/{base}` (idempotent across 5 cases — reuse / stale-residue prune / branch-only / new / other-worktree abort), then `EnterWorktree(path)` (Step 2.2-W / 2.3-W). A pre-existing `worktree` flow-state value triggers Step 0.5 re-entry on resume |
+| Create / enter | `/rite:open N` | `git worktree add --no-track -b {branch} {worktree_base}/issue-{N} origin/{base}` (idempotent across 5 cases — reuse / stale-residue prune / branch-only / new / other-worktree abort; `--no-track` avoids sandbox-rejected `.git/config` tracking writes, Issue #1894), then `EnterWorktree(path)` (Step 2.2-W / 2.3-W). A pre-existing `worktree` flow-state value triggers Step 0.5 re-entry on resume |
 | Work | implement / lint / push / PR create | unchanged — they are cwd-relative and complete inside the worktree (Steps 3–6) |
 | Exit / remove | `/rite:cleanup` | `ExitWorktree(action: "keep")` back to the main checkout, then `git worktree remove {path}` (a path-entered worktree is **not** removed by `ExitWorktree` itself, so removal runs from the main checkout) |
 | Reap (orphans) | `pr-cycle-cleanup.sh` Step 5 | lazily removes abnormally-orphaned session worktrees only when a **self-exclusion guard (Gate 0)** plus **3 gates** all pass: Gate 0 never reaps the worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching or nested under the candidate, so a long-lived session cannot delete its own active worktree mid-flight), then strict `^issue-[0-9]+$` name under `worktree_base`, claim not live (or no claim + mtime > 24h), and `git status --porcelain` empty (a dirty worktree is never auto-reaped — WARNING + manual command instead) |
@@ -1548,7 +1541,7 @@ Analyze PR changes and dynamically generate appropriate reviewers.
 | `.github/**`, `Dockerfile`, `*.yml` (CI) | DevOps Expert |
 | `**/*.md`, `docs/**` | Technical Writer |
 | `**/*.test.*`, `**/*.spec.*` | Test Expert |
-| `**/api/**`, `**/routes/**` | API Design Expert |
+| `**/api/**`, `**/routes/**` | Application Expert |
 
 #### Step 2: Content Analysis
 
@@ -1568,7 +1561,7 @@ LLM analyzes diff content to determine:
 ### Dynamically Generated Reviewer Profiles
 
 - **Security Expert**: Vulnerabilities, authentication, encryption
-- **Performance Expert**: Optimization, memory usage
+- **Application Expert**: Application code end-to-end (contracts, performance, data operations, UI safety)
 - **Accessibility Expert**: WCAG compliance, screen reader support
 - **Technical Writer**: Documentation quality, consistency
 - **Architect**: Design patterns, dependencies
@@ -1588,7 +1581,7 @@ LLM analyzes diff content to determine:
 - **Assessment**: Approve
 - **Comments**: No issues with authentication logic
 
-#### Performance Expert
+#### Application Expert
 - **Assessment**: Approve with conditions
 - **Comments**: Potential N+1 query (L45-52)
 

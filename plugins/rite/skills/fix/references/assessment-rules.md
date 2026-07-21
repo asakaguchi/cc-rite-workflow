@@ -18,7 +18,10 @@ Before 5.3.1 Red blocking rule, apply the following **mechanical** demotion as a
 ```
 For each finding in 全指摘事項:
   if reviewer_type in Hypothetical Exception Categories
-     (= {security, database, devops, dependencies}; see severity-levels.md#hypothetical-exception-categories):
+     (= {security, devops, dependencies}; see severity-levels.md#hypothetical-exception-categories)
+     or (reviewer_type == application
+         and finding's 内容 column contains `Likelihood: Hypothetical (例外カテゴリ: database migration)`
+         — application は Database migration 例外を migration 関連 finding に限り継承する):
     skip (severity 維持、例外カテゴリ)
   else:
     if finding's 内容 column lacks a `Likelihood-Evidence:` prefix line
@@ -51,11 +54,11 @@ Absence of any of these matches is the reviewer-side contract violation that Pha
 | Reviewer | Rationale |
 |----------|-----------|
 | `security` | Attack surface must be evaluated pre-exploitation; waiting for observed exploit is wrong |
-| `database` | Destructive DDL/DML cannot be "wait and see" |
+| `application` (migration 関連 finding に限る — `Likelihood: Hypothetical (例外カテゴリ: database migration)` 表記を伴うもの) | Destructive DDL/DML cannot be "wait and see"。旧 `database` reviewer の Database migration 例外を統合先の `application` が migration finding に限り継承する |
 | `devops` | Infra rollback/deploy paths failure leaves production broken |
 | `dependencies` | Known CVEs and supply-chain risks are inherently "could happen any time" |
 
-These 4 categories match [Hypothetical Exception Categories](../../../references/severity-levels.md#hypothetical-exception-categories) exactly. Updates to the exception list MUST be synchronized across `severity-levels.md`, `_reviewer-base.md`, and this section.
+These categories inherit [Hypothetical Exception Categories](../../../references/severity-levels.md#hypothetical-exception-categories) (severity-levels.md の表は Database migration 例外の参照先を `application-reviewer.md` に更新済み)。Updates to the exception list MUST be synchronized across this section and `pr-review.md` ステップ 5.1 (Demoted findings collection)。
 
 **Relation to 5.3.7 (AI independent judgment prohibition)**: The mechanical demotion in 5.3.0 is **explicitly permitted** because it follows a deterministic algorithm (regex match on `Likelihood-Evidence:` anchor + destination fixed by matrix) with no AI discretion. In contrast, 5.3.7 prohibits AI from applying severity exceptions based on its own judgment (e.g., "this CRITICAL is actually minor"). Mechanical rule = allowed; AI judgment = forbidden.
 

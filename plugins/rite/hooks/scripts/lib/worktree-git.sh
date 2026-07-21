@@ -138,7 +138,7 @@ verify_worktree_branch() {
  _vwb_outer_hup=$(trap -p HUP)
 
  trap 'rm -f "${rev_parse_err:-}"' EXIT INT TERM HUP
- rev_parse_err=$(mktemp "/tmp/rite-${tempfile_tag}-revparse-err-XXXXXX" 2>/dev/null) || rev_parse_err=""
+ rev_parse_err=$(mktemp "${TMPDIR:-/tmp}/rite-${tempfile_tag}-revparse-err-XXXXXX" 2>/dev/null) || rev_parse_err=""
 
  # Save caller's errexit so we can restore exactly.
  local _vwb_errexit=0
@@ -226,19 +226,19 @@ worktree_commit_push() {
 
  # mktemp failures are surfaced to stderr (not silently swallowed) so
  # operators can see when stderr capture is degraded to /dev/null.
- if ! add_err=$(mktemp /tmp/rite-wtgit-add-err-XXXXXX 2>/dev/null); then
+ if ! add_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-add-err-XXXXXX" 2>/dev/null); then
  echo "WARNING: mktemp for worktree_commit_push add stderr capture failed — diagnostics will be lost" >&2
  add_err=""
  fi
- if ! diff_err=$(mktemp /tmp/rite-wtgit-diff-err-XXXXXX 2>/dev/null); then
+ if ! diff_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-diff-err-XXXXXX" 2>/dev/null); then
  echo "WARNING: mktemp for worktree_commit_push diff stderr capture failed — diagnostics will be lost" >&2
  diff_err=""
  fi
- if ! commit_err=$(mktemp /tmp/rite-wtgit-commit-err-XXXXXX 2>/dev/null); then
+ if ! commit_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-commit-err-XXXXXX" 2>/dev/null); then
  echo "WARNING: mktemp for worktree_commit_push commit stderr capture failed — diagnostics will be lost" >&2
  commit_err=""
  fi
- if ! push_err=$(mktemp /tmp/rite-wtgit-push-err-XXXXXX 2>/dev/null); then
+ if ! push_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-push-err-XXXXXX" 2>/dev/null); then
  echo "WARNING: mktemp for worktree_commit_push push stderr capture failed — diagnostics will be lost" >&2
  push_err=""
  fi
@@ -303,7 +303,7 @@ worktree_commit_push() {
  # Extend internal trap to cover head_err so SIGINT / SIGTERM / SIGHUP during
  # the post-commit rev-parse cannot leak the tempfile. Must be set BEFORE mktemp.
  trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}" "${head_err:-}"' EXIT INT TERM HUP
- head_err=$(mktemp /tmp/rite-wtgit-head-err-XXXXXX 2>/dev/null) || head_err=""
+ head_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-head-err-XXXXXX" 2>/dev/null) || head_err=""
  if head_sha=$(git -C "$worktree" rev-parse HEAD 2>"${head_err:-/dev/null}"); then
  :
  else

@@ -4,8 +4,7 @@
 # Detect cross-file step/phase references that live inside shell-script prose
 # (echo strings and comments) under plugins/rite/**/*.sh and verify them against
 # the actual headings of the referenced markdown file. Companion to
-# comment-line-ref-check.sh (which targets `<file>:<NN>` line-number references)
-# and the markdown-side anchor check in distributed-fix-drift-check.sh Pattern 4.
+# comment-line-ref-check.sh (which targets `<file>:<NN>` line-number references).
 #
 # Why a separate hook:
 #   A review found an overshoot in wiki-growth-check.sh where a hint

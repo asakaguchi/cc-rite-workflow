@@ -32,8 +32,7 @@
 # read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)
 # requires a mandatory backup suffix for `-i`, so GNU-style `sed -i '<expr>'`
 # aborts the suite on macOS under `set -e`. The awk pattern is identical on
-# GNU and BSD and matches the `test-doc-heavy-patterns-drift-check.sh`
-# portability convention.
+# GNU and BSD.
 
 set -euo pipefail
 
@@ -47,8 +46,7 @@ if [ ! -f "$CHECKER" ]; then
   exit 1
 fi
 
-# sibling _test-helpers.sh consumers (distributed-fix-drift-check.test.sh 等)
-# と同型の sandbox cleanup pattern。
+# sibling _test-helpers.sh consumers と同型の sandbox cleanup pattern。
 cleanup_dirs=()
 cleanup() {
   for d in "${cleanup_dirs[@]:-}"; do
@@ -70,7 +68,7 @@ awk_inplace() {
   mv "$tmp" "$file"
 }
 
-# 13 種のダミー reviewer slug（checker の >= 10 抽出ガードを満たす数）。
+# 13 種のダミー reviewer slug（checker の >= 6 抽出ガードを満たす数）。
 # web3 は数字入り slug (Issue #1763): AGENT_RE が `[a-z][a-z-]*-reviewer[.]md` に
 # 巻き戻った場合、この 1 件だけが 3 集合 + I3 行フィルタから静かに脱落する
 # （TC-15 の回帰ガード対象）。
@@ -280,12 +278,12 @@ else
   fail "TC-7: expected rc=2, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-# rc=2 は「>= 10 抽出ガード」「I3 行数ガード」の 2 経路で発火しうる。本 TC は見出し
+# rc=2 は「>= 6 抽出ガード」「I3 行数ガード」の 2 経路で発火しうる。本 TC は見出し
 # 変更による抽出崩壊が狙いなので、発火元が抽出ガードであることを文言で特定する
 # （どちらのガードが落ちたのか未検証のまま rc=2 だけ見ると、実装が別ガードで
 # 偶然 rc=2 を返す regression を見逃す）。
 if printf '%s\n' "$out" | grep -Fq "extracted only 0 reviewers"; then
-  pass "TC-7: fired via the >= 10 extraction guard (not the I3 row-count guard)"
+  pass "TC-7: fired via the >= 6 extraction guard (not the I3 row-count guard)"
 else
   fail "TC-7: rc=2 but not via the extraction guard — unexpected message"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
@@ -349,11 +347,11 @@ else
   fail "TC-10: expected rc=2, got rc=$rc (I3 must not silently no-op on format change)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
-# TC-7 と対称の guard 特定 assert。列挿入は正規表現ベースの set 抽出（>= 10 ガード）
+# TC-7 と対称の guard 特定 assert。列挿入は正規表現ベースの set 抽出（>= 6 ガード）
 # 自体は通過し、位置依存の I3 行数ガードだけが落ちるはずなので、その guard 固有の
 # 文言で発火元を特定する（抽出ガードで落ちていたら列シフト検知の意図が壊れている）。
 if printf '%s\n' "$out" | grep -Fq "I3 slug check evaluated only 0 rows"; then
-  pass "TC-10: fired via the I3 row-count guard (not the >= 10 extraction guard)"
+  pass "TC-10: fired via the I3 row-count guard (not the >= 6 extraction guard)"
 else
   fail "TC-10: rc=2 but not via the I3 guard — unexpected message"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
@@ -373,7 +371,7 @@ fi
 # --- TC-12: aggregate log line contract (no --quiet) ---
 echo ""
 echo "=== TC-12: aggregate log line exact match without --quiet (skills/lint contract) ==="
-# skills/lint/SKILL.md ステップ 3.7.1 は "==> Total reviewer-registry-drift findings: N"
+# skills/lint/SKILL.md Phase 3.5 チェック表 (Count line 列) は "==> Total reviewer-registry-drift findings: N"
 # を抽出 regex で消費する cross-component 契約。他の全 TC は --quiet を付けて実行して
 # おり文言の drift を検出できないため、本 TC だけ --quiet なしで実行し完全一致で
 # assert する（TC-3 と同じ 1 finding 固定ミューテーションを再利用）。

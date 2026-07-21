@@ -35,6 +35,7 @@ When this command is executed, run the following phases in order.
 | Placeholder | Description | How to Obtain |
 |---------------|------|----------|
 | `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner_repo}` | Repo-context gh コマンドの `-R` に literal substitute する owner/repo（slash 形式） | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) |
 
 ---
 
@@ -65,8 +66,15 @@ issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[
 **Fallback (local file missing/corrupt)**:
 
 ```bash
-# リポジトリ情報を取得
-gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'
+# リポジトリ情報を取得（SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback。
+# canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）
+owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
+owner=""; repo=""
+[ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
+[ -n "$owner" ] && [ -n "$repo" ] || {
+  owner=$(gh repo view --json owner --jq '.owner.login')
+  repo=$(gh repo view --json name --jq '.name')
+}
 
 # Issue comment から作業メモリを読み込む（backup）
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
@@ -95,7 +103,7 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 >
 > **DRIFT-CHECK ANCHOR (MUST)**: This bash block is intentionally synchronized between `skills/pr-create/SKILL.md` §1.0 and `skills/ready/SKILL.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
 >
-> **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
+> **Independent of the `/rite:lint` Phase 3.5 bang-backtick check**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
 
 Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
 
@@ -165,7 +173,8 @@ End processing.
 Retrieve the PR associated with the current branch:
 
 ```bash
-gh pr view --json number,title,state,isDraft,url,headRefName,body
+# -R 指定時は selector が必須のため、現在のブランチ名を selector に渡す（従来どおり「現在ブランチの PR」を特定する）
+gh pr view "$(git branch --show-current)" -R {owner_repo} --json number,title,state,isDraft,url,headRefName,body
 ```
 
 **If PR is not found:**
@@ -291,7 +300,7 @@ End processing.
 ### 3.1 Execute gh pr ready
 
 ```bash
-gh pr ready {pr_number}
+gh pr ready {pr_number} -R {owner_repo}
 ```
 
 **On success:**
@@ -309,7 +318,7 @@ Proceed to the next phase.
 - PR が既にクローズされている
 
 対処:
-1. `gh pr view {number}` で PR の状態を確認
+1. `gh pr view {number} -R {owner_repo}` で PR の状態を確認
 2. GitHub Web UI から直接変更を試す
 ```
 
@@ -372,7 +381,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 Extract the related Issue from the PR body:
 
 ```bash
-gh pr view {pr_number} --json body,headRefName
+gh pr view {pr_number} -R {owner_repo} --json body,headRefName
 ```
 
 **Extraction patterns:**
@@ -442,7 +451,8 @@ Inspect the script's stdout JSON and route by `.result`:
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth). This prevents intermittent flow interruptions when the fork context returns to the caller — LLM が fork return 後に turn を終了しても、state file に正しい `next_action` が残るため `/rite:recover` で復帰できる。なお `Stop` hook (`stop-loop-continuation.sh`) は handoff マーカー (review↔fix ループ / cleanup wiki チェーン) が set されている時だけ停止を差し戻すが、ready は handoff をセットしない (ready はループの出口でありユーザー判断で merge へ進むため) — よってここでは Stop hook は停止を妨げず、継続保証は flow-state の `next_action` (resume 用) に委ねる。
+Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth). ready は handoff を**セットしない**(ループの出口でありユーザー判断で merge へ進むため。継続保証は flow-state の `next_action` = resume 用に委ねる)。
+rationale: [stop-loop-continuation-contract.md#why-ready-sets-no-handoff](../../references/stop-loop-continuation-contract.md#why-ready-sets-no-handoff)
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 

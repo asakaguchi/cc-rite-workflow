@@ -15,7 +15,7 @@
 # Wiki ページ, but the 禁止句リスト *entries* themselves are unchanged. The forward
 # subset (SoT 禁止句リスト ⊆ §C Heuristics) therefore holds under the expanded scope
 # without any probe/regex change here — application scope and the banned-phrase
-# enumeration are independent axes. lint Phase 3.12 / tech-writer の検出スコープ拡張は
+# enumeration are independent axes. lint Phase 3.5 (generic loop の comment-journal-check.sh) / tech-writer の検出スコープ拡張は
 # このリスト整合とは別経路 (comment-journal-check.sh / Detection Checklist) で行う。
 #
 # Usage:

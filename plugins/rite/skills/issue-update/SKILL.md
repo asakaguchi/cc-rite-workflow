@@ -99,8 +99,10 @@ Use `AskUserQuestion` to confirm the Issue number.
 
 ### 0.3 Verify Issue Exists
 
+> `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
+
 ```bash
-gh issue view {issue_number} --json number,title,state
+gh issue view {issue_number} -R {owner_repo} --json number,title,state
 ```
 
 If the Issue is not found:
@@ -109,7 +111,7 @@ If the Issue is not found:
 エラー: Issue #{number} が見つかりません
 
 対処:
-1. `gh issue list` で Issue 一覧を確認
+1. `gh issue list -R {owner_repo}` で Issue 一覧を確認
 2. 正しい Issue 番号を指定して再実行
 ```
 
@@ -203,7 +205,7 @@ If the content contains `### 進捗サマリー`, treat it as v2; if it contains
 
 ```bash
 # ステージング状態を確認
-git status --porcelain
+bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh
 
 # 変更の統計を取得
 git diff --stat HEAD
@@ -286,7 +288,7 @@ If this fails, fall back to the content retained from Phase 1. Retain this conte
 
 ```bash
 # 変更ファイル一覧を取得（ステージング済み + 未ステージング + 未追跡）
-changed_files=$(git status --porcelain)
+changed_files=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || echo "WARNING: git-status-filtered.sh failed while collecting changed files; the 変更ファイル section may omit uncommitted changes" >&2
 # ベースブランチからの差分（コミット済みの変更も含む）
 diff_files=$(git diff --name-only origin/{base_branch}...HEAD 2>/dev/null || git diff --name-only HEAD)
 # 両方を結合して重複排除
@@ -426,4 +428,4 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 |-------|----------|
 | On main/master Branch | See error output for details |
 | Issue Is Already Closed | See error output for details |
-| Comment Update Failed | `gh issue view {number}` で Issue を確認; 再度実行 |
+| Comment Update Failed | `gh issue view {number} -R {owner_repo}` で Issue を確認; 再度実行 |

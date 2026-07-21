@@ -34,7 +34,8 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
-| `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'` |
+| `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`（SSH host alias 対応。fallback: `gh repo view --json owner,name`。canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)） |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
 
 > **Note**: 上記 2 行（ステップ 2.4(A) 専用と注記したもの）を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
@@ -100,7 +101,7 @@ echo "[CONTEXT] WORKTREE_REENTRY=$([ -n "$resume_wt" ] && [ "$resume_wt" != "$cu
 ### 1.1 Issue 情報取得
 
 ```bash
-gh issue view {issue_number} --json number,title,body,state,labels,milestone,projectItems
+gh issue view {issue_number} -R {owner_repo} --json number,title,body,state,labels,milestone,projectItems
 ```
 
 State が `closed` の場合は AskUserQuestion で「再オープンして作業 / 中止」を選択。
@@ -275,7 +276,7 @@ fi
 | `reuse` | worktree 登録済 + branch 一致 → 再利用（resume 相当、`git worktree add` しない） |
 | `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |
 | `branch_only` | branch 存在・worktree なし → `git worktree add "{path}" "{branch}"`（`-b` なし） |
-| `create_new` | branch も worktree もなし → `git worktree add -b "{branch}" "{path}" "origin/{base_branch}"` |
+| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
 
 **dirty main checkout ガード（Issue #1832）**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する全経路**（`branch_only` / `create_new` / `stale_residue` で「削除して再作成」を選択した場合。`reuse` は既存 worktree 継続のため対象外）で、`git worktree add` を実行する**前に**評価する。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない（marker は行頭 `[CONTEXT]` の行のみ）:
@@ -308,6 +309,8 @@ worktree を作成・再利用したら、`.rite-plugin-root` を worktree root 
   - **(B) worktree path 消失などの別要因**（harness 誤判定以外）→ 既存どおり recover.md Phase 3.1.5 の worktree 再構築経路 / `/rite:recover {issue_number}` に委譲する（本コマンドでは新規 worktree を作らない。再起動案内へ誤誘導しない）。
   - **(C) エスケープハッチ**（ユーザーが明示選択した場合のみ）: 「従来 `git switch -c` で続行」は **recommended にしない**。worktree 分離を破棄する明示的な選択肢としてのみ残し、他セッション併走中は作業ツリーを破壊し合う危険がある旨を**警告**した上でステップ 2.3 にフォールバックする。
   - Bash 永続 cwd 駆動（cwd を main checkout に残したまま絶対パスで操作する経路）は**導入しない**（main tree を誤更新するリスクのため）。
+
+> 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等、本ステップ以降の全フェーズの hook 呼び出し）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)、Issue #1896）。
 
 入場後、claim に worktree path を記録する（reap / resume の discovery 用）:
 
@@ -457,7 +460,7 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 
 **volatile-first 提示ルール**: `## 実装計画` の直後・`### 変更対象ファイル` の前に、ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）があれば「要判断ポイント」として箇条書きで列挙する。ステップ 3.4 の承認時にユーザーが本質的な判断へ注意を集中できるようにするため（出典: Thariq (Anthropic) "A Field Guide to Fable: Finding Your Unknowns" (2026) — "lead with the decisions I'm most likely to tweak"）。**「実装ステップ」自体の並び順（= 実行順）は変更しない**（issue-implement 側の実行順序決定に影響を与えないため）。該当項目がない計画ではこのブロックを出力しない。
 
-**参考実装セクション**: `reference_discovery` 原則（[coding-principles.md](../rite-workflow/references/coding-principles.md)）のルール 4「発見した参照を実装計画に記録」に従い、ステップ 3.2 で発見した既存の参考実装（同ディレクトリの類似ファイル、命名パターンが一致するファイル等）を記録する。参考実装が見つからない場合（新規ディレクトリ、初めてのファイルパターン等）は、テーブルの代わりに `参考実装: なし（新規ディレクトリまたは初めてのファイルパターン）` の 1 行を出力する。
+**参考実装セクション**: `reference_discovery` 原則（[coding-principles.md](../rite-workflow/references/coding-principles.md)）の「発見した参照を実装計画に記録し、参照ファイルの構造・慣習に従う」ルールに従い、ステップ 3.2 で発見した既存の参考実装（同ディレクトリの類似ファイル、命名パターンが一致するファイル等）を記録する。参考実装が見つからない場合（新規ディレクトリ、初めてのファイルパターン等）は、テーブルの代わりに `参考実装: なし（新規ディレクトリまたは初めてのファイルパターン）` の 1 行を出力する。
 
 ### 3.4 計画承認（batch 時は自動承認 / standalone は AskUserQuestion）
 
@@ -560,8 +563,12 @@ Step 4 で `/rite:issue-implement` が autonomous に invoke した `rite:lint` 
 ### 6.1 push
 
 ```bash
-git push -u origin {branch_name}
+git push origin {branch_name}
 ```
+
+> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。flow-state が `{branch_name}` を常時保持しているため upstream に依存する必要はない。
+>
+> `origin` が SSH host alias 経由（例: `git@github.com-work:...`）の環境で sandbox が有効な場合、`socat` の `Bad Gateway` エラーで push がネットワーク許可リストにブロックされることがある（`network.allowedDomains` への alias 追加は無効。原因の因果連鎖と `sandbox.excludedCommands` が Linux/WSL2 では恒久策として機能しない理由は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) を参照）。当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1897。2026-07 時点で確実に機能する唯一の回避策）。この回避策はメインエージェントが直接実行する push にのみ適用でき、Task で spawn した reviewer subagent の Bash には渡せない（詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) の「本回避策が使えない経路」）。
 
 ### 6.2 PR 作成
 
@@ -581,7 +588,7 @@ skill: rite:pr-create
 
 sub-skill (`rite:pr-create` / `rite:issue-implement` / `rite:lint`) のターンが sentinel を 1 つも emit せず無言で終了した場合、flow-state には直前 phase が保持されているため作業は失われない。orchestrator は以下で回復する:
 
-1. **既存 draft PR の検出**: `gh pr list --head {branch_name} --json number,url,isDraft` で当該ブランチの PR が既に作成済みか確認する。存在すれば実質 `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む (push/PR は冪等に再開可能)
+1. **既存 draft PR の検出**: `gh pr list -R {owner_repo} --head {branch_name} --json number,url,isDraft` で当該ブランチの PR が既に作成済みか確認する。存在すれば実質 `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む (push/PR は冪等に再開可能)
 2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」を提示する。中止時は flow-state の phase が保持されるため `/rite:recover` で本ステップから再開できる旨を案内する
 
 > Phase 3.4 の Write tool 委譲 は Cause B (インライン heredoc / 特殊文字 title による malform 増幅) を除去して発生確率を下げる対策であり、Cause A 自体は消せない。そのため本回復契約が最終的な堅牢化の担保となる。

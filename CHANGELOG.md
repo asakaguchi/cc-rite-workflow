@@ -25,6 +25,43 @@ not tied to a named key or feature. Breaking-change notices and migration guides
 that aid upgraders are kept verbatim.
 -->
 
+## [Unreleased]
+
+## [0.9.0] - 2026-07-21
+
+### Added
+
+- **`setup` proactively detects and warns about two sandbox-related environment constraints at `/rite:setup` time, instead of only surfacing them after a failure** — (1) Phase 4.8 (requires `multi_session` enabled): a session worktree's cwd is rejected when writing state (`flow-state.sh` / `issue-claim.sh` etc.) into the main checkout after `EnterWorktree`; (2) Phase 4.9 (independent of `multi_session`): a sandboxed session with an SSH host alias remote (e.g. `git@github.com-work:owner/repo.git`) hits a Bad Gateway failure on `git push`/`fetch`. Sandbox-enabled detection can't be done from bash, so both phases use the same approach (Claude's own execution-context judgment). (#1907, #1925, #1938)
+
+### Changed
+
+- **BREAKING: the reviewer read-only guarantee is re-layered — `pre-tool-bash-guard.sh` no longer machine-blocks working-tree git verbs, keeping only the `.git`-write machine gate** — the static verb denylist (sub-blocks (A)–(G): `checkout`/`reset`/`add`/`commit`/`branch`/`stash`/`fetch` flags/`worktree` sub-actions and 20+ more, plus that denylist's whole-command git global-flag normalization and the worktree-add argument scan) is removed from the PreToolUse hook (cut by roughly a third, 922 → under 600 lines) — the surviving `.git`-write gate (sub-block (N) below) retains a global-flag normalization scoped to just its four subcommands, ending the recurring bypass-patch churn (11 hardening commits in 3 months) and structurally eliminating its false-positive class. Working-tree mutations are visible and recoverable via `git status`, so their guarantee is now Layer 1 (the READ-ONLY contract in `_reviewer-base.md`, unchanged) + Layer 3 (`post-review-state-verify.sh` branch/stash/branch-list/worktree drift detection after each review — detection logic unchanged; its header and drift-WARNING guidance messages were updated for the new layering). The machine gate keeps only what those layers cannot cover — all still fail-closed: writes into a `.git` directory via a redirect or file-mutating verb (invisible to `git status`, irreversible, RCE-grade — sub-block (H)); native `.git`-writing git subcommands that no redirect/file-verb detection can see — `git config` write forms (`core.hooksPath` / `core.fsmonitor` / `alias.*=!cmd` are the RCE vector), mutating `git remote`, `git update-ref`, `git symbolic-ref` — as a fixed 4-subcommand closed set (sub-block (N); read forms like `git config --list/--get` stay allowed); the shell-wrapper block (`eval`/`sh -c`/… would trivially hide a `.git` write); and the oversized-command length guard (timeout→fail-open bypass prevention). Deny pattern names change accordingly: `reviewer-state-mutating-git` no longer exists; the surviving gates emit `reviewer-gitdir-write` (both (H) and (N)) / `reviewer-shell-wrapper` / `reviewer-oversized-command`. If a regression appears, individual verbs can be re-added without reviving the whole harness. (#1879)
+- **BREAKING: the 5 overlapping specialist reviewers (`api` / `frontend` / `performance` / `database` / `type-design`) are consolidated into a single `application-reviewer`** — their checklists mutually overlapped (N+1 was covered by both performance and database, XSS by both security and frontend, etc.), and each spawned reviewer injects the shared `_reviewer-base.md` (~430 lines) again, so a mixed PR that selected all 5 paid `base×5` injection for largely redundant perspectives. The consolidated `application` reviewer holds the combined purpose (application-code correctness, performance, data operations, interface design) as a persona + first-suspect lenses and delegates detailed checkpoint selection to model judgment; it inherits the Database-migration Hypothetical Exception (migration findings only, `severity-levels.md` unchanged). Reviewer registry shrinks from 13 to 9 types. Legacy type names appearing as input (rite-config values, stored review-result JSON, manual input) are substituted with `application` after a WARNING — never silently skipped.
+
+  **Migration table (legacy reviewer type → new type):**
+
+  | Legacy reviewer type | New type |
+  |----------------------|----------|
+  | `api` | `application` |
+  | `frontend` | `application` |
+  | `performance` | `application` |
+  | `database` | `application` |
+  | `type-design` | `application` |
+
+### Fixed
+
+- **Sandbox-enabled environments (bubblewrap-based) now work around the permanent `.git/config` write rejection** — worktree creation's upstream-tracking setup (`branch.autoSetupMerge`) and `git push -u`'s upstream setup both hit this rejection, leaving the open→implement→pr-create flow stalled mid-way (branch created, not yet pushed). Worktree creation now adds `--no-track`, `git push -u` / bare `git push` are unified to `git push origin {branch}` (upstream tracking is no longer needed since flow-state always retains the branch name), and `gh pr create` gets an explicit `--head` to resolve the correct head without an upstream. (#1898)
+- **`gh` shorthand commands (`gh repo view` etc.) failed to resolve the repo when `origin` is an SSH host alias remote** (e.g. `git@github.com-work:owner/repo.git`) — `gh`'s host allowlist can't recognize aliases. A new `resolve_owner_repo()` (`hooks/scripts/lib/git-remote.sh`) parses owner/repo directly from the `git remote` URL instead of depending on `gh repo view`, and `-R`/`--repo` is now propagated explicitly across internal scripts, SKILL.md procedure snippets, and recovery-hint commands wherever they depend on repo context. (#1913, #1917, #1919, #1921)
+- **`mktemp`'s hardcoded `/tmp`-root templates are eliminated project-wide for sandbox environments**, where writes are confined to `$TMPDIR` and `/tmp` itself is read-only — both production code and the test harness now use the `${TMPDIR:-/tmp}/rite-*` form, and a new `tmp-hardcode-check.sh` lint guard (check table #16) prevents regressions. (#1902, #1909, #1910)
+- **Sandbox write-blocking mounts (character-device `/dev/null` bind mounts) were misdetected as untracked (`??`) by `git status`**, causing `cleanup`/`recover`/`issue-update`/`pr-create`'s dirty checks to false-positive with no real changes present — a new shared filter (`lib/git-status-filtered.sh`) excludes only untracked character-device entries, and the 4 affected skills' dirty checks now go through it. (#1936, #1937)
+- **`issue-implement` replaces `git add .` with explicit path staging (`git add {changed_files}`)** — sandboxed sessions mask read-denied home dotfiles (`~/.ssh`, `.bashrc`, `.gitconfig`, etc.) as untracked character devices, and `git add .` hard-failed (exit 1) trying to pick them up as "not a regular file," stalling the implementation-phase commit. (#1926)
+
+### Known Limitations
+
+- `git push`/`fetch` over an SSH host alias (e.g. `git@github.com-work:...`) has no permanent fix on Linux/WSL2 with sandbox enabled — `sandbox.excludedCommands` cannot bypass the network sandbox (upstream: not planned). The supported workaround is re-running the specific blocked command with `dangerouslyDisableSandbox: true`; `/rite:setup` now warns about this proactively.
+- With `multi_session` and sandbox both enabled, writes from a session worktree's cwd into the main checkout (state files written by `flow-state.sh` / `issue-claim.sh` etc.) can be rejected. The main checkout root's absolute path must be added to the sandbox write allowlist manually; `/rite:setup` now guides this proactively.
+- Reviewer subagents spawned via Task cannot be passed a sandbox-bypass flag equivalent to `dangerouslyDisableSandbox`.
+
 ## [0.8.3] - 2026-07-16
 
 ### Fixed
@@ -756,6 +793,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.9.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.0...v0.8.1

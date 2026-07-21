@@ -41,7 +41,7 @@
 #     and an empty `--title ""` / `--title ''` is ignored — both are NOT flagged.
 #     The command may span multiple physical lines via backslash continuation (the
 #     canonical multi-line `gh pr create --draft \` <newline> `  --title "..."` form
-#     in references/gh-cli-commands.md), so the literal-title check stays armed across
+#     in references/gh-cli-patterns.md "Multi-line gh pr create"), so the literal-title check stays armed across
 #     continuation lines until the logical line ends. Unlike the four heaviness
 #     signals, a single inline special-char/long title is itself a dominant
 #     malformed-tool-call trigger, so it is flagged on its own — it does not
@@ -196,7 +196,7 @@ BEGIN { in_block = 0 }
   # `--title ""` / `--title ''` (first char after the quote is the closing quote)
   # are both allowed — the bracket expression `[^$"']` excludes `$` and both quote
   # chars. A `gh ... create` command may span multiple physical lines via backslash
-  # continuation (the canonical multi-line form in references/gh-cli-commands.md), so
+  # continuation (the canonical multi-line form in references/gh-cli-patterns.md "Multi-line gh pr create"), so
   # the literal-title check stays armed across continuation lines until the command's
   # logical line ends (a line not ending in `\`). This keeps the detection from
   # missing `gh pr create --draft \` <newline> `  --title "{title}"`.

@@ -247,7 +247,7 @@ EOF
 # 挙動を一致させるため、probe を sandbox dir 配下に作成する。
 # Why: mktemp 失敗時の stderr を一時的に capture することで、TMPDIR が別 fs を指す / inode 枯渇 /
 # permission denied 等の root cause を fail message から確認可能にする (silent な原因隠蔽を防ぐ)。
-_dac_probe_err=$(mktemp /tmp/rite-dac-probe-err-XXXXXX 2>/dev/null) || _dac_probe_err=""
+_dac_probe_err=$(mktemp "${TMPDIR:-/tmp}/rite-dac-probe-err-XXXXXX" 2>/dev/null) || _dac_probe_err=""
 if ! _dac_probe_parent=$(mktemp -d "$d/_dac_probe.XXXXXX" 2>"${_dac_probe_err:-/dev/null}"); then
   _dac_probe_diag=""
   [ -n "$_dac_probe_err" ] && [ -s "$_dac_probe_err" ] && _dac_probe_diag=" ($(head -1 "$_dac_probe_err"))"
@@ -808,7 +808,7 @@ echo "=== TC-H4: consume-handoff on file without handoff → empty + rc 0, WARNI
 # stderr を capture して WARNING 非発火を negative-assert する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n)
-_tch4_stderr=$(mktemp /tmp/rite-tch4-stderr-XXXXXX 2>/dev/null) || _tch4_stderr="/dev/null"
+_tch4_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-tch4-stderr-XXXXXX" 2>/dev/null) || _tch4_stderr="/dev/null"
 out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch4_stderr"); echo "__RC=$?" )
 rc=$(printf '%s' "$out" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
 val="${out%__RC=*}"; val="${val%$'\n'}"
@@ -846,7 +846,7 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 state_file="$d/.rite/sessions/${sid}.flow-state"
 # DAC probe (同 TC-8b-e/g): root / fakeroot / CAP_DAC_OVERRIDE 環境では chmod 0555 が無効化され
 # write-failure path を強制できないため、実機 write probe で強制可能性を検出し silent false-pass を防ぐ。
-_dac_probe_err=$(mktemp /tmp/rite-dac-probe-err-XXXXXX 2>/dev/null) || _dac_probe_err=""
+_dac_probe_err=$(mktemp "${TMPDIR:-/tmp}/rite-dac-probe-err-XXXXXX" 2>/dev/null) || _dac_probe_err=""
 if ! _dac_probe_parent=$(mktemp -d "$d/_dac_probe.XXXXXX" 2>"${_dac_probe_err:-/dev/null}"); then
   _dac_probe_diag=""
   [ -n "$_dac_probe_err" ] && [ -s "$_dac_probe_err" ] && _dac_probe_diag=" ($(head -1 "$_dac_probe_err"))"
@@ -867,7 +867,7 @@ else
     # trap save/restore (TC-8b-e/g と同形): hard-fail / signal kill で sessions dir が readonly のまま
     # 残ると後続 test が clean state を得られないため restore を保証する。
     _tch6_saved_trap=$(trap -p EXIT INT TERM HUP)
-    _tch6_stderr=$(mktemp /tmp/rite-tch6-stderr-XXXXXX 2>/dev/null) || _tch6_stderr="/dev/null"
+    _tch6_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-tch6-stderr-XXXXXX" 2>/dev/null) || _tch6_stderr="/dev/null"
     _tch6_test_cleanup() {
       chmod +w "$d/.rite/sessions" 2>/dev/null || true
       [ "${_tch6_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch6_stderr"
@@ -909,7 +909,7 @@ state_file="$d/.rite/sessions/${sid}.flow-state"
 # 正規 set で sessions dir + valid file を作ってから corrupt JSON で上書き (実際の FS corruption を模倣)
 (cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
 printf '{ this is not valid json' > "$state_file"
-_tch7_stderr=$(mktemp /tmp/rite-tch7-stderr-XXXXXX 2>/dev/null) || _tch7_stderr="/dev/null"
+_tch7_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-tch7-stderr-XXXXXX" 2>/dev/null) || _tch7_stderr="/dev/null"
 out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch7_stderr"); echo "__RC=$?" )
 rc=$(printf '%s' "$out" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
 val="${out%__RC=*}"; val="${val%$'\n'}"

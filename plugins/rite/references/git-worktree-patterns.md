@@ -423,8 +423,10 @@ In `multi_session` mode rite **never switches the main checkout's current branch
 Consequences enforced across the workflow:
 
 - New session branches are created with their base as **`origin/{base}` directly**
-  (`git worktree add -b {branch} {path} origin/{base}`), not via a local `{base}`
-  that another worktree may have checked out.
+  (`git worktree add --no-track -b {branch} {path} origin/{base}`), not via a local
+  `{base}` that another worktree may have checked out. `--no-track` avoids
+  `branch.autoSetupMerge` writing upstream tracking to `.git/config`, which sandbox
+  environments reject (Issue #1894).
 - A branch is deleted **only after** its worktree is removed (a branch checked out
   in a worktree cannot be deleted or fetch-updated).
 - `cleanup`'s base update runs **only when the main checkout is on `{base}`**; on any
@@ -451,6 +453,87 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   `git status --porcelain` (a dirty worktree is never auto-reaped). Reap **never deletes
   the branch** (push-pending / unpushed work is preserved; branch cleanup stays the
   responsibility of the normal `cleanup` path).
+
+### SSH host alias 経由の `git push`/`fetch` が sandbox のネットワーク許可リストでブロックされる
+
+`origin` remote が `~/.ssh/config` の `Host` alias（例: `git@github.com-work:owner/repo.git`）
+経由の環境で、sandbox が有効なとき `git push` / `git fetch` の SSH 接続がブロックされることがある。
+
+**症状**: `socat[N] E CONNECT github.com-work:22: Bad Gateway` のようなエラーで SSH 接続が拒否
+され、`git push origin {branch}` / `git fetch origin {base}` が失敗する。`gh` CLI（HTTPS 経由で
+`api.github.com` を使う）は影響を受けないため、`gh issue view` 等の issue 操作は成功するのに
+push/fetch だけ失敗する非対称な挙動になる。
+
+**原因**: 以下の 3 段の因果連鎖で発生する:
+
+1. sandbox の credentials 保護設定（`~/.claude/settings.json` の `sandbox.credentials.files:
+   [{"path": "~/.ssh", "mode": "deny"}]`。公式のデフォルトは `~/.ssh` を読み取り許可しており、
+   この deny はユーザー側の hardening 設定由来）により、sandbox 内から `~/.ssh` が不可視になる
+2. ssh が `~/.ssh/config` を読めないため、`Host github.com-work` → `HostName github.com` の
+   **alias 解決自体が起きない**（sandbox 内の `ssh -G github.com-work` は `hostname
+   github.com-work` を返す。sandbox 外では `github.com` に解決される）
+3. その結果 CONNECT が alias 名のまま proxy に渡り、sandbox のネットワーク許可リスト（ドメイン名
+   ベース。`github.com` / `*.github.com` 等）のいずれのパターンにも一致せず Bad Gateway になる
+
+**効かない対処**: `network.allowedDomains` へ alias 名（例: `github.com-work`）を追加しても解消
+しない — alias 名は DNS 解決できず、そもそも `~/.ssh` の秘密鍵が読めないため認証も成立しない
+（原因の 1, 2 段目が未解消のまま）。
+
+**現状の回避策**: 当該 `git push` / `git fetch` コマンドのみ `dangerouslyDisableSandbox: true`
+で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1897）。sandbox のネットワーク許可
+リスト・credentials 保護設定はプラグイン外の環境設定のため、rite 側の設定変更では解消できない。
+SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
+
+**本回避策が使えない経路（reviewer subagent）**: Task で spawn した reviewer subagent（`/rite:pr-review`
+が起動する各 `*-reviewer` エージェント）の Bash 呼び出しには、呼び出し元から `dangerouslyDisableSandbox`
+フラグを渡す経路が無い。そのため reviewer subagent が SSH host alias remote に対して `git fetch` 等を
+実行し本問題に遭遇した場合、この回避策では解消できない（reviewer は元々 read-only 契約で `git push` を
+実行しないため実害は限定的だが、bare `git fetch` で同じ Bad Gateway に当たりうる）。回避策はメインエー
+ジェントが直接実行する `git push`/`fetch`（例: `open`/`fix` の push、Wiki ingest commit の push）にのみ
+適用できる。
+
+**恒久策**: `sandbox.excludedCommands`（公式サポート設定。指定したコマンドを sandbox 外で通常の
+permission フローに乗せる）は一見この問題の恒久策に見えるが、**Linux/WSL2 環境では現状機能しない**:
+
+```json
+{
+  "sandbox": {
+    "excludedCommands": ["git push *", "git fetch *", "git pull *"]
+  }
+}
+```
+
+上流の複数の実測報告によれば、Linux/WSL2 環境では `excludedCommands` はファイルシステムの
+sandbox（bubblewrap）のみをバイパスし、ネットワークの sandbox はグローバルに適用され続ける。SSH
+（port 22）はブロックされたままで、本問題は解消しない（[claude-code#30619](https://github.com/anthropics/claude-code/issues/30619)、
+[#29274](https://github.com/anthropics/claude-code/issues/29274)、[#53012](https://github.com/anthropics/claude-code/issues/53012)。
+いずれも `not planned` でクローズ済み、2026-04 リリース時点でも未修正）。設定自体は無害なので試して
+もよいが、確実に機能するのは `dangerouslyDisableSandbox: true` での再実行のみである。
+
+### worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる
+
+sandbox が有効な環境で `EnterWorktree` によりセッション worktree（`.rite/worktrees/issue-{N}`）へ
+cwd が移った後、main checkout 配下（`.rite/sessions/` の flow-state、`.rite/state/` の run-queue /
+issue claim 等）を更新する hook / script が失敗することがある。
+
+**症状**: `mktemp` / `mv` / リダイレクト書き込みが「読み込み専用ファイルシステムです」（Read-only
+file system）で失敗する。`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` /
+run-queue の `jq` 書込等、state root（main checkout）配下へ書き込むあらゆる呼び出しが該当する。
+worktree 内への書き込みは成功するため、worktree 入場後に state 書込だけが失敗する非対称な挙動に
+なり、sandbox 起因と気付きにくい。
+
+**原因**: sandbox の write 許可リストはセッションのプロジェクトディレクトリを相対パス `.`（cwd
+依存）で許可する構成が既定のため、`EnterWorktree` で cwd がセッション worktree に切り替わると
+`.` が worktree を指し、main checkout root が許可リストから外れる。rite の state root は
+`state-path-resolve.sh` により main checkout へ統一されている（linked worktree 間の state 共有・
+flock 排他の前提）ため、worktree cwd からの state 書込は構造的にすべて拒否される。
+
+**対処**: 恒久対処は、sandbox の write 許可リストへ main checkout root の**絶対パス**を追加する
+こと（`/sandbox` コマンド / settings の sandbox 設定。プラグイン外の環境設定のため rite 側の
+変更では解消できない）。追加できない場合は、拒否された当該 hook / script 呼び出しのみ
+`dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、
+Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響を受けないため、sandbox 有効のまま
+実行する。
 
 > **Canonical spec**: This file documents the operational *patterns*; the canonical
 > runtime specification for the session-worktree layer (lifecycle, claim, reap,

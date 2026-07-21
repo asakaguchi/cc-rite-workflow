@@ -145,7 +145,7 @@ Records deviations from the implementation plan during Phase 5.1 when using the 
 
 ## Bottleneck Detection Log Section
 
-Records bottleneck detection and Oracle-based re-decomposition events during Phase 5.1. Added after the "計画逸脱ログ" section. See [Bottleneck Detection Reference](../../../references/bottleneck-detection.md) for thresholds and Oracle discovery protocol.
+Records bottleneck detection and Oracle-based re-decomposition events during Phase 5.1. Added after the "計画逸脱ログ" section. See [Bottleneck Detection Reference](../../../references/bottleneck-detection.md) for the detection principle and Oracle discovery.
 
 ```markdown
 ### ボトルネック検出ログ
@@ -162,8 +162,8 @@ Records bottleneck detection and Oracle-based re-decomposition events during Pha
 |-------|-------------|---------|
 | 検出時刻 | ISO 8601 timestamp | `2026-02-15T12:00:00+09:00` |
 | Step | Original step ID | `S3` |
-| 検出理由 | Which threshold was exceeded | `ラウンド数超過 (5/3)` |
-| Oracle | Source and file path | `Phase 3.2.1: implement.md` or `同ディレクトリ: create.md` or `なし` |
+| 検出理由 | なぜ膨らんでいると判断したか（自由記述） | `同一ガードの修正往復が継続、計画粒度を超過` |
+| Oracle | Source and file path | `参考実装: implement.md` or `同ディレクトリ: create.md` or `なし` |
 | 再分解 | List of sub-step IDs | `S3.1, S3.2, S3.3` |
 
 **When no bottlenecks detected**: Display `_ボトルネック検出はありません_`
@@ -416,4 +416,4 @@ Commands that write work memory update the local file first (SoT), then sync to 
 
 - [Phase Mapping](./phase-mapping.md) - Phase definitions
 - [Session Detection](./session-detection.md) - Auto-detection at session start
-- [Bottleneck Detection](../../../references/bottleneck-detection.md) - Thresholds, Oracle discovery, re-decomposition
+- [Bottleneck Detection](../../../references/bottleneck-detection.md) - 行き詰まり判断, Oracle discovery, re-decomposition

@@ -51,6 +51,7 @@ argument-hint: ""
 | `{resolved_phase}` | Phase 3.5: cross-check 確定 phase (`[CONTEXT] RESOLVED_PHASE` marker)。Phase 4.2 で user が phase 変更を選んだ場合は `[CONTEXT] FINAL_PHASE` marker を優先 |
 | `{type}` / `{slug}` | ブランチ名 `{type}/issue-{number}-{slug}` の構成要素 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 
 ---
 
@@ -97,7 +98,7 @@ fi
 ### 1.2 Issue 存在確認
 
 ```bash
-if ! gh issue view "$issue_arg" --json number,title,state >/dev/null 2>&1; then
+if ! gh issue view "$issue_arg" -R {owner_repo} --json number,title,state >/dev/null 2>&1; then
   echo "ERROR: Issue #$issue_arg が見つかりません" >&2
   exit 1
 fi
@@ -175,6 +176,8 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 > **caller-local marker `skip` について**: `review` / `fix` の入場ゲートは PR の `headRefName` が issue ブランチ（`issue-N` 命名）でないとき、helper を呼ばず caller 自身が `[CONTEXT] WT_ENSURE=skip` を emit する（session worktree の対象外＝従来どおり単一ツリーで続行する no-op）。`skip` は helper の出力 case ではなく **caller 固有拡張**であり、`disabled` / `already_in` と同じく no-op として扱う。recover は引数 / branch / 候補列挙で issue を確定してから本 helper を呼ぶため、recover 経路で `skip` は emit されない。
 
+> **sandbox 有効環境での state 書込拒否（#1896）**: `reenter` / `reconstructed` で worktree に入場した直後、後続フェーズの `flow-state.sh set` 等 main checkout 配下への state 書込が「読み込み専用ファイルシステムです」で失敗することがある（sandbox の write 許可リストが cwd 依存の相対パスのため）。対処は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) を参照。
+
 **EnterWorktree が失敗した場合**（`reenter` / `reconstructed` 経路の `EnterWorktree(path)` がエラー）: open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
 
 - **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:recover {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
@@ -190,7 +193,7 @@ git_branch=$(git branch --show-current 2>/dev/null || echo "")
 base_branch="develop"
 git fetch origin "$base_branch" >/dev/null 2>&1 || true
 git_commit_count=$(git rev-list --count "origin/${base_branch}..HEAD" 2>/dev/null || echo "0")
-git_has_uncommitted=$(git status --porcelain 2>/dev/null | head -1)
+git_has_uncommitted=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || git_has_uncommitted="?? (dirty-check failed — assume uncommitted for safety)"; git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"
 
 # コンフリクト / rebase 状態検出 (#1705): Phase 3.4.5 が phase 推定より優先させる signal。
 # worktree 運用でも正しい作業ツリーを判定するため .git/... を直書きせず git rev-parse --git-path で
@@ -211,7 +214,8 @@ echo "[CONTEXT] GIT_IN_REBASE=$git_in_rebase"
 ### 3.3 PR 状態取得
 
 ```bash
-pr_info=$(gh pr view --json state,number,isDraft,mergeable 2>/dev/null || echo '{"state":"NONE","number":0,"isDraft":false,"mergeable":"UNKNOWN"}')
+# -R 指定時は selector が必須のため、現在のブランチ名を selector に渡す（従来どおり「現在ブランチの PR」を特定。PR 不在時は fallback JSON）
+pr_info=$(gh pr view "$(git branch --show-current)" -R {owner_repo} --json state,number,isDraft,mergeable 2>/dev/null || echo '{"state":"NONE","number":0,"isDraft":false,"mergeable":"UNKNOWN"}')
 pr_state=$(echo "$pr_info" | jq -r '.state // "NONE"')
 pr_number_gh=$(echo "$pr_info" | jq -r '.number // 0')
 pr_is_draft=$(echo "$pr_info" | jq -r '.isDraft // false')
@@ -502,8 +506,8 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 
 | 状況 | 対応 |
 |------|------|
-| Issue not found | エラー終了、`gh issue list` で確認するよう案内 |
-| Branch 不在 | `gh issue develop` で再生成するよう案内 |
+| Issue not found | エラー終了、`gh issue list -R {owner_repo}` で確認するよう案内 |
+| Branch 不在 | `gh issue develop -R {owner_repo}` で再生成するよう案内 |
 | flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:open {issue_arg}` を提案 |
 | 矛盾検出 (phase vs commit/PR) | AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」 |
 | migrate 失敗 | WARNING 表示後、cross-check で実態推定して続行 |

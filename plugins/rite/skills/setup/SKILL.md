@@ -475,7 +475,7 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 事前案内](#phase-48-sandbox-write-allowlist-事前案内multi_session-有効時1896) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated by its own check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 / 4.9 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896-1942) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated by its own check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 / 4.9 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
@@ -1171,9 +1171,9 @@ Then:
 
 ---
 
-## Phase 4.8: Sandbox Write-Allowlist 事前案内（multi_session 有効時、#1896）
+## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時、#1896 / #1942）
 
-`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれの経路でも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限を伴う sandbox で動作していることを示している場合のみ、以下を表示する。いずれか一方でも該当しない場合（`multi_session.enabled: false`、または sandbox 無効／write 制限なし）は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
+`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれの経路でも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限を伴う sandbox で動作していることを示している場合のみ、以下を実行する。いずれか一方でも該当しない場合（`multi_session.enabled: false`、または sandbox 無効／write 制限なし）は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
 
 判定は Claude 自身の実行コンテキスト（system prompt に記述された sandbox の write 許可リスト）を読んで行う。bash コマンドでは検出できない（sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）。
 
@@ -1183,18 +1183,62 @@ Then:
 bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
-その値を `{repo_root}` として、以下を表示する（原因や恒久対処の詳細本文は複製せず、要約 + [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) への 1 行ポインタ + 対象パスの実例に留める）:
+その値を `{repo_root}` として、`.claude/settings.local.json`（gitignore 対象のユーザーローカル設定。コミットされる `.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。方針転換の背景・(a)/(b)/(c) 比較検討は [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log) を参照（複製しない）:
+
+```bash
+settings_file="{repo_root}/.claude/settings.local.json"
+mkdir -p "$(dirname "$settings_file")"
+[ -f "$settings_file" ] || echo '{}' > "$settings_file"
+
+already=$(jq --arg p "{repo_root}" \
+  '(.sandbox.filesystem.allowWrite // []) | index($p) != null' \
+  "$settings_file" 2>/dev/null)
+
+if [ "$already" = "true" ]; then
+  echo "[CONTEXT] SANDBOX_ALLOWLIST_AUTOWRITE=already_present; path={repo_root}"
+elif jq --arg p "{repo_root}" \
+    '.sandbox.filesystem.allowWrite = ((.sandbox.filesystem.allowWrite // []) + [$p] | unique)' \
+    "$settings_file" > "$settings_file.tmp" 2>/dev/null && mv "$settings_file.tmp" "$settings_file"; then
+  echo "[CONTEXT] SANDBOX_ALLOWLIST_AUTOWRITE=added; path={repo_root}"
+else
+  rm -f "$settings_file.tmp"
+  echo "[CONTEXT] SANDBOX_ALLOWLIST_AUTOWRITE=failed; path={repo_root}"
+fi
+```
+
+上記 bash が sandbox の write 制限（`.claude/settings*.json` は sandbox 既定で書込拒否対象）で「読み込み専用ファイルシステムです」等のエラーとなり **コマンド自体が失敗**した場合は、当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1896 と同じ扱い）。再実行後も `SANDBOX_ALLOWLIST_AUTOWRITE=failed`（JSON 破損等 sandbox 起因でない失敗）の場合は、下記の手動案内メッセージにフォールバックする。
+
+`SANDBOX_ALLOWLIST_AUTOWRITE` marker で分岐する:
+
+| marker | アクション |
+|---|---|
+| `already_present` | 既に設定済み。何も表示せず Phase 4.9 へ（`--upgrade` の再実行毎にノイズを出さないため） |
+| `added` | 下記「自動追加時のメッセージ」を表示して Phase 4.9 へ |
+| `failed`（`dangerouslyDisableSandbox: true` 再試行後も失敗） | 下記「フォールバック時のメッセージ」（手動案内）を表示して Phase 4.9 へ |
+
+**自動追加時のメッセージ**（原因の詳細本文は複製せず、要約 + 1 行ポインタに留める）:
+
+```
+ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、
+   main checkout 配下（.rite/sessions/ 等）への state 書込が拒否される問題に対応するため、
+   main checkout root（{repo_root}）を .claude/settings.local.json の
+   sandbox.filesystem.allowWrite へ自動追加しました。
+   反映は次回セッションからになる場合があります（現在のセッションで反映されない場合は
+   Claude Code を再起動してください）。
+   詳細: git-worktree-patterns.md の #1896 対処節を参照
+```
+
+**フォールバック時のメッセージ**（自動設定に失敗した場合のみ、従来どおり手動設定を案内）:
 
 ```
 ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、
    main checkout 配下（.rite/sessions/ 等）への state 書込が「読み込み専用ファイルシステムです」
    で拒否されることがあります。
+   .claude/settings.local.json への自動設定に失敗したため、手動で以下を追加してください:
    恒久対処: /sandbox コマンド、または settings の sandbox 設定で、write 許可リストへ
      main checkout root の絶対パス（{repo_root}）を追加してください
    詳細: git-worktree-patterns.md の #1896 対処節を参照
 ```
-
-settings ファイルへの自動書き込みは行わない（案内のみ、MUST NOT）。
 
 **→ Proceed to Phase 4.9 (both new-install and `--upgrade` reach Phase 4.9 the same way they reach this Phase).**
 

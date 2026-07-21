@@ -21,6 +21,7 @@ When `parallel.mode: "worktree"` is set in `rite-config.yml`, each parallel agen
 - [Configuration Reference](#configuration-reference) - rite-config.yml settings
 - [SSH host alias 経由の git push/fetch が sandbox のネットワーク許可リストでブロックされる](#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) - Bad Gateway failures when `origin` uses an SSH host alias remote
 - [worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) - State writes rejected as read-only filesystem after `EnterWorktree`
+- [sandbox write-allowlist 設定の自動化(Decision Log)](#sandbox-write-allowlist-設定の自動化decision-log) - Why setup Phase 4.8 auto-writes `sandbox.filesystem.allowWrite` instead of guidance-only
 - [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, not real files
 
 ---
@@ -543,6 +544,45 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
 `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、
 Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響を受けないため、sandbox 有効のまま
 実行する。
+
+### sandbox write-allowlist 設定の自動化（Decision Log）
+
+上記の恒久対処（write 許可リストへ main checkout root を追加）は、当初 `/rite:setup` Phase 4.8 で
+**案内表示のみ**（設定ファイルへの自動書き込みは MUST NOT）としていた。しかし実運用データから、
+この手動設定への依存自体が UX 問題であることが判明したため、Issue #1942 で自動化へ方針転換した。
+
+**根拠データ**: 2026-07-20 の 1 セッションで、許可リスト未設定に起因する state-write バイパス
+（`dangerouslyDisableSandbox: true` の都度実行）が 30〜45 回発生（セッション 73fa87c6=45 回、
+5ea9d2e1=41 回）。同日、ユーザーが手動で許可リストへ main checkout root を追加した結果、以降の
+セッションでは state-write バイパスが 0 回に収束した。恒久対処自体は機能するが、「ユーザーが毎回
+手動で設定する」という導線が UX 上のボトルネックだった。
+
+**比較検討した 3 方向**:
+
+| 方向 | 内容 | 採否 |
+|------|------|------|
+| (a) 案内強化のみ | Phase 4.8 のメッセージに、なぜ必要か（state 共有 + flock 排他設計）の説明とコピペ用 JSON snippet を追加する。設定ファイルへの自動書き込みは行わない | 不採用（単独では） |
+| (b) state root を worktree ローカルへ移す設計変更 | `state-path-resolve.sh` の解決先を main checkout でなく worktree ローカルにし、変更を同期する | **不採用** |
+| (c) 許可リスト設定の自動化 | `/rite:setup` Phase 4.8 が `.claude/settings.local.json` の `sandbox.filesystem.allowWrite` へ main checkout root を idempotent に自動追記する | **採用** |
+
+- **(b) を不採用とした理由**: state root を main checkout に統一しているのは、`state-path-resolve.sh` の
+  flock 排他制御（linked worktree 間で同一ロックファイルを共有し、per-inode の排他を成立させるため）が
+  前提になっている。state root を worktree ローカルに分散させると、この排他設計そのものを作り直す必要が
+  あり、本 Issue の Non-goal「flock 排他設計の無条件廃止」と衝突する。M 複雑度の見積りを超える高い
+  blast radius を持つため見送った。
+- **(c) を採用した理由**: `sandbox.filesystem.allowWrite` は Claude Code 公式ドキュメント
+  （[Configure the sandboxed Bash tool](https://code.claude.com/docs/en/sandboxing.md)）で
+  「These paths are enforced at the OS level」と明記されており、`/sandbox` コマンドでのユーザー
+  操作を経ずに設定ファイルへの記述だけで有効になる。main checkout root は開発者ごとに異なる絶対パス
+  のため、コミットされる `.claude/settings.json` ではなく `.claude/settings.local.json`
+  （gitignore 対象・ユーザーローカル）へ書き込む。この判断は、従来の「設定ファイルへの自動書き込みは
+  MUST NOT」という Phase 4.8 の方針を **`.claude/settings.local.json` に限定して**撤回するもの
+  であり、コミットされる共有設定（`.claude/settings.json`）を自動変更する話ではない。書き込みに
+  失敗した場合（読み取り専用ファイルシステム等）は非 blocking のまま従来の手動案内メッセージへ
+  フォールバックする。
+- **反映タイミングの不確実性**: 設定変更が同一セッション内で即座に反映されるか、Claude Code の
+  再起動が必要かは公式ドキュメントで明言されていない。安全側に倒し、案内メッセージでは「次回セッション
+  から有効になる場合がある」旨を明記する。
 
 ### sandbox の write-block マスクマウントが `git status` に幽霊 untracked エントリを生む
 

@@ -27,6 +27,10 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+### Changed
+
+- **`setup` Phase 4.8 now auto-configures the sandbox write allowlist instead of only guiding the user to do it manually** — when `multi_session` is enabled and a filesystem-write-restricted sandbox is detected, `/rite:setup` idempotently appends the main checkout root's absolute path to `.claude/settings.local.json`'s `sandbox.filesystem.allowWrite` (a gitignored, per-developer local file — the shared `.claude/settings.json` is never modified). This resolves the manual-setup burden noted in 0.9.0's Known Limitations. Falls back to the previous manual-guidance message if the write fails (e.g. read-only filesystem). (#1942)
+
 ## [0.9.0] - 2026-07-21
 
 ### Added

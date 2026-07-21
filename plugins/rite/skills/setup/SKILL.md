@@ -475,7 +475,7 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 事前案内](#phase-48-sandbox-write-allowlist-事前案内multi_session-有効時1896) (non-blocking, self-gated by its own multi_session + sandbox check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 事前案内](#phase-48-sandbox-write-allowlist-事前案内multi_session-有効時1896) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated by its own check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 / 4.9 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
@@ -1073,7 +1073,7 @@ echo "wiki_enabled=$wiki_enabled"
 **When `wiki_enabled=false`**:
 - Display `Wiki が無効化されています（wiki.enabled: false）。Phase 4.7 をスキップします。`
 - Set `wiki_status=skipped_disabled` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 4.9, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
 
 **When `wiki_enabled=true`**: Display `Wiki の自動初期化を開始します...` and proceed to 4.7.2.
 
@@ -1114,7 +1114,7 @@ fi
 **When `WIKI_INITIALIZED=true`**:
 - Display `Wiki は既に初期化されています（検知: {detection}）。スキップします。` (substitute `{detection}` with the matched branch name or file path)
 - Set `wiki_status=already_initialized` (remember in LLM context)
-- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
+- **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 4.8, then Phase 4.9, then Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
 
 **When `WIKI_INITIALIZED=false`**: Proceed to 4.7.3.
 
@@ -1167,7 +1167,7 @@ Then:
 - Display `⚠️ Wiki の初期化に失敗しました。/rite:setup 全体は成功扱いで続行します。手動で /rite:wiki-init を実行してください。` (warning only — do NOT exit)
 - Set `wiki_status=failed` (remember in LLM context)
 
-**→ Proceed to the next step (new-install: Phase 4.8, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
+**→ Proceed to the next step (new-install: Phase 4.8, then Phase 4.9, then Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
 
 ---
 
@@ -1196,7 +1196,52 @@ bash {plugin_root}/hooks/state-path-resolve.sh
 
 settings ファイルへの自動書き込みは行わない（案内のみ、MUST NOT）。
 
-**→ Proceed to Phase 5 (new-install) — this Phase is only reached via the new-install exit points in Phase 4.7 (§4.7.1/4.7.2/4.7.4); `--upgrade` invokes this Phase directly from Step 7b and then exits without a Phase 5 report.**
+**→ Proceed to Phase 4.9 (both new-install and `--upgrade` reach Phase 4.9 the same way they reach this Phase).**
+
+## Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内（#1907）
+
+`origin` remote が SSH host alias 経由（例: `git@github.com-work:owner/repo.git`）で、かつ Claude 自身の Bash tool 定義（sandbox セクション）がネットワーク制限を伴う sandbox で動作していることを示している場合のみ、以下を表示する。いずれか一方でも該当しない場合（HTTPS remote / sandbox 無効）は本節を完全に silent skip する（案内・warning 共に一切出さない）。`multi_session` の有無には依存しない（Phase 4.8 と異なり、本問題は SSH alias remote + sandbox の組合せのみで発生するため独立した gate とする）。
+
+SSH host alias remote かどうかは bash で判定できる（git config の読み取りであり検出可能。Phase 4.8 の sandbox 判定とは性質が異なる）:
+
+```bash
+origin_url=$(git remote get-url origin 2>/dev/null) || origin_url=""
+host=""
+case "$origin_url" in
+  git@*)
+    host="${origin_url#git@}"
+    host="${host%%:*}"
+    ;;
+  ssh://*)
+    host="${origin_url#ssh://}"
+    host="${host#*@}"
+    host="${host%%[:/]*}"
+    ;;
+esac
+if [ -n "$host" ] && [ "$host" != "github.com" ]; then
+  echo "SSH_ALIAS_REMOTE=yes; host=$host"
+else
+  echo "SSH_ALIAS_REMOTE=no"
+fi
+```
+
+一方 sandbox の有効判定は Phase 4.8 と同じ理由（bash コマンドでは検出できない — sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）により、Claude 自身の実行コンテキスト（system prompt に記述された sandbox のネットワーク許可リスト）を読んで行う。settings ファイルの `sandbox.enabled` を `jq` で読む経路は使わない（Phase 4.8 の判定方針と統一）。
+
+`SSH_ALIAS_REMOTE=yes` **かつ** sandbox 有効の両方が真のときのみ、以下を表示する（原因の因果連鎖や恒久対処の詳細本文は複製せず、要約 + [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) への 1 行ポインタに留める）:
+
+```
+ℹ️ sandbox 環境かつ origin remote が SSH host alias（{host}）経由です。sandbox 内からの
+   git push / git fetch が「Bad Gateway」で失敗することがあります。
+   回避策: 拒否された当該コマンドのみ dangerouslyDisableSandbox: true で再実行してください
+     （確認は不要 — 既知の環境制約）。現状これが確実に機能する唯一の回避策です
+   （sandbox.excludedCommands は一見恒久策に見えますが、Linux/WSL2 環境ではネットワーク
+     sandbox をバイパスできず本問題は解消しません）
+   詳細: git-worktree-patterns.md の SSH host alias 対処節を参照
+```
+
+settings ファイルへの自動書き込みは行わない（案内のみ、MUST NOT）。
+
+**→ Proceed to Phase 5 (new-install) — this Phase is only reached via the new-install exit points in Phase 4.7 (§4.7.1/4.7.2/4.7.4) followed by Phase 4.8; `--upgrade` invokes this Phase directly after Phase 4.8 from Step 7b and then exits without a Phase 5 report.**
 
 ## Phase 5: Completion Report
 

@@ -1323,7 +1323,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | — |
 | `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 (`fix.md` ステップ 3.1.1 の pre-commit gate から直接呼び出される) | `review.loop.pre_commit_drift_check` |
 | `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、setup.md Phase 4.5.0.2) | — |
-| `lib/` (`wiki-config.sh` / `worktree-git.sh`) | wiki 系 helper の共有ライブラリ (config 読取 / worktree git 操作) | — |
+| `lib/` (`git-remote.sh` / `git-status-filtered.sh` / `wiki-config.sh` / `worktree-git.sh`) | 汎用 git helper + wiki 系 helper の共有ライブラリ (owner/repo 解決 / sandbox ghost mount 除外 git status / wiki config 読取 / worktree git 操作) | — |
 | `tests/` | hooks/scripts レベルのテストスイート | — |
 
 ---

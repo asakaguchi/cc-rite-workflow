@@ -34,6 +34,7 @@ https://github.com/user-attachments/assets/900476d1-fbf0-4f8c-a3ef-3f286638568a
 - **Implementation Contract**: 仕様を明確にする構造化 Issue テンプレート形式
 - **仮定の表面化 (Assumption Surfacing)**: Implementation Contract を生成する前に、`/rite:issue-create` はモデルが暗黙に補った仮定を表面化し、3 つのカテゴリで処理します — 導出可能（リポジトリ/Wiki から自己解決）、ユーザー固有の判断（推奨選択肢付きの質問を最大 3 件で確認）、保留可能（Issue 本文に Assumptions / Open Questions として記録）。**設計原則**: 質問はユーザーの頭の中にしか存在しない情報に限定し、リポジトリや Wiki から導出可能なものはモデルが解決します。これにより、暗黙の推測が下流パイプライン全体を駆動する contract に黙って固定化されるのを防ぎます
 - **Experience Wiki**: LLM 駆動のプロジェクト知識ベース。[OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) 準拠のバンドル（`type`/`okf_version` frontmatter、OKF index/log）として保存されます。レビュー/修正の結果をトピック別ページへ自動取り込み（ingest）し、各 Issue の冒頭で関連する経験則を注入します（opt-out 可）。準拠バンドルは上流 OKF の静的ビジュアライザで概念グラフとして閲覧できます（同梱はしていません。`plugins/rite/references/wiki-patterns.md` を参照）
+- **sandbox 対応 (Sandbox-aware)**: `/rite:setup` が sandbox 環境特有の 2 つの制約を、失敗が発生する前に事前検出・案内します — `EnterWorktree` 後にセッション worktree の state 書込が main checkout で拒否される制約と、SSH host alias remote 経由の `git push`/`fetch` がブロックされる制約です。対応する回避策も事前に提示されます
 
 ## インストール
 

@@ -484,6 +484,14 @@ push/fetch だけ失敗する非対称な挙動になる。
 リスト・credentials 保護設定はプラグイン外の環境設定のため、rite 側の設定変更では解消できない。
 SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
 
+**本回避策が使えない経路（reviewer subagent）**: Task で spawn した reviewer subagent（`/rite:pr-review`
+が起動する各 `*-reviewer` エージェント）の Bash 呼び出しには、呼び出し元から `dangerouslyDisableSandbox`
+フラグを渡す経路が無い。そのため reviewer subagent が SSH host alias remote に対して `git fetch` 等を
+実行し本問題に遭遇した場合、この回避策では解消できない（reviewer は元々 read-only 契約で `git push` を
+実行しないため実害は限定的だが、bare `git fetch` で同じ Bad Gateway に当たりうる）。回避策はメインエー
+ジェントが直接実行する `git push`/`fetch`（例: `open`/`fix` の push、Wiki ingest commit の push）にのみ
+適用できる。
+
 **恒久策**: `sandbox.excludedCommands`（公式サポート設定。指定したコマンドを sandbox 外で通常の
 permission フローに乗せる）は一見この問題の恒久策に見えるが、**Linux/WSL2 環境では現状機能しない**:
 

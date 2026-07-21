@@ -499,12 +499,15 @@ fi
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 
 ```bash
-# worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD を残した =
-# 別 live セッションが worktree 使用中）、branch は worktree で checkout 中のため削除できない。
-# その場合は強制削除せず reap manifest に記録し（#1670）、worktree が解放されたあと
+# worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD = 別 live
+# セッションが worktree 使用中、または WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク
+# 検知で自セッション worktree の削除を試行しなかった（#1957）、のいずれかを残した場合）、
+# branch は worktree で checkout 中のため削除できない。その場合は強制削除せず reap manifest に
+# 記録し（#1670）、worktree が解放（遅延 reap の corpse 回収含む）されたあと
 # pr-cycle-cleanup.sh Step 5 が次セッションで branch・worktree の双方を回収する（dead-letter 解消）。
-# 自セッションの worktree は 4-W の self-exclusion で即時削除されるため、本経路に来るのは
-# 別 live セッション在席時のみ。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して
+# 自セッションの worktree は通常 4-W の self-exclusion 後に即時削除されるが、sandbox マスク
+# 検知時は削除を試行しないため自セッション由来でも本経路に入る（「別セッション在席時のみ」では
+# ない）。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して
 # substring マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
 # `{pr_merged}` はステップ 1.3 の PR 状態（`mergedAt` 非 null なら `true`、それ以外すべて
 # `false`。Step 1.3 と同一定義）を Claude が literal substitute する。squash merge では feature の
@@ -536,7 +539,7 @@ else
       fi
       if [ "$_recovery" = "auto" ]; then
         echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=auto" >&2
-        echo "WARNING: ローカルブランチ {branch_name} はまだ別のセッションの作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
+        echo "WARNING: ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
       else
         echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=manual" >&2
         echo "WARNING: ローカルブランチ {branch_name} は作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}" >&2
@@ -810,10 +813,10 @@ Status: {projects_status_result}
     ```
   - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
 - `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定（上から評価し最初に一致したものを採用）:
-  - `BRANCH_DELETE_DEFERRED=1` のとき（別セッションが作業ツリーを使用中で削除を見送った。#1670）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
+  - `BRANCH_DELETE_DEFERRED=1` のとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中（#1670）または sandbox マスク skip（#1957）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
     - `recovery=auto`（PR が merged 済みで reap manifest に記録成功 → 次セッションで自動回収される）:
       ```
-      ℹ️ ローカルブランチ {branch_name} は、別セッションが使用中の作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
+      ℹ️ ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
       ```
     - `recovery=manual`（未マージ PR の強制 cleanup、または manifest 記録に失敗 → 自動回収されないため手動が必要）:
       ```

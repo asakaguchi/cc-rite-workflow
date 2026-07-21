@@ -463,6 +463,22 @@ assert "C-02 admin dir survives" "1" "$( [ -d "$R/.git/worktrees/issue-101" ] &&
 assert_grep "C-02 age-guard skip WARNING on stderr (not silent)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
 case "$out" in *"session_worktrees=0"*) pass "C-02 status reports session_worktrees=0" ;; *) fail "C-02 status: $out" ;; esac
 
+echo "=== C-02b (#1957 MUST silent-skip 禁止): free-claim fresh corpse → NOT reaped + WARNING (not silent) ==="
+R=$(make_repo 105); cleanup_dirs+=("$R")
+# The real-world corpse shape: cleanup releases the claim unconditionally, so the
+# corpse is claim-FREE (not stale). Deactivate the holder (liveness guard off) and
+# delete the claim file (release). Without the corpse exclusion in Gate 2's free
+# age guard, this skips through the pre-existing silent continue — stderr empty —
+# violating the Issue #1957 MUST (skips must be logged). Non-vacuous: revert the
+# `_corpse -eq 0` condition and the WARNING assert flips.
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-105.json"
+make_corpse "$R" 105
+out=$(run_pcc "$R")
+assert "C-02b free fresh corpse survives (age guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-105" ] && echo 1 || echo 0 )"
+assert_grep "C-02b free fresh corpse skip is LOGGED (corpse age guard WARNING)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-02b status reports session_worktrees=0" ;; *) fail "C-02b status: $out" ;; esac
+
 echo "=== C-03 (#1957 AC-4): aged corpse but LIVE claim → NOT reaped ==="
 R=$(make_repo 102); cleanup_dirs+=("$R")
 # SID_A stays active → the claim is live ("other" from SID_B). Aged + corpse,

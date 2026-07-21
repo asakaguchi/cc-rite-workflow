@@ -1013,8 +1013,13 @@ if [ -d "$session_wt_root" ]; then
         ;;
       free|"")
         # No claim recorded → conservative mtime age guard (24h) so an in-flight
-        # worktree that simply has not written a claim yet is not reaped.
-        if [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
+        # worktree that simply has not written a claim yet is not reaped. A fresh
+        # corpse is excluded from this silent continue (Issue #1957): cleanup
+        # releases the claim unconditionally, so a real-world corpse is claim-free
+        # — this path would otherwise hide the anomaly without a WARNING. The
+        # corpse falls through to the logged corpse age guard below (same 24h
+        # window), which skips it loudly.
+        if [ "$_corpse" -eq 0 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
           continue
         fi
         ;;

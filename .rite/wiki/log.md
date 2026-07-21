@@ -1,5 +1,6 @@
 ## 2026-07-22
 
+* **Skip**: [20260721T223012Z-pr-1964.md](raw/reviews/20260721T223012Z-pr-1964.md) — 純粋な docs-only PR で指摘0件。両レビュアーが独立に検出した boundary 推奨（SPEC.md:1404 の記述粒度差）は本 PR スコープ外として Decision Log に記録済みで、新規の経験則・矛盾は抽出できなかった
 * **Create**: [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) — raw/reviews/20260721T171603Z-pr-1959.md, raw/fixes/20260721T172102Z-pr-1959.md, raw/fixes/20260721T173955Z-pr-1959.md を新規ページ化
 * **Create**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260721T173620Z-pr-1959.md, raw/reviews/20260721T175725Z-pr-1959.md, raw/reviews/20260721T181434Z-pr-1959.md を新規ページ化
 * **Create**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260721T175725Z-pr-1959.md, raw/fixes/20260721T175931Z-pr-1959.md を新規ページ化

@@ -122,10 +122,25 @@ case "$out" in
   *) pass "fail-safe: cleanup Step 4-W dirty= is non-empty when the helper fails ($out)" ;;
 esac
 
+# --- stderr visibility (PR #1937 cycle 2, error-handling escalation): the
+#     helper's own diagnostic WARNING (e.g. "mktemp failed") must reach
+#     stderr, not be discarded by a `2>/dev/null` on the call site ---------
+err_out=$( cd "$sbx_fail" && eval "$CLEANUP_LINE_FAIL" 2>&1 1>/dev/null )
+case "$err_out" in
+  *"git-status-filtered: simulated failure"*) pass "fail-safe: cleanup Step 4-W surfaces the helper's own stderr on failure ($err_out)" ;;
+  *) fail "fail-safe: cleanup Step 4-W must surface the helper's own stderr on failure (got: $err_out)" ;;
+esac
+
 out=$( cd "$sbx_fail" && eval "$RECOVER_LINE_FAIL" && printf '%s' "$git_has_uncommitted" )
 case "$out" in
   "") fail "fail-safe: recover git_has_uncommitted must not be empty when the helper fails (got empty — silent 'なし' masking a detection failure)" ;;
   *) pass "fail-safe: recover git_has_uncommitted is non-empty when the helper fails ($out)" ;;
+esac
+
+err_out=$( cd "$sbx_fail" && eval "$RECOVER_LINE_FAIL" 2>&1 1>/dev/null )
+case "$err_out" in
+  *"git-status-filtered: simulated failure"*) pass "fail-safe: recover surfaces the helper's own stderr on failure ($err_out)" ;;
+  *) fail "fail-safe: recover must surface the helper's own stderr on failure (got: $err_out)" ;;
 esac
 
 # --- issue-update Phase 3.2 Step 1: helper failure must emit a visible

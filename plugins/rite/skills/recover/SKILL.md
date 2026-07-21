@@ -193,7 +193,7 @@ git_branch=$(git branch --show-current 2>/dev/null || echo "")
 base_branch="develop"
 git fetch origin "$base_branch" >/dev/null 2>&1 || true
 git_commit_count=$(git rev-list --count "origin/${base_branch}..HEAD" 2>/dev/null || echo "0")
-git_has_uncommitted=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh 2>/dev/null) || git_has_uncommitted="?? (dirty-check failed — assume uncommitted for safety)"; git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"
+git_has_uncommitted=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || git_has_uncommitted="?? (dirty-check failed — assume uncommitted for safety)"; git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"
 
 # コンフリクト / rebase 状態検出 (#1705): Phase 3.4.5 が phase 推定より優先させる signal。
 # worktree 運用でも正しい作業ツリーを判定するため .git/... を直書きせず git rev-parse --git-path で

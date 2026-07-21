@@ -7,6 +7,7 @@
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T194001Z-pr-1962.md を統合 — ローカル環境の暗黙前提（グローバル git identity）が伝播漏れを長期間マスクする変種を追加
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T201719Z-pr-1963.md を統合 — reviewer 統合でテストのハードコード期待値だけが旧名に取り残される変種を追加
 
 ## 2026-07-21
 

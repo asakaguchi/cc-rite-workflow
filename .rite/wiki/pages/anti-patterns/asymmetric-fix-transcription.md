@@ -2,8 +2,14 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-19T20:55:00+09:00"
+updated: "2026-07-21T12:30:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260721T004358Z-pr-1937.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260721T005522Z-pr-1937.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260721T022535Z-pr-1937-cycle3.md"
   - type: "reviews"
     ref: "raw/reviews/20260719T111449Z-pr-1917.md"
   - type: "reviews"
@@ -1758,3 +1764,7 @@ Read tool 経由参照の marker 化（bash 変数の実パスを `[CONTEXT]` ma
 ## 変種: canonical snippet 複製スイープの前提注記落ちと慣用句分裂 (PR #1917)
 
 SSH host alias 対応の canonical パターン（`git-remote.sh resolve-owner-repo` 優先 + `gh repo view` fallback）を references に新設し 10 ファイルの実行スニペットへ複製するスイープ PR で、cycle 1 に MEDIUM 2 件（いずれも 2 reviewer 同所検出の High Confidence）: (1) 複製先 11 箇所のうち setup/SKILL.md だけ、snippet が依存する**前提の注記**（`{plugin_root}` 解決指示）が snippet より前に存在せず、alias 環境で setup だけ本 PR が直す当の失敗が silent に再現する非対称。snippet 本体は 11 箇所とも複製されているため、本体を数える grep では検出できない。(2) canonical 文書が導入したパース慣用句 `cut -f1`/`-f2` が、lib 自身の Usage 記載（`IFS=$'\t' read`）および既存実装（watchdog / create-issue-with-projects.sh）と分裂し、同一出力契約に 2 慣用句が並立（cut は delimiter 不在の非空行を `-f1`/`-f2` 双方へ素通しするため空チェック guard をすり抜ける latent hazard も併存 — runtime fact-check で検証済み）。fix は canonical + 全 11 箇所を IFS read へ同時置換し、伝播スキャンで残存ゼロを機械確認。cycle 2 は byte 一致計数（init+resolve 行・fallback 行を fixed-string で計数）で 11 箇所の一貫性を機械照合し 0 findings で収束（2 cycle）。**教訓**: (1) snippet 複製スイープでは「snippet 本体」だけでなく「snippet が依存する前提の注記（placeholder 解決指示・Plugin Path note 等）」も複製対象単位に含める — 前提が 1 ファイルだけ欠ける非対称は本体の複製確認では見えない。(2) canonical 文書の新設時は、既存実装と lib の Usage 記載を先に grep し、**同一の慣用句**を採用する — 文書とコードで慣用句が分裂すると以後のコピーで恒久 drift する。(3) 複製 N 箇所の再レビューは byte 一致計数による機械照合が有効（cross-validation の決定論的な収束確認手段）。
+
+## 変種: Issue の Before/After 仕様例が旧慣習を体現したまま複数箇所へ伝播 + ヘルパー自身の Usage 例が Output contract と矛盾 (PR #1937)
+
+sandbox 書き込みブロック用マウントの誤検出を防ぐ新規ヘルパー (`git-status-filtered.sh`) は「呼び出し元は必ず exit code を検査する」という明示的な失敗契約を文書化していたが、Issue 本文の Before/After 修正例自体が `2>/dev/null` + exit code 未検査という**呼び出し元の旧慣習をそのまま体現**しており、それを 4 箇所の呼び出し元へ機械的に展開すると新設した契約に違反する呼び出しが量産された（cycle 1、CRITICAL）。レビュアー間で重要度判定 (CRITICAL vs 非ブロッキング) が対立し、討論プロトコルの CRITICAL guard により討論をスキップして直接ユーザーへエスカレーションした。cycle 1 修正（`2>/dev/null` 除去 + exit code 検査 + 安全側 fallback）を経た cycle 3 で、ヘルパー自身のヘッダー Usage 例コメントが、その 2 行下の Output contract と矛盾する旧パターン（`2>/dev/null` かつ exit code 未検査の呼び出し例）を提示したまま残っていたことが発覚した。将来の呼び出し元（人間・LLM 問わず）がこの Usage 例をそのままコピーすると同じバグを再導入するリスクがある。同 cycle で、4 箇所中 1 箇所（cleanup:426）だけ回帰テストの抽出アンカーが対象外になっていたテストカバレッジの穴も検出された — コード側は 4 箇所対称に修正されていたが、テスト側の対称性確認が漏れていた。**教訓**: (1) 新規ヘルパー導入時、Issue の Before/After 仕様例そのものが呼び出し元の旧慣習（新設する契約に違反する既存パターン）を体現していないか確認してから複数箇所へ機械的に展開する。(2) ヘルパー自身のヘッダー Usage/リファレンス実装コメントが、直後に書かれた自身の Output contract と矛盾していないか確認する — 矛盾したまま残ると将来の呼び出し元がコピーして同じバグを再導入する経路になる。(3) 複数の同型呼び出し箇所へ修正を適用する際は、コード側の対称性だけでなく、回帰テストの抽出アンカーが全箇所対称に揃っているかも確認する。

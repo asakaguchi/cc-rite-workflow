@@ -2,8 +2,12 @@
 title: "stderr ノイズ削減: truncate ではなく selective surface で解く"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-03T10:51:00Z"
+updated: "2026-07-21T12:35:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260721T014901Z-pr-1937-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260721T015253Z-pr-1937-cycle2.md"
   - type: "fixes"
     ref: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
   - type: "fixes"
@@ -162,12 +166,29 @@ single-step の単純ケースのため per-step tempfile 分離 (PR #550) や s
 
 教訓: **本 anti-pattern は既存 helper への委譲 shim に限らず、新規に書き下ろす git コマンドラッパー全般で再演する**。「新しい git フォールバックコードを書く前に、同リポジトリの既存 git エラーハンドリング規約（本ページ）を確認する」ことが cycle 1 での早期検出に有効だった。
 
+### fail-safe fallback 追加が「安全側に倒す」ことと「失敗理由を可視化する」ことを混同する (PR #1937 での evidence)
+
+helper 呼び出しに `cmd || fallback="非空文字列"` 形式の fail-safe を追加する修正は、分岐そのもの（helper 失敗時に安全側の非空値へ倒す）は正しくても、`2>/dev/null` を temporarily 残したままだと **helper 自身の診断 WARNING が呼び出し元の判断根拠として一切表示されない** という別の問題を生む。PR #1937 cycle 1 で CRITICAL 指摘（exit code 未検査）を修正した際、4 箇所の同型呼び出しのうち 3 箇所は `2>/dev/null` を残したまま、1 箇所だけ `2>/dev/null` を持たない非対称な状態で commit された。cycle 2 で error-handling reviewer がこの非対称を MEDIUM として検出した。
+
+```bash
+# ❌ NG: 分岐は安全だが診断情報が消える (cycle 1 修正直後の状態)
+dirty=$(bash lib/git-status-filtered.sh 2>/dev/null) || dirty="?? (dirty-check failed — assume dirty for safety)"
+
+# ✅ OK: 分岐の安全性と診断可能性を両立 (cycle 2 fix)
+dirty=$(bash lib/git-status-filtered.sh) || dirty="?? (dirty-check failed — assume dirty for safety)"
+# helper 自身が WARNING を stderr に出す設計であれば、呼び出し側は stderr を握り潰さない
+```
+
+教訓: **「安全側に倒す」ことと「失敗理由を可視化する」ことは独立した要件であり、片方を満たしても他方が漏れることがある**。fail-safe fallback (`|| fallback=...`) を追加する修正では、fallback 値の安全性だけでなく、`2>/dev/null` 等で helper 自身の診断出力を握り潰していないかを併せて確認する。同一コミット内で複数の同型呼び出し箇所に fail-safe を追加する際は、`2>/dev/null` の有無が箇所ごとに非対称にならないよう揃える ([[asymmetric-fix-transcription]] の delegation-shim/fallback 版)。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
 
 ## ソース
 
+- [PR #1937 review cycle 2 (fail-safe fallback 追加時の 2>/dev/null 非対称を MEDIUM 検出)](../../raw/reviews/20260721T014901Z-pr-1937-cycle2.md)
+- [PR #1937 fix cycle 2 (2>/dev/null 除去で分岐の安全性と診断可能性を両立)](../../raw/fixes/20260721T015253Z-pr-1937-cycle2.md)
 - [PR #529 fix cycle 1 (git stderr tempfile 退避の副作用)](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
 - [PR #529 cycle 3 fix (success path で selective surface 導入)](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
 - [PR #529 cycle 3 review (全 truncate の silent regression 検出)](../../raw/reviews/20260415T121203Z-pr-529-cycle-3.md)

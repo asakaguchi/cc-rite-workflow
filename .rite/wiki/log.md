@@ -4,6 +4,7 @@
 * **Create**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260721T173620Z-pr-1959.md, raw/reviews/20260721T175725Z-pr-1959.md, raw/reviews/20260721T181434Z-pr-1959.md を新規ページ化
 * **Create**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260721T175725Z-pr-1959.md, raw/fixes/20260721T175931Z-pr-1959.md を新規ページ化
 * **Update**: [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) — raw/reviews/20260721T171603Z-pr-1959.md を統合 — 姉妹型「set -e 下の裸 $? 読みは代入 abort で rc 行が dead code 化」を追加
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
 
 ## 2026-07-21
 

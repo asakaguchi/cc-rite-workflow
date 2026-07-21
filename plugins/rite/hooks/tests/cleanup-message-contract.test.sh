@@ -66,6 +66,9 @@ assert_grep "Step 5 comment names the SANDBOX_MASK deferral route" "$CLEANUP" 'W
 assert_grep "Step 5 deferred WARNING is cause-neutral" "$CLEANUP" "まだ削除されていない作業ツリーで使用中のため、削除を見送りました"
 assert_not_grep "old exclusive-cause claim removed from Step 5 comment" "$CLEANUP" "本経路に来るのは.*別 live セッション在席時のみ"
 assert_not_grep "old other-session attribution removed from deferred WARNINGs" "$CLEANUP" "はまだ別のセッションの作業ツリーで使用中のため"
+assert_not_grep "old exclusive-cause claim removed from in_main note" "$CLEANUP" "別セッション在席時のみ遅延する"
+assert_not_grep "old other-session release attribution removed from Step 5 manifest comment" "$CLEANUP" "別 live セッションが worktree を.*解放したあと"
+assert_not_grep "old other-session gloss removed from BRANCH_DELETE_DEFERRED definition" "$CLEANUP" "（別セッションが worktree を使用中で削除を遅延したケース）"
 
 echo "=== ステップ 12: 旧・内部実装語/不正確な記述が除去されている ==="
 # 旧 worktree-skip メッセージの内部用語「遅延 reap が後で回収します」は撤去済み。

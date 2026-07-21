@@ -492,6 +492,22 @@ assert "C-03 claim-live corpse survives" "1" "$( [ -d "$R/.rite/worktrees/issue-
 assert "C-03 admin dir survives" "1" "$( [ -d "$R/.git/worktrees/issue-102" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=0"*) pass "C-03 status reports session_worktrees=0" ;; *) fail "C-03 status: $out" ;; esac
 
+echo "=== C-03b (#1957 MUST): aged corpse + live worktree-less claim → NOT reaped + Gate 2 skip LOGGED ==="
+R=$(make_repo 106); cleanup_dirs+=("$R")
+# The open-claims-first window shape: the claim holder is live but the claim has
+# no worktree recorded yet (open Step 1.6 claims before the worktree exists), so
+# the claim-join liveness guard cannot match the tree and the corpse reaches
+# Gate 2's live-claim arm. That skip must be loud (Issue #1957 MUST) — the
+# protection is correct, the anomaly must still be visible.
+tmpc106=$(mktemp)
+jq 'del(.worktree)' "$R/.rite/state/issue-claims/issue-106.json" > "$tmpc106" && mv "$tmpc106" "$R/.rite/state/issue-claims/issue-106.json"
+make_corpse "$R" 106
+age_dir "$R/.rite/worktrees/issue-106"
+out=$(run_pcc "$R")
+assert "C-03b live worktree-less claim corpse survives" "1" "$( [ -d "$R/.rite/worktrees/issue-106" ] && echo 1 || echo 0 )"
+assert_grep "C-03b Gate 2 live-claim corpse skip is LOGGED (not silent)" "$R/pcc.err" "live claim \(other\) 保持中のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-03b status reports session_worktrees=0" ;; *) fail "C-03b status: $out" ;; esac
+
 echo "=== C-04 (#1957 AC-5): HEAD present + status rc≠0 (NOT a corpse) → conservative skip unchanged ==="
 R=$(make_repo 103); cleanup_dirs+=("$R")
 RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1

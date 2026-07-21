@@ -1005,7 +1005,14 @@ if [ -d "$session_wt_root" ]; then
     claim_state=$(bash "$SCRIPT_DIR/../issue-claim.sh" check --issue "$issue_num" 2>/dev/null) || claim_state=""
     case "$claim_state" in
       other|own)
-        # A live session holds the claim — leave the worktree intact.
+        # A live session holds the claim — leave the worktree intact. A corpse
+        # behind a live claim is still an anomaly the user should see (Issue
+        # #1957 MUST: no silent skip); the skip itself is the correct protection.
+        # The claim-join liveness guard misses this shape when the claim has no
+        # worktree recorded yet (open claims first, records the path later).
+        if [ "$_corpse" -eq 1 ]; then
+          echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) は live claim (${claim_state}) 保持中のため回収を見送ります。" >&2
+        fi
         continue
         ;;
       stale)
@@ -1024,6 +1031,11 @@ if [ -d "$session_wt_root" ]; then
         fi
         ;;
       *)
+        # Unknown claim state — conservative skip. Same loud-corpse rule as the
+        # live-claim arm above.
+        if [ "$_corpse" -eq 1 ]; then
+          echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) は claim 状態不明 (${claim_state:-unknown}) のため回収を見送ります。" >&2
+        fi
         continue
         ;;
     esac
@@ -1107,7 +1119,14 @@ if [ -d "$session_wt_root" ]; then
         fi
       fi
     else
-      echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
+      if [ "$_corpse" -eq 1 ]; then
+        # Symmetric with the admin-dir failure branch above: a corpse reap
+        # failure must carry the manual recovery command (Issue #1957 §4.5),
+        # including the admin dir path the generic message would lose.
+        echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の回収に失敗しました。手動回収: rm -rf '$wt_path' '$_admin_dir' && git worktree prune" >&2
+      else
+        echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
+      fi
       errors=$((errors + 1))
     fi
   done < <(git worktree list --porcelain 2>/dev/null)

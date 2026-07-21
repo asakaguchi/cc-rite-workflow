@@ -1,5 +1,8 @@
 ## 2026-07-21
 
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T072136Z-pr-1949.md, raw/fixes/20260721T072425Z-pr-1949.md, raw/reviews/20260721T074333Z-pr-1949.md を統合
+* **Create**: [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) — raw/fixes/20260721T063551Z-pr-1948.md, raw/reviews/20260721T063155Z-pr-1948.md, raw/reviews/20260721T064945Z-pr-1948-cycle2.md を新規ページ化
+* **Create**: [verification-only な残作業 Issue は PR パイプラインを経由せず issue-close で直接検証する](pages/heuristics/verification-only-residual-task-direct-close.md) — raw/retrospectives/20260721T045336Z-issue-1918.md を新規ページ化
 * **Skip**: [20260720T220115Z-pr-1935.md](raw/reviews/20260720T220115Z-pr-1935.md) — 単一PRの1回限りの観察（reviewer が分類マーカーboundaryを付けつつ内容はdesign_confirmation相当と結論）。再現性のある強いパターンとして複数PRで確認されておらず、新規経験則ページ化の根拠に乏しい
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=273, broken_refs=0
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T004358Z-pr-1937.md, raw/fixes/20260721T005522Z-pr-1937.md, raw/fixes/20260721T022535Z-pr-1937-cycle3.md を統合

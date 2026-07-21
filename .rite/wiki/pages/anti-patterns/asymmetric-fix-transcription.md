@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-21T12:30:00+09:00"
+updated: "2026-07-21T16:45:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260721T004358Z-pr-1937.md"
@@ -516,6 +516,12 @@ sources:
     ref: "raw/fixes/20260718T140750Z-pr-1898.md"
   - type: "reviews"
     ref: "raw/reviews/20260718T142416Z-pr-1898.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260721T072136Z-pr-1949.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260721T072425Z-pr-1949.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260721T074333Z-pr-1949.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file"]
 confidence: high
 ---
@@ -1768,3 +1774,7 @@ SSH host alias 対応の canonical パターン（`git-remote.sh resolve-owner-r
 ## 変種: Issue の Before/After 仕様例が旧慣習を体現したまま複数箇所へ伝播 + ヘルパー自身の Usage 例が Output contract と矛盾 (PR #1937)
 
 sandbox 書き込みブロック用マウントの誤検出を防ぐ新規ヘルパー (`git-status-filtered.sh`) は「呼び出し元は必ず exit code を検査する」という明示的な失敗契約を文書化していたが、Issue 本文の Before/After 修正例自体が `2>/dev/null` + exit code 未検査という**呼び出し元の旧慣習をそのまま体現**しており、それを 4 箇所の呼び出し元へ機械的に展開すると新設した契約に違反する呼び出しが量産された（cycle 1、CRITICAL）。レビュアー間で重要度判定 (CRITICAL vs 非ブロッキング) が対立し、討論プロトコルの CRITICAL guard により討論をスキップして直接ユーザーへエスカレーションした。cycle 1 修正（`2>/dev/null` 除去 + exit code 検査 + 安全側 fallback）を経た cycle 3 で、ヘルパー自身のヘッダー Usage 例コメントが、その 2 行下の Output contract と矛盾する旧パターン（`2>/dev/null` かつ exit code 未検査の呼び出し例）を提示したまま残っていたことが発覚した。将来の呼び出し元（人間・LLM 問わず）がこの Usage 例をそのままコピーすると同じバグを再導入するリスクがある。同 cycle で、4 箇所中 1 箇所（cleanup:426）だけ回帰テストの抽出アンカーが対象外になっていたテストカバレッジの穴も検出された — コード側は 4 箇所対称に修正されていたが、テスト側の対称性確認が漏れていた。**教訓**: (1) 新規ヘルパー導入時、Issue の Before/After 仕様例そのものが呼び出し元の旧慣習（新設する契約に違反する既存パターン）を体現していないか確認してから複数箇所へ機械的に展開する。(2) ヘルパー自身のヘッダー Usage/リファレンス実装コメントが、直後に書かれた自身の Output contract と矛盾していないか確認する — 矛盾したまま残ると将来の呼び出し元がコピーして同じバグを再導入する経路になる。(3) 複数の同型呼び出し箇所へ修正を適用する際は、コード側の対称性だけでなく、回帰テストの抽出アンカーが全箇所対称に揃っているかも確認する。
+
+## 変種: lib/ 一覧の複数箇所重複記載で片方だけが更新される (PR #1949)
+
+同一 docs/SPEC.md 内で lib/ ディレクトリのファイル一覧を2箇所（227行目のディレクトリツリー表記、1326行目の機能一覧テーブル）に重複記載していた。先行する2ファイル追加（`git-remote.sh` / `git-status-filtered.sh`、PR #1913・#1937）に伴いツリー表記側は本PRで更新されたが、離れたテーブル側への伝播が漏れ、tech-writer-reviewer が cycle 1 で HIGH 指摘として検出した（Doc-Heavy PR Mode の Enumeration Completeness カテゴリでの検出）。修正は grep で当該ファイル名の全出現箇所を確認してから両箇所を同期し、伝播スキャンで他に同型の重複列挙が無いことを確認した。cycle 2 のフルレビューで 0 件指摘・mergeable に到達（2 cycle 収束）。同一 cycle 1 で error-handling-reviewer が「本PR自身が新規追加したドキュメント記述（reviewer subagent への `dangerouslyDisableSandbox` 非伝播）の実証可能性」を疑問視する non-blocking design_confirmation を出したが、cycle 2 で tech-writer / error-handling 両者が Task/Agent ツールの実パラメータスキーマ（`description`/`isolation`/`mode`/`model`/`name`/`prompt`/`run_in_background`/`subagent_type`/`team_name` のみで sandbox 関連パラメータなし）を確認し、「メインエージェントが subagent へ渡せるのは prompt のみであり、subagent 自身のツールパラメータ有無とは別問題」という整理で解消された。**教訓**: 同一ファイル内の複数箇所に同種の列挙情報を重複記載する設計自体が Asymmetric Fix Transcription を誘発しやすく、根本対策は単一ソースへの統合だが、それが難しい場合は伝播スキャンで grep によるファイル名一致箇所の全列挙を必須にする。

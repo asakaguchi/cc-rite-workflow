@@ -423,5 +423,105 @@ assert "B-03 issue-93 worktree reaped (recovery path ran)" "0" "$( [ -d "$R/.rit
 case "$out" in *"status=cleaned"*) pass "B-03 reports status=cleaned (no false failure)" ;; *) fail "B-03 status not cleaned: $out" ;; esac
 assert_not_grep "B-03 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
 
+# ===========================================================================
+# Issue #1957 — corpse reap. A sandbox-masked `git worktree remove --force`
+# half-destroys the admin dir (HEAD alone unlinked; commondir/gitdir/index and
+# the working tree survive). Such a corpse fails EVERY `git -C <wt>` operation,
+# so Gate 3's conservative skip would protect it forever, and manual
+# `git worktree remove --force` is rejected by validation (no recovery path).
+# Step 5 now detects corpses (admin HEAD missing AND git does not recognize the
+# tree) and reaps them via rm -rf (working tree + admin dir) once the claim is
+# not live AND the tree aged past 24h (D-01: a corpse's dirty state is
+# structurally unexaminable; claim + age guards bound the accepted risk).
+# ===========================================================================
+
+# Corpse fixture: unlink the admin HEAD — the exact signature of the 13
+# real-world corpses observed on 2026-07-20〜21.
+make_corpse() { rm "$1/.git/worktrees/issue-$2/HEAD"; }
+# Age a dir's mtime past the 24h reap guard (GNU touch first, BSD fallback).
+age_dir() { touch -d '25 hours ago' "$1" 2>/dev/null || touch -t "$(date -v-25H +%Y%m%d%H%M)" "$1"; }
+
+echo "=== C-01 (#1957 AC-3): aged corpse + stale claim → reaped (working tree + admin dir) ==="
+R=$(make_repo 100); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_corpse "$R" 100
+age_dir "$R/.rite/worktrees/issue-100"
+out=$(run_pcc "$R")
+assert "C-01 corpse working tree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-100" ] && echo 1 || echo 0 )"
+assert "C-01 corpse admin dir reaped" "0" "$( [ -d "$R/.git/worktrees/issue-100" ] && echo 1 || echo 0 )"
+assert "C-01 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-100.json" ] && echo 1 || echo 0 )"
+assert_grep "C-01 corpse reap WARNING names the target" "$R/pcc.err" "corpse session worktree.*issue-100.*回収します"
+case "$out" in *"session_worktrees=1"*) pass "C-01 status reports session_worktrees=1" ;; *) fail "C-01 status: $out" ;; esac
+
+echo "=== C-02 (#1957 AC-4): fresh corpse (age ≤ 24h) + stale claim → NOT reaped + WARNING ==="
+R=$(make_repo 101); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_corpse "$R" 101
+out=$(run_pcc "$R")
+assert "C-02 fresh corpse survives (age guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-101" ] && echo 1 || echo 0 )"
+assert "C-02 admin dir survives" "1" "$( [ -d "$R/.git/worktrees/issue-101" ] && echo 1 || echo 0 )"
+assert_grep "C-02 age-guard skip WARNING on stderr (not silent)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-02 status reports session_worktrees=0" ;; *) fail "C-02 status: $out" ;; esac
+
+echo "=== C-02b (#1957 MUST silent-skip 禁止): free-claim fresh corpse → NOT reaped + WARNING (not silent) ==="
+R=$(make_repo 105); cleanup_dirs+=("$R")
+# The real-world corpse shape: cleanup releases the claim unconditionally, so the
+# corpse is claim-FREE (not stale). Deactivate the holder (liveness guard off) and
+# delete the claim file (release). Without the corpse exclusion in Gate 2's free
+# age guard, this skips through the pre-existing silent continue — stderr empty —
+# violating the Issue #1957 MUST (skips must be logged). Non-vacuous: revert the
+# `_corpse -eq 0` condition and the WARNING assert flips.
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-105.json"
+make_corpse "$R" 105
+out=$(run_pcc "$R")
+assert "C-02b free fresh corpse survives (age guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-105" ] && echo 1 || echo 0 )"
+assert_grep "C-02b free fresh corpse skip is LOGGED (corpse age guard WARNING)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-02b status reports session_worktrees=0" ;; *) fail "C-02b status: $out" ;; esac
+
+echo "=== C-03 (#1957 AC-4): aged corpse but LIVE claim → NOT reaped ==="
+R=$(make_repo 102); cleanup_dirs+=("$R")
+# SID_A stays active → the claim is live ("other" from SID_B). Aged + corpse,
+# so only the claim-side protections stand between the corpse and the reap
+# (non-vacuous for AC-4's claim-live half; whichever liveness guard fires, the
+# contract is survival).
+make_corpse "$R" 102
+age_dir "$R/.rite/worktrees/issue-102"
+out=$(run_pcc "$R")
+assert "C-03 claim-live corpse survives" "1" "$( [ -d "$R/.rite/worktrees/issue-102" ] && echo 1 || echo 0 )"
+assert "C-03 admin dir survives" "1" "$( [ -d "$R/.git/worktrees/issue-102" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "C-03 status reports session_worktrees=0" ;; *) fail "C-03 status: $out" ;; esac
+
+echo "=== C-03b (#1957 MUST): aged corpse + live worktree-less claim → NOT reaped + Gate 2 skip LOGGED ==="
+R=$(make_repo 106); cleanup_dirs+=("$R")
+# The open-claims-first window shape: the claim holder is live but the claim has
+# no worktree recorded yet (open Step 1.6 claims before the worktree exists), so
+# the claim-join liveness guard cannot match the tree and the corpse reaches
+# Gate 2's live-claim arm. That skip must be loud (Issue #1957 MUST) — the
+# protection is correct, the anomaly must still be visible.
+tmpc106=$(mktemp)
+jq 'del(.worktree)' "$R/.rite/state/issue-claims/issue-106.json" > "$tmpc106" && mv "$tmpc106" "$R/.rite/state/issue-claims/issue-106.json"
+make_corpse "$R" 106
+age_dir "$R/.rite/worktrees/issue-106"
+out=$(run_pcc "$R")
+assert "C-03b live worktree-less claim corpse survives" "1" "$( [ -d "$R/.rite/worktrees/issue-106" ] && echo 1 || echo 0 )"
+assert_grep "C-03b Gate 2 live-claim corpse skip is LOGGED (not silent)" "$R/pcc.err" "live claim \(other\) 保持中のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-03b status reports session_worktrees=0" ;; *) fail "C-03b status: $out" ;; esac
+
+echo "=== C-04 (#1957 AC-5): HEAD present + status rc≠0 (NOT a corpse) → conservative skip unchanged ==="
+R=$(make_repo 103); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+# Break commondir so git stops recognizing the tree while HEAD survives — the
+# corpse condition is an AND (HEAD missing AND unrecognized), so this must stay
+# on Gate 3's conservative-skip path. Aged + stale, so ONLY the AND-condition
+# keeps it protected (drop either half of the AND and this reaps).
+rm "$R/.git/worktrees/issue-103/commondir"
+age_dir "$R/.rite/worktrees/issue-103"
+out=$(run_pcc "$R")
+assert "C-04 non-corpse broken worktree survives (conservative skip)" "1" "$( [ -d "$R/.rite/worktrees/issue-103" ] && echo 1 || echo 0 )"
+assert_grep "C-04 Gate 3 conservative-skip WARNING (not the corpse path)" "$R/pcc.err" "status を判定できません"
+assert_not_grep "C-04 no corpse WARNING emitted" "$R/pcc.err" "corpse session worktree"
+case "$out" in *"session_worktrees=0"*) pass "C-04 status reports session_worktrees=0" ;; *) fail "C-04 status: $out" ;; esac
+
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; wiki-worktree excluded; session-start best-effort wiring."
+  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1957 corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; wiki-worktree excluded; session-start best-effort wiring."

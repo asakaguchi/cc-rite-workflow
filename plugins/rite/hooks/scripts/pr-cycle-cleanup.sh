@@ -614,7 +614,11 @@ fi
 #   2. claim liveness (S3) が live でない (issue-claim.sh check が stale、または
 #      claim 不在 free のとき mtime > 24h の age guard を再利用)
 #   3. `git -C <wt> status --porcelain` が空 (dirty worktree は絶対に auto-reap
-#      しない — WARNING + 手動コマンド提示で skip)
+#      しない — WARNING + 手動コマンド提示で skip)。例外 (Issue #1957): corpse
+#      (admin dir の HEAD 欠落 + git 非認識 — sandbox のマスクマウント下で
+#      `git worktree remove --force` が半壊させた残骸) は status 判定が構造的に
+#      不可能なため本ゲートをバイパスし、claim 非 live + 24h age guard の通過後に
+#      rm -rf (working tree + admin dir) + prune で回収する
 # 処理は Step 1/4 と同型: `git worktree remove --force` → fallback `rm -rf` →
 # ループ後 `git worktree prune` + 対応 claim ファイル削除。
 #
@@ -955,25 +959,60 @@ if [ -d "$session_wt_root" ]; then
       continue
     fi
 
+    # Corpse detection (Issue #1957): a sandbox-masked `git worktree remove
+    # --force` half-destroys the admin dir — HEAD alone unlinked, commondir /
+    # gitdir / index left behind — after which every `git -C <wt>` operation
+    # fails ("not a git repository"). Gate 3's conservative skip would protect
+    # such a tree forever (its dirty state is structurally undeterminable), and
+    # manual `git worktree remove --force` is rejected by validation, so
+    # without this branch no recovery path exists. Corpse = admin HEAD missing
+    # AND git does not recognize the tree — both required, so a mere
+    # permission-broken tree (HEAD present, status rc != 0) stays on the
+    # conservative-skip path (AC-5). The admin dir is resolved from the
+    # worktree's own `.git` file (`gitdir: <path>` line): suffixed admin ids
+    # from basename collisions still resolve, unlike a basename guess.
+    _corpse=0
+    _admin_dir=$(sed -n 's/^gitdir: //p' "$wt_path/.git" 2>/dev/null | head -1) || _admin_dir=""
+    if [ -n "$_admin_dir" ] && [ -d "$_admin_dir" ] && [ ! -f "$_admin_dir/HEAD" ] \
+       && ! git -C "$wt_path" rev-parse --git-dir >/dev/null 2>&1; then
+      _corpse=1
+    fi
+
     # Gate 3: dirty worktree is NEVER auto-reaped. An indeterminate status
     # (rc != 0) is treated conservatively as "do not reap" to avoid data loss.
-    _st_out=$(git -C "$wt_path" status --porcelain 2>/dev/null)
-    _st_rc=$?
-    if [ "$_st_rc" -ne 0 ]; then
-      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の status を判定できません (rc=$_st_rc) — 安全側で reap をスキップします" >&2
-      continue
-    fi
-    if [ -n "$_st_out" ]; then
-      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は未コミット変更があるため auto-reap をスキップします。" >&2
-      echo "  手動確認: git -C '$wt_path' status / 不要なら git worktree remove '$wt_path'" >&2
-      continue
+    # A corpse bypasses this gate (Issue #1957 D-01): "indeterminable =
+    # protect" would mean "protect forever" for a tree git can no longer
+    # operate on at all. The uncommitted-work risk is accepted behind the
+    # claim gate (Gate 2) plus the corpse age guard below.
+    if [ "$_corpse" -eq 0 ]; then
+      # `|| _st_rc=$?` (not a bare `$?` read): under `set -e` a non-zero status
+      # rc would abort the whole reap loop instead of taking the conservative
+      # skip below — the exact broken-tree inputs this gate exists to protect.
+      _st_rc=0
+      _st_out=$(git -C "$wt_path" status --porcelain 2>/dev/null) || _st_rc=$?
+      if [ "$_st_rc" -ne 0 ]; then
+        echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の status を判定できません (rc=$_st_rc) — 安全側で reap をスキップします" >&2
+        continue
+      fi
+      if [ -n "$_st_out" ]; then
+        echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は未コミット変更があるため auto-reap をスキップします。" >&2
+        echo "  手動確認: git -C '$wt_path' status / 不要なら git worktree remove '$wt_path'" >&2
+        continue
+      fi
     fi
 
     # Gate 2: claim liveness. issue-claim.sh resolves its own session_id.
     claim_state=$(bash "$SCRIPT_DIR/../issue-claim.sh" check --issue "$issue_num" 2>/dev/null) || claim_state=""
     case "$claim_state" in
       other|own)
-        # A live session holds the claim — leave the worktree intact.
+        # A live session holds the claim — leave the worktree intact. A corpse
+        # behind a live claim is still an anomaly the user should see (Issue
+        # #1957 MUST: no silent skip); the skip itself is the correct protection.
+        # The claim-join liveness guard misses this shape when the claim has no
+        # worktree recorded yet (open claims first, records the path later).
+        if [ "$_corpse" -eq 1 ]; then
+          echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) は live claim (${claim_state}) 保持中のため回収を見送ります。" >&2
+        fi
         continue
         ;;
       stale)
@@ -981,29 +1020,69 @@ if [ -d "$session_wt_root" ]; then
         ;;
       free|"")
         # No claim recorded → conservative mtime age guard (24h) so an in-flight
-        # worktree that simply has not written a claim yet is not reaped.
-        if [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
+        # worktree that simply has not written a claim yet is not reaped. A fresh
+        # corpse is excluded from this silent continue (Issue #1957): cleanup
+        # releases the claim unconditionally, so a real-world corpse is claim-free
+        # — this path would otherwise hide the anomaly without a WARNING. The
+        # corpse falls through to the logged corpse age guard below (same 24h
+        # window), which skips it loudly.
+        if [ "$_corpse" -eq 0 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
           continue
         fi
         ;;
       *)
+        # Unknown claim state — conservative skip. Same loud-corpse rule as the
+        # live-claim arm above.
+        if [ "$_corpse" -eq 1 ]; then
+          echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) は claim 状態不明 (${claim_state:-unknown}) のため回収を見送ります。" >&2
+        fi
         continue
         ;;
     esac
 
-    if [ "$DRY_RUN" = "1" ]; then
-      echo "[pr-cycle-cleanup] would reap session worktree: $wt_path (claim=${claim_state:-none})"
+    # Corpse age guard (Issue #1957 D-01): a corpse's dirty state cannot be
+    # examined, so a not-live claim alone (Gate 2 above) must not reap it —
+    # require the same 24h mtime age Gate 2 applies to free claims, for the
+    # stale-claim path too (AC-4: a fresh corpse is never reaped). The skip is
+    # logged, not silent: a corpse's existence is itself an anomaly the user
+    # should see before the guard expires.
+    if [ "$_corpse" -eq 1 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
+      echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) は age guard (24h) 未達のため回収を見送ります。" >&2
       continue
+    fi
+
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "[pr-cycle-cleanup] would reap session worktree: $wt_path (claim=${claim_state:-none}$([ "$_corpse" -eq 1 ] && printf ', corpse'))"
+      continue
+    fi
+
+    # Corpse reap is loud (Issue #1957 MUST): name the target before touching it.
+    if [ "$_corpse" -eq 1 ]; then
+      echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) を rm -rf + prune で回収します (Issue #1957)。" >&2
     fi
 
     # Capture the checked-out branch BEFORE removal (the worktree is gone after) so
     # the post-reap branch recovery (#1670) can target it. Detached HEAD yields
-    # "HEAD" → no branch to recover.
+    # "HEAD" → no branch to recover. (A corpse yields "" — git cannot read its
+    # HEAD — so branch recovery is structurally skipped for corpses.)
     _reaped_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null) || _reaped_branch=""
 
     # Reap: remove --force first (drops worktree metadata + dir atomically),
-    # rm -rf fallback for dirs whose registration was already lost.
+    # rm -rf fallback for dirs whose registration was already lost. A corpse
+    # always takes the rm -rf fallback: `git worktree remove --force` rejects it
+    # at validation ("'<wt>/.git' is not a .git file", rc=128) without deleting
+    # anything.
     if git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null; then
+      # Corpse admin-dir recovery (Issue #1957): the rm -rf above only removed
+      # the working tree; the half-destroyed admin dir would otherwise survive
+      # (prune-independent removal — the corrupt entry must not linger in
+      # `git worktree list` until the post-loop prune). Failure is non-blocking:
+      # the post-loop prune and the next reap run both retry.
+      if [ "$_corpse" -eq 1 ] && [ -d "$_admin_dir" ]; then
+        if ! rm -rf "$_admin_dir" 2>/dev/null; then
+          echo "WARNING: corpse admin dir '$(printf '%s' "$_admin_dir" | neutralize_ctrl)' の削除に失敗しました。手動回収: rm -rf '$_admin_dir' && git worktree prune" >&2
+        fi
+      fi
       session_worktrees_reaped=$((session_worktrees_reaped + 1))
       rm -f "$repo_root/.rite/state/issue-claims/issue-${issue_num}.json" 2>/dev/null || true
       # Null the dangling `worktree` reference in the owning session's flow-state
@@ -1040,7 +1119,14 @@ if [ -d "$session_wt_root" ]; then
         fi
       fi
     else
-      echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
+      if [ "$_corpse" -eq 1 ]; then
+        # Symmetric with the admin-dir failure branch above: a corpse reap
+        # failure must carry the manual recovery command (Issue #1957 §4.5),
+        # including the admin dir path the generic message would lose.
+        echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の回収に失敗しました。手動回収: rm -rf '$wt_path' '$_admin_dir' && git worktree prune" >&2
+      else
+        echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
+      fi
       errors=$((errors + 1))
     fi
   done < <(git worktree list --porcelain 2>/dev/null)

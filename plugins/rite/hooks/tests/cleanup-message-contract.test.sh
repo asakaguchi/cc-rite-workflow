@@ -55,7 +55,7 @@ assert_grep "4-W mask WARNING states removal is not attempted at all" "$CLEANUP"
 assert_grep "4-W mask WARNING forbids in-place sandbox-disable retry" "$CLEANUP" "実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと"
 # AC-2 (非回帰): マスク非検知時の従来 remove 経路 (LC_ALL=C 固定の remove → --force fallback)
 # が残存している — 検知ガードが常時抑止に化けたらこの pin ごと落ちる。
-assert_grep "4-W keeps the conventional remove path for unmasked worktrees" "$CLEANUP" 'LC_ALL=C git worktree remove "{flow_wt}"'
+assert_grep "4-W keeps the conventional remove path for unmasked worktrees" "$CLEANUP" 'LC_ALL=C git worktree remove "\{flow_wt\}"'
 # ステップ 12 報告: SANDBOX_MASK skip の分岐が存在し、sandbox 外での手動回収コマンドを示す。
 assert_grep "Step 12 has a SANDBOX_MASK branch in {session_worktree_check}" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1. のとき'
 assert_grep "Step 12 mask message points to a sandbox-outside manual removal" "$CLEANUP" "sandbox 外のシェルで git worktree remove --force"
@@ -64,10 +64,10 @@ assert_grep "Step 12 mask message points to a sandbox-outside manual removal" "$
 # コメントは mask ルートに言及し、branch-deferral 系 WARNING は原因中立の文面を使う (Issue #1957)。
 assert_grep "Step 5 comment names the SANDBOX_MASK deferral route" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク'
 assert_grep "Step 5 deferred WARNING is cause-neutral" "$CLEANUP" "まだ削除されていない作業ツリーで使用中のため、削除を見送りました"
-assert_not_grep "old exclusive-cause claim removed from Step 5 comment" "$CLEANUP" "本経路に来るのは.*別 live セッション在席時のみ"
+assert_not_grep "old exclusive-cause claim removed from Step 5 comment" "$CLEANUP" "本経路に来るのは"
 assert_not_grep "old other-session attribution removed from deferred WARNINGs" "$CLEANUP" "はまだ別のセッションの作業ツリーで使用中のため"
 assert_not_grep "old exclusive-cause claim removed from in_main note" "$CLEANUP" "別セッション在席時のみ遅延する"
-assert_not_grep "old other-session release attribution removed from Step 5 manifest comment" "$CLEANUP" "別 live セッションが worktree を.*解放したあと"
+assert_not_grep "old other-session release attribution removed from Step 5 manifest comment" "$CLEANUP" "別 live セッションが worktree を"
 assert_not_grep "old other-session gloss removed from BRANCH_DELETE_DEFERRED definition" "$CLEANUP" "（別セッションが worktree を使用中で削除を遅延したケース）"
 
 echo "=== ステップ 12: 旧・内部実装語/不正確な記述が除去されている ==="

@@ -2,8 +2,10 @@
 title: "`if ! cmd; then rc=$?` は常に 0 を捕捉する"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-17T22:44:27Z"
+updated: "2026-07-21T18:30:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260721T171603Z-pr-1959.md"
   - type: "reviews"
     ref: "raw/reviews/20260517T221249Z-pr-1032.md"
   - type: "fixes"
@@ -107,6 +109,18 @@ PR #1032 (Issue #1025) は `plugins/rite/commands/pr/fix.md` L797-L802 の `mkte
 
 → SoT を rebrand する際は WARNING wording / CONTEXT emit format だけでなく、bash の if-else 構造そのものを SoT と完全一致させること。小規模な format 同期 PR ほど reviewer 注意が runtime semantics 層に届きにくいため、本 anti-pattern の発火リスクが高い。
 
+### 姉妹型: `set -e` 下の裸 `$?` 読み `var=$(cmd); rc=$?` は rc 行に到達しない
+
+`if !` 反転とは別の同族罠として、`set -euo pipefail` 下で `var=$(失敗コマンド); rc=$?` と書くと、**代入コマンド自体が errexit を発火してスクリプト（またはループ）全体が abort し、`rc=$?` 行は dead code になる**。PR #1959 の Gate 3（`_st_out=$(git status ...); _st_rc=$?`）では、この形が「status rc≠0 → conservative skip」分岐を実質到達不能にしており、broken worktree 入力（このゲートが守るべきまさにその入力）で reap ループごと停止していた。正しい形は既存 canonical fix と同型:
+
+```bash
+# ✅ OK: 代入の失敗を || で吸収して rc を捕捉（set -e 下でも abort しない）
+rc=0
+var=$(cmd) || rc=$?
+```
+
+`if !` 型（rc が常に 0 になる）と裸 `$?` 型（rc 行に到達せず abort する）は症状が異なるが、いずれも「`rc=0; var=$(cmd) || rc=$?` 形式」が共通の canonical fix である。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -123,3 +137,4 @@ PR #1032 (Issue #1025) は `plugins/rite/commands/pr/fix.md` L797-L802 の `mkte
 - [PR #548 cycle 3 review (triple cross-validation)](../../raw/reviews/20260416T173035Z-pr-548.md)
 - [PR #688 cycle 36 review — self-referential 4 site 同時播種 (累積 13 回目)](../../raw/reviews/20260427T154519Z-pr-688.md)
 - [PR #1032 cycle 1 review (format 同期 refactor で `if ! cmd; then rc=$?` 形式を新規導入、累積 34 回目 Asymmetric Fix Transcription の起点、三層対称化義務 doctrine 確立)](../../raw/reviews/20260517T221249Z-pr-1032.md)
+- [PR #1959 review cycle 1 (set -e 下の裸 `$?` 読みが Gate 3 conservative skip を dead code 化)](../../raw/reviews/20260721T171603Z-pr-1959.md)

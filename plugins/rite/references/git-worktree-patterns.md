@@ -19,6 +19,8 @@ When `parallel.mode: "worktree"` is set in `rite-config.yml`, each parallel agen
 - [Worktree Cleanup](#worktree-cleanup) - Removal and safety mechanisms
 - [Safety Mechanisms](#safety-mechanisms) - Preventing forgotten worktree removal
 - [Configuration Reference](#configuration-reference) - rite-config.yml settings
+- [SSH host alias 経由の git push/fetch が sandbox のネットワーク許可リストでブロックされる](#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) - Bad Gateway failures when `origin` uses an SSH host alias remote
+- [worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) - State writes rejected as read-only filesystem after `EnterWorktree`
 - [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, not real files
 
 ---

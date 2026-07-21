@@ -19,6 +19,9 @@ When `parallel.mode: "worktree"` is set in `rite-config.yml`, each parallel agen
 - [Worktree Cleanup](#worktree-cleanup) - Removal and safety mechanisms
 - [Safety Mechanisms](#safety-mechanisms) - Preventing forgotten worktree removal
 - [Configuration Reference](#configuration-reference) - rite-config.yml settings
+- [SSH host alias 経由の git push/fetch が sandbox のネットワーク許可リストでブロックされる](#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) - Bad Gateway failures when `origin` uses an SSH host alias remote
+- [worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) - State writes rejected as read-only filesystem after `EnterWorktree`
+- [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, not real files
 
 ---
 
@@ -534,6 +537,58 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
 `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、
 Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響を受けないため、sandbox 有効のまま
 実行する。
+
+### sandbox の write-block マスクマウントが `git status` に幽霊 untracked エントリを生む
+
+sandbox が有効な環境（worktree の内外を問わない）では、`git status` にリポジトリ直下の `.bashrc` /
+`.gitconfig` / `.claude/settings.json` / `.mcp.json` 等が `??`（未追跡）として列挙されることがある。
+これは実在の未追跡ファイルではない。
+
+**症状**:
+
+```
+$ git status --short
+?? .bashrc
+?? .gitconfig
+?? .claude/settings.json
+?? .mcp.json
+```
+
+```
+$ ls -la .bashrc
+crw-rw-rw- 1 nobody nogroup 1, 3  7月 20 09:39 .bashrc
+```
+
+`ls -la` の1桁目が `c`（character device）になっている点に注目する。通常ファイルであれば `-` になる。
+
+**原因**: Bash tool の sandbox write-block 機構は、書き込みを拒否したい保護対象パス（シェル
+dotfile、`.claude/settings.json`、`.mcp.json` 等）へ `/dev/null` のキャラクタデバイスを bind mount
+する。結果としてそのパス上には実ファイルではなくデバイスノードが存在する状態になり、`git status` は
+これを「git 管理外の新規パス」として `??` に分類する。しかし対象は実ファイルの内容変化ではなくデバイス
+ノードであり、作業ツリーの実体は変化していない（sandbox 外で同じ `git status` を実行すると clean に
+なる）。
+
+**列挙は例示であり網羅ではない**: 上記のパスは観測された一例に過ぎず、どのパスが保護対象になるかは
+sandbox 設定に依存して変わる。ファイル名の allowlist で判定してはならない。判定は常に下記の機構ベース
+（`test -c`）で行う。
+
+**実在確認手順**:
+
+- 当該パスがキャラクタデバイスかどうかを判定する: `test -c <path> && echo "ghost mount" || echo "real file"`
+- または sandbox の外側（通常のシェル）で同じ `git status` を実行し、差分が実在するか確認する
+
+**canonical な判定経路**: dirty 判定を行う hook / script は `hooks/scripts/lib/git-status-filtered.sh`
+を経由する。この helper は `git status --porcelain -z` の出力のうち `??` エントリで `test -c` により
+キャラクタデバイスと判定されたものだけを機械的に除外し、それ以外の全ステータス（staged / unstaged /
+unmerged / renamed / copied）はそのまま通す。ファイル名 allowlist を持たない機構ベース設計のため、
+sandbox 設定が変わっても追随できる。
+
+**実行エージェントへの指示**: この現象で列挙される `??` エントリを「未追跡ファイルの異常」「リポジトリ
+汚染」として報告しない。削除・`git add`・コミットを試みない。dirty 判定が必要な箇所では `git status`
+を直接パースせず `git-status-filtered.sh` を使う。
+
+**関連 Issue**: #1936（`git-status-filtered.sh` 導入元）/ #1944（drift-hash 経路の sandbox 内外
+コンテキスト混在による誤警報の残件、本節の対象外）
 
 > **Canonical spec**: This file documents the operational *patterns*; the canonical
 > runtime specification for the session-worktree layer (lifecycle, claim, reap,

@@ -27,6 +27,7 @@
 * **Update**: [Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)](pages/patterns/embedded-bash-block-observability-trio.md) — raw/reviews/20260722T221143Z-pr-1973.md, raw/fixes/20260722T221542Z-pr-1973.md を統合 — 明示的な exit code チェックすら Bash tool の per-invocation pipefail-off で dead code 化する変種と capture-first canonical fix を追加
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260722T221143Z-pr-1973.md, raw/reviews/20260722T222828Z-pr-1973.md, raw/fixes/20260722T223211Z-pr-1973.md を統合 — guard-logic-not-just-routing pin gap と non-exercising fixture の 2 sub-pattern を追加
 * **Update**: [「invariant は logic 上成立」を信頼せず empirical reproduction で verify する](pages/heuristics/empirical-reproduction-over-invariant-reasoning.md) — raw/reviews/20260722T224239Z-pr-1973.md を統合 — CRITICAL cross-validation 対立を実機 revert test で決着し 5 cycle で mergeable に収束した事例を追加
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
 
 ## 2026-07-21
 

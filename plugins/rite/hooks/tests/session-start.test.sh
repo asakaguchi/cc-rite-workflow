@@ -1419,7 +1419,7 @@ echo "{\"cwd\": \"$dir_reap_ac3\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FI
 # Assert the fallback branch actually ran: mkdir -p must have failed (the path
 # is still the file we touched, not a directory), not just "exit 0 either way".
 if [ "$rc1968_03" -eq 0 ] && [ -f "$dir_reap_ac3/.rite/logs" ] && [ ! -d "$dir_reap_ac3/.rite/logs" ]; then
-  pass "TC-1968-03: hook exits 0 and the discard fallback actually ran (mkdir failure confirmed)"
+  pass "TC-1968-03: hook exits 0 with mkdir failure intact (fallback branch not directly asserted)"
 else
   fail "TC-1968-03: expected exit 0 with mkdir failure intact, got rc=$rc1968_03, .rite/logs is $([ -d "$dir_reap_ac3/.rite/logs" ] && echo dir || echo not-a-dir)"
 fi
@@ -1495,6 +1495,23 @@ if [ "$(cat "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)" = "P
   pass "TC-1968-04: reap not invoked from worktree cwd → main-repo log unchanged"
 else
   fail "TC-1968-04: main-repo log was modified even though reap should not run from a worktree cwd: $(cat "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)"
+fi
+echo ""
+
+echo "TC-1968-07 (self-contained gitignore): reap log dir gets its own .gitignore (*) on first creation"
+dir_reap_ac7="$TEST_DIR/reap-ac7"
+mkdir -p "$dir_reap_ac7"
+(cd "$dir_reap_ac7" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# TMPDIR isolation: same rationale as TC-1968-01/02/05 (real git fixture lets reap
+# complete, which also triggers the orphan-workdir sweep under ${TMPDIR:-/tmp}).
+iso_tmpdir_ac7="$TEST_DIR/reap-ac7-tmpdir"
+mkdir -p "$iso_tmpdir_ac7"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac7\"}" | TMPDIR="$iso_tmpdir_ac7" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if [ "$(cat "$dir_reap_ac7/.rite/logs/.gitignore" 2>/dev/null)" = "*" ]; then
+  pass "TC-1968-07: .rite/logs/.gitignore created with content '*' (self-excludes without relying on downstream setup coverage)"
+else
+  fail "TC-1968-07: expected .rite/logs/.gitignore with content '*', got: $(cat "$dir_reap_ac7/.rite/logs/.gitignore" 2>/dev/null)"
 fi
 echo ""
 

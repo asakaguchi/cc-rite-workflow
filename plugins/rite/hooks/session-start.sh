@@ -374,8 +374,11 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # Output is redirected to a log file (overwritten each run — no rotation) rather
 # than discarded, since silent skip reasons (dirty/liveness/corpse-age-guard/
 # manifest-bypass WARNINGs) were previously unobservable and slowed diagnosis
-# (#1966's investigation). The log dir sits under `.rite/` (`*.log` is
-# gitignored) so it never leaks into the repo. If the dir can't be created,
+# (#1966's investigation). A self-contained `.gitignore` (`*`) is written into
+# the log dir on first creation so it never leaks into the repo even in
+# downstream consuming repos, where /rite:setup's generated .gitignore only
+# covers `.rite/sessions/` and `.rite/worktrees/` (not `.rite/logs/`) and this
+# repo's own root `*.log` rule doesn't apply. If the dir can't be created,
 # fall back to discarding output — this hook must never block session start on
 # a log-write failure.
 if [ "$CWD" = "$STATE_ROOT" ]; then
@@ -386,6 +389,7 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
   # degrading to discard. The truncate below doubles as the "overwritten each
   # run" reset, so the reap output is appended after it.
   if mkdir -p "$_reap_log_dir" 2>/dev/null && { : > "$_reap_log_dir/pr-cycle-cleanup.log"; } 2>/dev/null; then
+    [ -f "$_reap_log_dir/.gitignore" ] || printf '*\n' > "$_reap_log_dir/.gitignore" 2>/dev/null || true
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >>"$_reap_log_dir/pr-cycle-cleanup.log" 2>&1 || true
   else
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true

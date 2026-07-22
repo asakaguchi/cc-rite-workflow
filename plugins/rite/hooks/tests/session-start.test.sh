@@ -1515,6 +1515,26 @@ else
 fi
 echo ""
 
+echo "TC-1968-08 (regression: .gitignore write failure does not leak a bash redirect error): .gitignore path collides with a directory"
+dir_reap_ac8="$TEST_DIR/reap-ac8"
+mkdir -p "$dir_reap_ac8"
+(cd "$dir_reap_ac8" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# Name collision: pre-create .gitignore as a directory so the `-f` check is
+# false (attempt proceeds) but the printf redirect fails (can't write a file
+# where a directory exists) — same failure shape as the read-only-dir case in
+# TC-1968-06, without needing DAC bits (portable across root/WSL2/overlayfs).
+mkdir -p "$dir_reap_ac8/.rite/logs/.gitignore"
+iso_tmpdir_ac8="$TEST_DIR/reap-ac8-tmpdir"
+mkdir -p "$iso_tmpdir_ac8"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac8\"}" | TMPDIR="$iso_tmpdir_ac8" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_08=$?
+if [ "$rc1968_08" -eq 0 ] && ! grep -qE 'session-start\.sh: (line|行) [0-9]+:' "$LAST_STDERR_FILE"; then
+  pass "TC-1968-08: .gitignore write failure (path collision) does not leak bash redirect error to stderr"
+else
+  fail "TC-1968-08: expected exit 0, no bash redirect error; got rc=$rc1968_08, stderr: $(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

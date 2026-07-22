@@ -389,7 +389,7 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
   # degrading to discard. The truncate below doubles as the "overwritten each
   # run" reset, so the reap output is appended after it.
   if mkdir -p "$_reap_log_dir" 2>/dev/null && { : > "$_reap_log_dir/pr-cycle-cleanup.log"; } 2>/dev/null; then
-    [ -f "$_reap_log_dir/.gitignore" ] || printf '*\n' > "$_reap_log_dir/.gitignore" 2>/dev/null || true
+    [ -f "$_reap_log_dir/.gitignore" ] || { printf '*\n' > "$_reap_log_dir/.gitignore"; } 2>/dev/null || true
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >>"$_reap_log_dir/pr-cycle-cleanup.log" 2>&1 || true
   else
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true

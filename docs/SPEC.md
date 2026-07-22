@@ -1320,7 +1320,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `sh-cross-ref-check.sh` | shell prose (echo 文字列 / comment) 内の cross-file step/phase 参照の実在を検証 | — |
 | `orphan-reference-check.sh` | plugins/rite/ 配下の未参照 (orphan) ファイル検出 | — |
 | `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | — |
-| `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | — |
+| `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h)。`session-start.sh` のセッション開始時 lazy reap 起動 (`CWD == STATE_ROOT` ゲート) では、stdout/stderr を `STATE_ROOT/.rite/logs/pr-cycle-cleanup.log` へ退避する (`*.log` は `.gitignore` 済み、上書き方式、ログディレクトリ作成失敗時は従来どおり破棄にフォールバック、#1968) | — |
 | `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 (`fix.md` ステップ 3.1.1 の pre-commit gate から直接呼び出される) | `review.loop.pre_commit_drift_check` |
 | `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、setup.md Phase 4.5.0.2) | — |
 | `lib/` (`git-remote.sh` / `git-status-filtered.sh` / `wiki-config.sh` / `worktree-git.sh`) | 汎用 git helper + wiki 系 helper の共有ライブラリ (owner/repo 解決 / sandbox ghost mount 除外 git status / wiki config 読取 / worktree git 操作) | — |

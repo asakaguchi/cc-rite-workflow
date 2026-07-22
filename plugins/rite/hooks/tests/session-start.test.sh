@@ -1373,6 +1373,68 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-1968: lazy reap output redirected to log file instead of discarded (#1968)
+# --------------------------------------------------------------------------
+echo "TC-1968-01 (AC-1): reap output is captured to .rite/logs/pr-cycle-cleanup.log"
+dir_reap_ac1="$TEST_DIR/reap-ac1"
+mkdir -p "$dir_reap_ac1"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+# $dir_reap_ac1 is not a git repo, so pr-cycle-cleanup.sh exits 1 with an
+# "ERROR: not inside a git repository" line — that's fine, the test only
+# checks the output landed in the log file rather than being discarded.
+echo "{\"cwd\": \"$dir_reap_ac1\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if [ -s "$dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log" ]; then
+  pass "TC-1968-01: reap output written to .rite/logs/pr-cycle-cleanup.log"
+else
+  fail "TC-1968-01: expected non-empty log at $dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log"
+fi
+echo ""
+
+echo "TC-1968-02 (AC-2): reap output does not leak into hook stdout"
+dir_reap_ac2="$TEST_DIR/reap-ac2"
+mkdir -p "$dir_reap_ac2"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_reap_ac2\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! printf '%s' "$output" | grep -q "pr-cycle-cleanup\|not inside a git repository"; then
+  pass "TC-1968-02: hook stdout does not contain reap output"
+else
+  fail "TC-1968-02: reap output leaked into hook stdout: $output"
+fi
+echo ""
+
+echo "TC-1968-03 (AC-3): log dir creation failure falls back to discard, hook still exits 0"
+dir_reap_ac3="$TEST_DIR/reap-ac3"
+mkdir -p "$dir_reap_ac3/.rite"
+# A file named "logs" at the target path blocks `mkdir -p .../.rite/logs`,
+# forcing the fallback-to-discard branch without disturbing other .rite/ state.
+touch "$dir_reap_ac3/.rite/logs"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac3\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_03=$?
+if [ "$rc1968_03" -eq 0 ]; then
+  pass "TC-1968-03: hook exits 0 even when the log dir cannot be created"
+else
+  fail "TC-1968-03: expected exit 0, got rc=$rc1968_03"
+fi
+echo ""
+
+echo "TC-1968-04 (AC-4): reap not invoked from a worktree-rooted CWD → log left untouched"
+main_repo_1968="$TEST_DIR/reap-ac4-main"
+mkdir -p "$main_repo_1968"
+(cd "$main_repo_1968" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+wt_1968="$TEST_DIR/reap-ac4-wt"
+(cd "$main_repo_1968" && git worktree add -q -b "feat/issue-1968-test" "$wt_1968") >/dev/null 2>&1
+mkdir -p "$main_repo_1968/.rite/logs"
+echo "PRE-EXISTING" > "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$wt_1968\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if [ "$(cat "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)" = "PRE-EXISTING" ]; then
+  pass "TC-1968-04: reap not invoked from worktree cwd → main-repo log unchanged"
+else
+  fail "TC-1968-04: main-repo log was modified even though reap should not run from a worktree cwd: $(cat "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

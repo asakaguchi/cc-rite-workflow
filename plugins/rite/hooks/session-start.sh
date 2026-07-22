@@ -369,9 +369,22 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # you are standing in — though the reap's own gates already protect live/dirty
 # trees). pr-cycle-cleanup.sh resolves repo_root to the main checkout and reaps
 # only stale + clean `.rite/worktrees/issue-{N}` trees. Fully non-blocking:
-# stdout discarded, `|| true` keeps a slow/failed GC from blocking session start.
+# `|| true` keeps a slow/failed GC from blocking session start.
+#
+# Output is redirected to a log file (overwritten each run — no rotation) rather
+# than discarded, since silent skip reasons (dirty/liveness/corpse-age-guard/
+# manifest-bypass WARNINGs) were previously unobservable and slowed diagnosis
+# (#1966's investigation). The log dir sits under `.rite/` (`*.log` is
+# gitignored) so it never leaks into the repo. If the dir can't be created,
+# fall back to discarding output — this hook must never block session start on
+# a log-write failure.
 if [ "$CWD" = "$STATE_ROOT" ]; then
-  ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true
+  _reap_log_dir="$STATE_ROOT/.rite/logs"
+  if mkdir -p "$_reap_log_dir" 2>/dev/null; then
+    ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >"$_reap_log_dir/pr-cycle-cleanup.log" 2>&1 || true
+  else
+    ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true
+  fi
 fi
 
 # Resolve active flow-state file path.

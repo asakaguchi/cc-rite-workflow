@@ -505,6 +505,8 @@ fi
 # branch は worktree で checkout 中のため削除できない。その場合は強制削除せず reap manifest に
 # 記録し（#1670）、worktree が解放（遅延 reap の corpse 回収含む）されたあと
 # pr-cycle-cleanup.sh Step 5 が次セッションで branch・worktree の双方を回収する（dead-letter 解消）。
+# manifest 記録は Step 5 の free-claim 24h age guard 自体もバイパスさせる（#1966 — ハーネスが
+# worktree root の mtime をセッション毎に更新するため、記録なしでは回収が永遠に始まらない）。
 # 自セッションの worktree は通常 4-W の self-exclusion 後に即時削除されるが、sandbox マスク
 # 検知時は削除を試行しないため自セッション由来でも本経路に入る（「別セッション在席時のみ」では
 # ない）。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して

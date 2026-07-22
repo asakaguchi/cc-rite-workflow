@@ -1448,26 +1448,35 @@ dir_reap_ac6="$TEST_DIR/reap-ac6"
 mkdir -p "$dir_reap_ac6/.rite/logs"
 # Existing read-only dir: mkdir -p is a no-op success even though writes inside
 # it fail — the exact gap the writability probe (`{ : > file; } 2>/dev/null`)
-# in session-start.sh closes. Root bypasses permission bits, so this degrades
-# to a pass-through assertion when run as root (CI containers, etc).
+# in session-start.sh closes.
 chmod 555 "$dir_reap_ac6/.rite/logs"
-LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
-echo "{\"cwd\": \"$dir_reap_ac6\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_06=$?
-# A naive `if mkdir -p ...; then` (without the writability probe) would still
-# leave no log file here (the later `>file` redirect fails too), so absence of
-# the log file alone can't distinguish the fix from the bug it closes. What
-# distinguishes them: with the probe, the redirect that touches the read-only
-# dir is `{ : > file; } 2>/dev/null` (silenced); without it, the *reap
-# invocation's own* redirect (`>file 2>&1`, no local silencing) would fail and
-# bash would print its own "cannot create/Permission denied" line — with a
-# `session-start.sh: line N:` prefix — to the hook's stderr.
-if [ "$(id -u)" -eq 0 ]; then
-  pass "TC-1968-06: running as root — permission bits bypassed (chmod 555 has no effect), skipping assertion"
-elif [ "$rc1968_06" -eq 0 ] && [ ! -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] \
-     && ! grep -qE 'session-start\.sh: (line|行) [0-9]+:' "$LAST_STDERR_FILE"; then
-  pass "TC-1968-06: hook exits 0, falls back to discard, and no bash redirect error leaks to stderr"
+# Verify chmod actually enforces read-only for this user/filesystem before
+# asserting on the hook's behavior: root bypasses DAC bits entirely, and some
+# filesystems (WSL2 DrvFs, certain overlay/container mounts) don't enforce
+# owner write bits either — in either case a probe write here would silently
+# succeed, making the assertion below meaningless rather than a real check.
+# Braced so the open-failure message (not just the `:` command's own stderr)
+# is captured by the redirect too — same pattern as session-start.sh's probe.
+if { : > "$dir_reap_ac6/.rite/logs/.write-probe"; } 2>/dev/null; then
+  rm -f "$dir_reap_ac6/.rite/logs/.write-probe"
+  pass "TC-1968-06: filesystem/user does not enforce chmod 555 here — skipping assertion (not a real read-only dir on this host)"
 else
-  fail "TC-1968-06: expected exit 0, no log file, no bash redirect error; got rc=$rc1968_06, log exists: $([ -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] && echo yes || echo no), stderr: $(cat "$LAST_STDERR_FILE")"
+  LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+  echo "{\"cwd\": \"$dir_reap_ac6\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_06=$?
+  # A naive `if mkdir -p ...; then` (without the writability probe) would still
+  # leave no log file here (the later `>file` redirect fails too), so absence of
+  # the log file alone can't distinguish the fix from the bug it closes. What
+  # distinguishes them: with the probe, the redirect that touches the read-only
+  # dir is `{ : > file; } 2>/dev/null` (silenced); without it, the *reap
+  # invocation's own* redirect (`>file 2>&1`, no local silencing) would fail and
+  # bash would print its own "cannot create/Permission denied" line — with a
+  # `session-start.sh: line N:` prefix — to the hook's stderr.
+  if [ "$rc1968_06" -eq 0 ] && [ ! -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] \
+       && ! grep -qE 'session-start\.sh: (line|行) [0-9]+:' "$LAST_STDERR_FILE"; then
+    pass "TC-1968-06: hook exits 0, falls back to discard, and no bash redirect error leaks to stderr"
+  else
+    fail "TC-1968-06: expected exit 0, no log file, no bash redirect error; got rc=$rc1968_06, log exists: $([ -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] && echo yes || echo no), stderr: $(cat "$LAST_STDERR_FILE")"
+  fi
 fi
 chmod 755 "$dir_reap_ac6/.rite/logs" 2>/dev/null || true
 echo ""

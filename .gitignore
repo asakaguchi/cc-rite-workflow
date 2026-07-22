@@ -27,6 +27,11 @@ temp/
 # tracked ファイル (skills/release/SKILL.md 等) には影響しないようファイル単位で除外する。
 .claude/scheduled_tasks.lock
 
+# Claude Code のユーザーローカル設定 (sandbox 許可リスト等、開発者ごとに異なる絶対パスを含む)。
+# 個人のグローバル gitignore だけに依存すると他の contributor 環境では除外されず、
+# 機械固有のパスがコミットされうるためリポジトリ側で明示的に除外する。
+.claude/settings.local.json
+
 # rite workflow state (auto-generated)
 .rite-flow-state
 .rite-flow-state.tmp.*

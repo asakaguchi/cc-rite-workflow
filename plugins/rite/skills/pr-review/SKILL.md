@@ -1138,6 +1138,11 @@ Reviewer subagent が READ-ONLY 契約を破って parent session の working tr
 # detached HEAD は `DETACHED:<short-hash>` sentinel に置換 (verifier 側で branch drift check を skip)。
 # ORIG_WTH は working tree / index の drift (Edit/Write in-place mutation や state-changing git) を
 # 捕捉する 4 軸目 (Issue #1860)。branch/stash/branch_list では見えない porcelain 差分を検出する。
+# 生の `git status --porcelain` ではなく git-status-filtered.sh 経由で計算する (Issue #1944):
+# このスナップショットとステップ 5.0.A の verify は異なる sandbox 実行コンテキストで走りうるため、
+# bwrap sandbox が overlay する ghost-mount `??` エントリ (#1936) が両側で食い違い、実変更が
+# 無くても hash 不一致 (false-positive drift) が起きる。フィルタを両側に適用することでその
+# ghost-mount 差分を打ち消し、実際の working-tree 変更のみが hash に反映されるようにする。
 # rationale: references/design-rationale.md#state-snapshot-notes
 ORIG_BR=$(git branch --show-current 2>/dev/null || echo "")
 if [ -z "$ORIG_BR" ]; then
@@ -1146,10 +1151,10 @@ fi
 ORIG_SC=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
 if command -v md5sum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | md5sum | awk '{print $1}')
- ORIG_WTH=$(git status --porcelain 2>/dev/null | md5sum | awk '{print $1}')
+ ORIG_WTH=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh 2>/dev/null | md5sum | awk '{print $1}')
 elif command -v shasum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | shasum | awk '{print $1}')
- ORIG_WTH=$(git status --porcelain 2>/dev/null | shasum | awk '{print $1}')
+ ORIG_WTH=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh 2>/dev/null | shasum | awk '{print $1}')
 else
  ORIG_BLH="" # hash 計算不可 — branch_list drift check は skip 扱い (verifier 側で空文字列を skip)
  ORIG_WTH="" # hash 計算不可 — worktree drift check は skip 扱い (verifier 側で空文字列を skip)

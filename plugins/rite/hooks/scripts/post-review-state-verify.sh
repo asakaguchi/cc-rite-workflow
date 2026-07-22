@@ -27,7 +27,9 @@
 #   --original-branch <name>           Review 開始時の current branch 名 (required)
 #   --original-stash-count <N>         Review 開始時の `git stash list` 行数 (optional)
 #   --original-branch-list-hash <hash> Review 開始時の `git branch --list | sort | md5sum` (optional)
-#   --original-worktree-hash <hash>    Review 開始時の `git status --porcelain | md5sum` (optional、Issue #1860)
+#   --original-worktree-hash <hash>    Review 開始時の `lib/git-status-filtered.sh | md5sum` (optional、Issue #1860。
+#                                      #1944 で raw `git status --porcelain` から sandbox ghost-mount
+#                                      フィルタ経由に変更 — snapshot 側もこのコマンドで計算すること)
 #   --auto-recover                     drift 検出時に automatic recovery を行う (default: true)
 #
 # State vector axes (drift 検出の優先順): branch → stash → branch_list → worktree。
@@ -48,6 +50,8 @@
 #     {"drift": true, "type": "worktree", "detail": "...", "recovered": false}
 
 set -uo pipefail  # 意図的に -e なし: drift detection 自体を fail とせず、結果を JSON で返す
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ORIGINAL_BRANCH=""
 ORIGINAL_STASH_COUNT=""
@@ -136,8 +140,14 @@ fi
 # + index drift (modified / staged / untracked) that the branch / stash /
 # branch_list axes cannot see — e.g. a reviewer editing a source file in place via
 # Edit/Write and hand-restoring it, or leaving a `.bak` untracked. Advisory only.
+# Routed through git-status-filtered.sh (not raw `git status --porcelain`, Issue #1944):
+# the snapshot side (pr-review SKILL.md ステップ 4.0.A) and this verify side can run in
+# different sandbox contexts, and a bwrap sandbox overlays ghost-mount `??` entries
+# (#1936) that vary by context — comparing raw porcelain hashes false-positives on
+# those ghost entries alone. The filter drops them on both sides so the hash reflects
+# only real working-tree changes.
 if [ -n "$_hash_cmd" ]; then
-  current_worktree_hash=$(git status --porcelain 2>/dev/null | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
+  current_worktree_hash=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh" 2>/dev/null | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
 else
   current_worktree_hash=""
 fi

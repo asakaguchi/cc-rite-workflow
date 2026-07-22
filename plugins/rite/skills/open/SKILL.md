@@ -300,7 +300,9 @@ worktree を作成・再利用したら、`.rite-plugin-root` と（存在する
 
 ```bash
 [ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true
-[ -f "$repo_root/.claude/settings.local.json" ] && mkdir -p "$wt_path/.claude" && cp "$repo_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json" 2>/dev/null || true
+if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$repo_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
+  echo "WARNING: .claude/settings.local.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2
+fi
 ```
 
 その後 `EnterWorktree` ツールを `path: {wt_path}` で呼び出す（`{wt_path}` は 2.2-W の `WT_CASE` marker の `path=` 値。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされた**プロジェクト指示**。値がテンプレートのデフォルト ON 由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ 本コマンド定義の明示指示の両方で満たす。デフォルトが ON でも、この `enabled: true` を marker 経由で確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらず成立する）。

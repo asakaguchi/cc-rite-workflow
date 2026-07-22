@@ -692,7 +692,9 @@ ensure_session_worktree() {
       # add` never copies it. Without this, a reconstructed session worktree
       # loses enabledPlugins["rite@rite-marketplace"]:false and the stale
       # marketplace-cached skill definitions load instead of local plugins/rite.
-      [ -f "$main_root/.claude/settings.local.json" ] && mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json" 2>/dev/null || true
+      if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
+        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #$issue）— ドッグフーディング上書きが worktree に反映されません" >&2
+      fi
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0
     fi
@@ -718,7 +720,9 @@ ensure_session_worktree() {
     if git worktree add --track -b "$branch" "$wt_path" "origin/$branch" 1>&2; then
       # Dogfooding override (#1943): see the branch_local reconstruction
       # branch above for why this copy is needed.
-      [ -f "$main_root/.claude/settings.local.json" ] && mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json" 2>/dev/null || true
+      if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
+        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #$issue）— ドッグフーディング上書きが worktree に反映されません" >&2
+      fi
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0
     fi

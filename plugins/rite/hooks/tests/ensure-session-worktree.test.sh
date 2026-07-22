@@ -178,5 +178,15 @@ assert "TC-13 no settings.local.json created" "no" \
 assert "TC-13 no .claude dir created" "no" \
   "$([ -e "$M/.rite/worktrees/issue-42/.claude" ] && echo yes || echo no)"
 
+# --- TC-14 (T-01/AC-1, #1943, review F-02): settings.local.json present → copied via branch_remote reconstruction ---
+echo "=== TC-14 (T-01/AC-1, #1943): settings.local.json present → copied to worktree (branch_remote path) ==="
+setup_repo; M="$REPO_MAIN"
+mkdir -p "$M/.claude"; echo '{"enabledPlugins":{"rite@rite-marketplace":false}}' > "$M/.claude/settings.local.json"
+ens_case "$M" --issue 77 >/dev/null
+assert "TC-14 settings.local.json copied (branch_remote)" "yes" \
+  "$([ -f "$M/.rite/worktrees/issue-77/.claude/settings.local.json" ] && echo yes || echo no)"
+assert "TC-14 copied content matches (branch_remote)" "yes" \
+  "$(diff -q "$M/.claude/settings.local.json" "$M/.rite/worktrees/issue-77/.claude/settings.local.json" >/dev/null 2>&1 && echo yes || echo no)"
+
 print_summary "ensure-session-worktree.test.sh" \
   "ensure_session_worktree contract changed — sync lib/worktree-git.sh and the recover.md WT_ENSURE table"

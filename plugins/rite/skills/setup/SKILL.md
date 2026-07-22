@@ -1194,10 +1194,10 @@ fi
 
 settings_file="{repo_root}/.claude/settings.local.json"
 mkdir -p "$(dirname "$settings_file")"
-[ -f "$settings_file" ] || echo '{}' > "$settings_file"
+[ -s "$settings_file" ] || echo '{}' > "$settings_file"
 
 already=$(jq --arg p "{repo_root}" \
-  '(.sandbox.filesystem.allowWrite // []) | index($p) != null' \
+  '(.sandbox.filesystem.allowWrite // []) | any(. == $p)' \
   "$settings_file" 2>/dev/null)
 
 if [ "$already" = "true" ]; then

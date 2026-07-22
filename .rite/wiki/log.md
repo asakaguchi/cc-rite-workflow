@@ -11,6 +11,11 @@
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260721T201719Z-pr-1963.md を統合 — reviewer 統合でテストのハードコード期待値だけが旧名に取り残される変種を追加
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=275, broken_refs=0
+* **Create**: [`cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) を混同する](pages/anti-patterns/cmd-redirect-or-true-conflates-nomatch-and-write-failure.md) — raw/reviews/20260722T022920Z-pr-1967.md, raw/fixes/20260722T023104Z-pr-1967.md を新規ページ化
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260722T020659Z-pr-1967.md, raw/reviews/20260722T024314Z-pr-1967.md, raw/fixes/20260722T021313Z-pr-1967.md, raw/fixes/20260722T024427Z-pr-1967.md を統合 — best-effort ブロックの兄弟失敗経路への WARNING 付与が cycle をまたいで片側ずつ直される変種を追加
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260722T020659Z-pr-1967.md, raw/reviews/20260722T022920Z-pr-1967.md を統合 — fixture は検証対象の分岐に到達するまでの状態ライフサイクル全体を再現しないと mutation で flip しない、適用 28 を追加
+* **Update**: [reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する](pages/heuristics/reviewer-regression-claim-revert-test-attribution.md) — raw/fixes/20260722T025804Z-pr-1967.md を統合 — pre-existing 行が本 PR の意味論変更で不活性でなくなった場合は revert test が PR 由来と判定する変種を追加
+* **Skip**: [20260722T035442Z-pr-1967.md](raw/reviews/20260722T035442Z-pr-1967.md) — review-fix loop の収束パターン（severity 逓減・前 cycle 判断の非反転）は既存の類似経験則群と重複度が高く、単独ページ化・既存ページ更新のいずれの追加価値も限定的
 
 ## 2026-07-21
 

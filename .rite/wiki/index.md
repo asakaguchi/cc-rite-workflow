@@ -6,6 +6,7 @@
 
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
+| [`cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) を混同する](pages/anti-patterns/cmd-redirect-or-true-conflates-nomatch-and-write-failure.md) | anti-patterns | grep 等の `cmd > file || true` 型 best-effort リダイレクトは、no-match の rc=1 と disk full / permission denied 等の書き込み失敗 rc>=2 を同じ「true で握り潰す」経路に落とし込む。空ファイルを後続の `[ -s file ]` 分岐で判定すると、書き込み失敗時に誤って no-match 扱いされ、破壊的分岐 (rm 等) を誤選択しうる。PR #1967 で cycle 2 reviewer が独立検出、rc を明示 capture して rc>=2 のみ無変更フォールバックへ分岐する修正で収束。 | 2026-07-22T13:15:00+09:00 | medium |
 | [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) | anti-patterns | 可視化 (WARNING 付き skip) ガードを新設しても、同じ判定条件を持つ既存 silent 経路が制御フロー上流にあると、実運用の支配的入力が silent 側に先に吸われて可視化 MUST が破れる。PR #1959 で corpse 用 logged age guard が Gate 2 free 経路の既存 silent continue に迂回され 2 reviewer が独立 runtime 検出。skip 経路 (case 全 arm + 前段ゲート) の全数列挙と silent 側の新カテゴリ除外が canonical fix。 | 2026-07-21T18:30:00Z | high |
 | [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) | heuristics | 「この経路に来るのは X のみ」「all gates pass」型の全称主張散文は新経路・ゲート例外の追加で未変更行のまま偽化する (comment rot)。emit 文面だけでなく説明散文・定義グロス・経路注記・overview 要約 (SPEC) を旧文面 grep で全数洗いし、確定帰属と原因不定を区別して中立化、not_grep pin で再発遮断。PR #1959 で 3 cycle にわたり 5 箇所の残存を実測。 | 2026-07-21T18:30:00Z | high |
 | [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) | patterns | 旧文面除去の not_grep pin は複数語の .* 橋渡しだと行指向 grep が複数行旧文面に構造的にマッチせず常に pass する空虚 pin になる。literal { } の未エスケープは strict ERE (BSD grep / ugrep) で regcomp エラー。base 存在 + post 不在の両側 grep 確認と単一行トークン化が canonical。PR #1959 cycle 3 で両方を runtime 実証。 | 2026-07-21T18:30:00Z | high |
@@ -235,6 +236,6 @@
 
 ## 統計
 
-- 総ページ数: 192
-- ドメイン別: patterns=64, heuristics=62, anti-patterns=64
-- 最終更新: 2026-07-22T03:30:00+09:00
+- 総ページ数: 193
+- ドメイン別: patterns=64, heuristics=62, anti-patterns=65
+- 最終更新: 2026-07-22T13:15:00+09:00

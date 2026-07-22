@@ -1150,15 +1150,14 @@ if [ -d "$session_wt_root" ]; then
           echo "WARNING: session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)' は未マージのため保持しました（不要なら手動削除: git branch -D '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'）。" >&2
         fi
         # Consume the manifest entry NOW on ANY successful recovery — -d and -D
-        # alike (was: next-run Step 4.5 verify-drop, then -D-only in the first
-        # #1966 cut). With the Gate 2 free-arm age-guard bypass keyed on this
+        # alike. With the Gate 2 free-arm age-guard bypass keyed on this
         # entry, a lingering entry is no longer inert: a same-named branch
         # recreated in a new claim-free worktree before the next run's
         # verify-drop would inherit the bypass. The -d arm is unreachable for
         # recorded branches under rite's standard squash flow (`-d` always
         # refuses squash residue) but is closed for symmetry — a future merge
         # strategy change must not reopen the window. The guard grep makes this
-        # a no-op for unrecorded branches (plain merged recovery, TC-4 shape).
+        # a no-op for unrecorded branches (plain merged recovery — 未記録 branch).
         # Best-effort: each failure falls back to the old next-run self-heal,
         # but NEVER silently (mirrors Step 4.5's WARNING discipline; no
         # errors++ — self-heal keeps the run functionally correct).

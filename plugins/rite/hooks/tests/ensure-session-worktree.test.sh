@@ -222,5 +222,36 @@ assert "TC-15 still reconstructed (non-fatal)" "reconstructed" "$case_token"
 assert "TC-15 rc=0 (non-fatal)" "0" "$rc"
 rm -f "$out_tmp" "$err_tmp"
 
+# --- TC-16 (#1971, follow-up to #1970 cycle3 test-reviewer): copy failure on the
+#     branch_remote reconstruction path → WARNING emitted, non-fatal ---
+# TC-15 covers the branch_local WARNING path (695/696行目); this covers the
+# verbatim-duplicate branch_remote WARNING path (723/724行目) so a future
+# regression to `|| true` on either copy is independently caught.
+echo "=== TC-16 (#1971): copy failure (mkdir blocked by existing file) → WARNING + non-fatal (branch_remote path) ==="
+setup_repo; M="$REPO_MAIN"
+# feat/issue-77-bar is already remote-only from setup_repo(). Re-check it out,
+# add a blocker ".claude" regular file, and push the update — same technique as
+# TC-15's fix/issue-88-foo but on the remote-only branch so reconstruction goes
+# through the branch_remote (--track) path instead of branch_local.
+# main の .claude/settings.local.json 作成より **先に** ブランチを更新する（TC-15 と同じ
+# 理由: develop 上に .claude/ をディレクトリとして先置きすると checkout が汚染される）。
+(
+  cd "$M" && git checkout -q -b feat/issue-77-bar origin/feat/issue-77-bar
+  echo blocker > .claude
+  git add -A; git commit -qm "add blocker .claude file"
+  git push -q origin feat/issue-77-bar
+  git checkout -q develop
+  git branch -D feat/issue-77-bar
+) >/dev/null 2>&1
+mkdir -p "$M/.claude"; echo '{"enabledPlugins":{"rite@rite-marketplace":false}}' > "$M/.claude/settings.local.json"
+out_tmp=$(mktemp); err_tmp=$(mktemp)
+rc=$(ens_run_capture "$M" "$out_tmp" "$err_tmp" --issue 77)
+case_token=$(sed -n 's/.*WT_ENSURE=\([a-z_]*\).*/\1/p' "$out_tmp")
+assert "TC-16 WARNING emitted on copy failure (branch_remote)" "yes" \
+  "$(grep -qF 'コピーに失敗' "$err_tmp" && echo yes || echo no)"
+assert "TC-16 still reconstructed (non-fatal, branch_remote)" "reconstructed" "$case_token"
+assert "TC-16 rc=0 (non-fatal, branch_remote)" "0" "$rc"
+rm -f "$out_tmp" "$err_tmp"
+
 print_summary "ensure-session-worktree.test.sh" \
   "ensure_session_worktree contract changed — sync lib/worktree-git.sh and the recover.md WT_ENSURE table"

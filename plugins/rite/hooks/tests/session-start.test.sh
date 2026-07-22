@@ -1425,6 +1425,53 @@ else
 fi
 echo ""
 
+echo "TC-1968-05 (AC-1): a reap WARNING line (not just the status line) is captured to the log"
+dir_reap_ac5="$TEST_DIR/reap-ac5"
+mkdir -p "$dir_reap_ac5"
+(cd "$dir_reap_ac5" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+iso_tmpdir_ac5="$TEST_DIR/reap-ac5-tmpdir"
+mkdir -p "$iso_tmpdir_ac5"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+# An invalid RITE_SESSION_LIVENESS_TTL_HOURS is the lightest-weight way to make
+# pr-cycle-cleanup.sh emit a WARNING line (no worktree/manifest fixture needed) —
+# AC-1 names "WARNING / status" lines, and TC-1968-01 only exercises the latter.
+echo "{\"cwd\": \"$dir_reap_ac5\"}" | TMPDIR="$iso_tmpdir_ac5" RITE_SESSION_LIVENESS_TTL_HOURS="invalid" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if grep -q '^WARNING:' "$dir_reap_ac5/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null; then
+  pass "TC-1968-05: reap WARNING line captured to log"
+else
+  fail "TC-1968-05: expected a WARNING line in $dir_reap_ac5/.rite/logs/pr-cycle-cleanup.log, got: $(cat "$dir_reap_ac5/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)"
+fi
+echo ""
+
+echo "TC-1968-06 (AC-3): mkdir succeeds but the log file itself is not writable → falls back to discard"
+dir_reap_ac6="$TEST_DIR/reap-ac6"
+mkdir -p "$dir_reap_ac6/.rite/logs"
+# Existing read-only dir: mkdir -p is a no-op success even though writes inside
+# it fail — the exact gap the writability probe (`{ : > file; } 2>/dev/null`)
+# in session-start.sh closes. Root bypasses permission bits, so this degrades
+# to a pass-through assertion when run as root (CI containers, etc).
+chmod 555 "$dir_reap_ac6/.rite/logs"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac6\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_06=$?
+# A naive `if mkdir -p ...; then` (without the writability probe) would still
+# leave no log file here (the later `>file` redirect fails too), so absence of
+# the log file alone can't distinguish the fix from the bug it closes. What
+# distinguishes them: with the probe, the redirect that touches the read-only
+# dir is `{ : > file; } 2>/dev/null` (silenced); without it, the *reap
+# invocation's own* redirect (`>file 2>&1`, no local silencing) would fail and
+# bash would print its own "cannot create/Permission denied" line — with a
+# `session-start.sh: line N:` prefix — to the hook's stderr.
+if [ "$(id -u)" -eq 0 ]; then
+  pass "TC-1968-06: running as root — permission bits bypassed (chmod 555 has no effect), skipping assertion"
+elif [ "$rc1968_06" -eq 0 ] && [ ! -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] \
+     && ! grep -qE 'session-start\.sh: (line|行) [0-9]+:' "$LAST_STDERR_FILE"; then
+  pass "TC-1968-06: hook exits 0, falls back to discard, and no bash redirect error leaks to stderr"
+else
+  fail "TC-1968-06: expected exit 0, no log file, no bash redirect error; got rc=$rc1968_06, log exists: $([ -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] && echo yes || echo no), stderr: $(cat "$LAST_STDERR_FILE")"
+fi
+chmod 755 "$dir_reap_ac6/.rite/logs" 2>/dev/null || true
+echo ""
+
 echo "TC-1968-04 (AC-4): reap not invoked from a worktree-rooted CWD → log left untouched"
 main_repo_1968="$TEST_DIR/reap-ac4-main"
 mkdir -p "$main_repo_1968"

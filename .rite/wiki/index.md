@@ -234,9 +234,10 @@
 | [ドキュメントが提示する解決策は上流ソース（公式ドキュメント・issue tracker）で機能を裏取りする](pages/heuristics/documentation-remedy-upstream-verification.md) | heuristics | ドキュメントのみの変更であっても、記載する設定・回避策が実際に機能するかを公式ドキュメントや外部ツールの issue tracker で検証する。「公式サポートされた設定」という記述だけでは、プラットフォーム固有の制約（例: Linux/WSL2 でのネットワークサンドボックス回避不可）により実際には機能しないことがある。PR #1933 で prompt-engineer reviewer が上流 Claude Code issue（#30619, #29274, #53012）を WebFetch で直接検証し、著者が「恒久策」として提示した設定が実際には機能しないことを発見。 | 2026-07-20T18:16:28+00:00 | high |
 | [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) | anti-patterns | CHANGELOG やドキュメントで、実際には異なる依存条件を持つ複数の事象を1つの前提条件（例: 特定機能の有効化）でまとめて総称すると、片方だけがその前提に依存するという粒度差が失われる。PR #1948 で tech-writer-reviewer が Doc-Heavy PR Mode の cross-reference 検証で検出。 | 2026-07-21T16:45:00+09:00 | medium |
 | [verification-only な残作業 Issue は PR パイプラインを経由せず issue-close で直接検証する](pages/heuristics/verification-only-residual-task-direct-close.md) | heuristics | 実装対象のコードが既に別 PR でマージ済みで、残っているのが実機での動作確認のみという残作業 Issue は、open→iterate の PR パイプラインを force-through すると trivial な diff で reviewer が何も指摘せず検証として不完全になる。Issue #1918 で実測。 | 2026-07-21T16:45:00+09:00 | medium |
+| [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) | heuristics | silent failure を WARNING 出力に是正した fix は、その WARNING 自体が将来の編集で無音化に退行しても検出できない。同一 cycle 内で複数 reviewer が独立にこのギャップを指摘するのは high-confidence signal。mutation testing（意図的に防御コードを退行させ red 確認）で検証すると実効性を主張できる。PR #1970 で cycle 2 の error-handling / test reviewer が独立検出、cycle 3 で mutation test により実証。 | 2026-07-22T21:35:00+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 193
-- ドメイン別: patterns=64, heuristics=62, anti-patterns=65
-- 最終更新: 2026-07-22T13:15:00+09:00
+- 総ページ数: 194
+- ドメイン別: patterns=64, heuristics=63, anti-patterns=65
+- 最終更新: 2026-07-22T21:35:00+00:00

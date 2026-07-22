@@ -24,6 +24,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 VERIFY="$SCRIPT_DIR/../scripts/post-review-state-verify.sh"
 FILTER="$SCRIPT_DIR/../scripts/lib/git-status-filtered.sh"
+PR_REVIEW_SKILL="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
 
 echo "=== post-review-state-verify.sh (worktree drift axis, ghost-mount consistency) ==="
 
@@ -31,6 +32,15 @@ if [ ! -f "$VERIFY" ]; then
   echo "ERROR: $VERIFY not found" >&2
   exit 1
 fi
+
+# --- Pin: snapshot side (pr-review SKILL.md ステップ 4.0.A) must route ORIG_WTH
+#     through git-status-filtered.sh -------------------------------------------
+# snapshot_hash() below reimplements the SKILL.md command rather than reading it,
+# so nothing else in this suite would catch a regression where the SKILL.md side
+# reverts to raw `git status --porcelain`. Pin the source text directly.
+assert_grep_in_section "SKILL.md 4.0.A: ORIG_WTH routed through git-status-filtered.sh" \
+  "$PR_REVIEW_SKILL" \
+  '^### 4\.0\.A ' '^### 4\.0\.W' 'ORIG_WTH=.*git-status-filtered'
 
 cleanup_dirs=()
 cleanup() {

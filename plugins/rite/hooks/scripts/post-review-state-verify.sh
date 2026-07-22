@@ -146,8 +146,16 @@ fi
 # (#1936) that vary by context — comparing raw porcelain hashes false-positives on
 # those ghost entries alone. The filter drops them on both sides so the hash reflects
 # only real working-tree changes.
+# Unlike raw `git status --porcelain`, the filter depends on `mktemp` (sandbox TMPDIR
+# restrictions can make this fail even though plain `git status` would succeed), so its
+# exit code is checked explicitly (pipefail propagates through the subshell command
+# substitution) instead of being silently treated as an empty-but-valid hash.
 if [ -n "$_hash_cmd" ]; then
-  current_worktree_hash=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh" 2>/dev/null | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
+  current_worktree_hash=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh" | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
+  if [ $? -ne 0 ]; then
+    echo "WARNING: git-status-filtered.sh failed — worktree drift axis skipped for this check" >&2
+    current_worktree_hash=""
+  fi
 else
   current_worktree_hash=""
 fi

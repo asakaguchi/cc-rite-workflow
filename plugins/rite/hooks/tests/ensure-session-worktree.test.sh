@@ -72,6 +72,16 @@ ens_rc() {
 wt_registered() {
   git -C "$1" worktree list --porcelain 2>/dev/null | grep -qE "/issue-$2($|/| )" && echo yes || echo no
 }
+# Run the helper once, capturing stdout and stderr into the given files, and echo the exit code.
+# Used when a test needs both the WT_ENSURE token AND stderr content from the SAME invocation
+# (ens_case/ens_rc each re-run the helper, which would double-register the worktree).
+ens_run_capture() {
+  local dir="$1" out="$2" err="$3"; shift 3
+  local rc
+  ( cd "$dir" && bash "$HELPER" ensure-session-worktree "$@" ) >"$out" 2>"$err"
+  rc=$?
+  echo "$rc"
+}
 
 # --- TC-1: disabled (multi_session.enabled: false) ---
 echo "=== TC-1: enabled:false → disabled (legacy single-tree, unchanged) ==="
@@ -158,6 +168,59 @@ echo "=== TC-11: stdout is exactly one WT_ENSURE marker line on reconstruct ==="
 setup_repo; M="$REPO_MAIN"
 stdout_lines=$( ( cd "$M" && bash "$HELPER" ensure-session-worktree --issue 42 2>/dev/null ) | grep -c .)
 assert "TC-11 single stdout line" "1" "$stdout_lines"
+
+# --- TC-12 (T-01/AC-1, #1943): settings.local.json present → copied into reconstructed worktree ---
+echo "=== TC-12 (T-01/AC-1, #1943): settings.local.json present → copied to worktree ==="
+setup_repo; M="$REPO_MAIN"
+mkdir -p "$M/.claude"; echo '{"enabledPlugins":{"rite@rite-marketplace":false}}' > "$M/.claude/settings.local.json"
+ens_case "$M" --issue 42 >/dev/null
+assert "TC-12 settings.local.json copied" "yes" \
+  "$([ -f "$M/.rite/worktrees/issue-42/.claude/settings.local.json" ] && echo yes || echo no)"
+assert "TC-12 copied content matches" "yes" \
+  "$(diff -q "$M/.claude/settings.local.json" "$M/.rite/worktrees/issue-42/.claude/settings.local.json" >/dev/null 2>&1 && echo yes || echo no)"
+
+# --- TC-13 (T-02/AC-2, #1943): settings.local.json absent → nothing extra created ---
+echo "=== TC-13 (T-02/AC-2, #1943): settings.local.json absent → no file/dir created in worktree ==="
+setup_repo; M="$REPO_MAIN"
+ens_case "$M" --issue 42 >/dev/null
+assert "TC-13 no settings.local.json created" "no" \
+  "$([ -e "$M/.rite/worktrees/issue-42/.claude/settings.local.json" ] && echo yes || echo no)"
+assert "TC-13 no .claude dir created" "no" \
+  "$([ -e "$M/.rite/worktrees/issue-42/.claude" ] && echo yes || echo no)"
+
+# --- TC-14 (T-01/AC-1, #1943, review F-02): settings.local.json present → copied via branch_remote reconstruction ---
+echo "=== TC-14 (T-01/AC-1, #1943): settings.local.json present → copied to worktree (branch_remote path) ==="
+setup_repo; M="$REPO_MAIN"
+mkdir -p "$M/.claude"; echo '{"enabledPlugins":{"rite@rite-marketplace":false}}' > "$M/.claude/settings.local.json"
+ens_case "$M" --issue 77 >/dev/null
+assert "TC-14 settings.local.json copied (branch_remote)" "yes" \
+  "$([ -f "$M/.rite/worktrees/issue-77/.claude/settings.local.json" ] && echo yes || echo no)"
+assert "TC-14 copied content matches (branch_remote)" "yes" \
+  "$(diff -q "$M/.claude/settings.local.json" "$M/.rite/worktrees/issue-77/.claude/settings.local.json" >/dev/null 2>&1 && echo yes || echo no)"
+
+# --- TC-15 (review cycle2 F-01): settings.local.json copy failure → WARNING emitted, non-fatal ---
+echo "=== TC-15 (review cycle2 F-01): copy failure (mkdir blocked by existing file) → WARNING + non-fatal ==="
+setup_repo; M="$REPO_MAIN"
+# fix/issue-88-foo は develop から分岐した local-only branch で、.claude を「通常ファイル」として
+# track する。worktree checkout 時に $wt_path/.claude がファイルになるため、複製ロジックの
+# `mkdir -p "$wt_path/.claude"` が決定論的に失敗する（symlink/権限操作より移植性が高い）。
+# main の .claude/settings.local.json 作成より **先に** branch を作る（develop 上に .claude/ を
+# ディレクトリとして先置きすると、後続の `echo blocker > .claude` がディレクトリ相手に失敗するため）。
+(
+  cd "$M" && git checkout -q -b fix/issue-88-foo develop
+  echo blocker > .claude
+  git add -A; git commit -qm "add blocker .claude file"
+  git checkout -q develop
+) >/dev/null 2>&1
+mkdir -p "$M/.claude"; echo '{"enabledPlugins":{"rite@rite-marketplace":false}}' > "$M/.claude/settings.local.json"
+out_tmp=$(mktemp); err_tmp=$(mktemp)
+rc=$(ens_run_capture "$M" "$out_tmp" "$err_tmp" --issue 88)
+case_token=$(sed -n 's/.*WT_ENSURE=\([a-z_]*\).*/\1/p' "$out_tmp")
+assert "TC-15 WARNING emitted on copy failure" "yes" \
+  "$(grep -qF 'コピーに失敗' "$err_tmp" && echo yes || echo no)"
+assert "TC-15 still reconstructed (non-fatal)" "reconstructed" "$case_token"
+assert "TC-15 rc=0 (non-fatal)" "0" "$rc"
+rm -f "$out_tmp" "$err_tmp"
 
 print_summary "ensure-session-worktree.test.sh" \
   "ensure_session_worktree contract changed — sync lib/worktree-git.sh and the recover.md WT_ENSURE table"

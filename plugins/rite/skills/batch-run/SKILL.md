@@ -463,6 +463,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 - run は flow-state の `handoff` を使わないため、sub-skill 間（例: open 完了直後・iterate invoke 前）で turn が途切れた場合の構造ガードは持たない。これは `/rite:open` のステップ間遷移と同じ前提で、各 skill invoke 直前の continuation hint（HTML コメント）と flat step 構造で継続を促す
 - **前提**: 対象 Issue は事前に `/rite:open` 可能な状態（open かつ品質十分）であること。open ステップ 3.4 の実装計画承認は batch 実行中は run-queue 判定で自動承認され停止しない（#1861。宣言「完全自律（無確認）」と実挙動を一致させるための変更）。ただし closed / 親 Issue / 品質 C-D の入力品質ゲート（open 内部の AskUserQuestion）は batch でも従来どおり自律フローを止める（完全な無人化は保証しない）
 - `/rite:recover` が active batch 継続（設計判断節「recover.md からの active batch 継続」）を行う場合も、失敗時は即停止（サーキットブレーカーのみ例外）という本方針をそのまま適用する
+- **既知の制約（ドッグフーディング環境、Issue #1943）**: 本リポジトリ自身の Issue（rite workflow のスキル/hook を編集する Issue）を `--merge` で処理する場合、各 Issue の open/reconstruct 時に `.claude/settings.local.json`（`enabledPlugins["rite@rite-marketplace"]: false`）が worktree 作成時点のスナップショットとして複製される。複製後に main checkout 側の settings.local.json を更新しても、既に作成済みの worktree には反映されない。スキル自身を編集する PR の自己検証（iterate 内の `/rite:pr-review` 等）は、worktree 作成時点のドッグフーディング設定で行われる点に留意する
 
 ---
 

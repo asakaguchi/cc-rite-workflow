@@ -46,6 +46,15 @@ assert_grep_in_section "SKILL.md 4.0.A: ORIG_WTH routed through git-status-filte
   "$PR_REVIEW_SKILL" \
   '^### 4\.0\.A ' '^### 4\.0\.W' '_wth_raw=.*git-status-filtered'
 
+# --- Pin: snapshot side must also guard the filter's exit code -----------------
+# SKILL.md is markdown (not directly executable), so a partial revert that keeps
+# the `_wth_raw=...git-status-filtered.sh` routing line but drops the exit-code
+# check (`_wth_rc` + the "snapshot skipped" WARNING) would go undetected by the
+# routing pin alone. Pin the guard's presence too.
+assert_grep_in_section "SKILL.md 4.0.A: filter failure guard present (WARNING + skip on non-zero exit)" \
+  "$PR_REVIEW_SKILL" \
+  '^### 4\.0\.A ' '^### 4\.0\.W' '_wth_rc.*-ne 0'
+
 cleanup_dirs=()
 cleanup() {
   local d
@@ -56,10 +65,15 @@ cleanup() {
 trap cleanup EXIT
 
 # Snapshot helper: mirrors the exact command pr-review SKILL.md ステップ 4.0.A
-# uses for ORIG_WTH — filtered porcelain output piped to md5sum.
+# uses for ORIG_WTH — capture-first (filter output captured before hashing, same
+# as production) so dirty-tree snapshots hash identically to the real 4.0.A /
+# verify-side computation (a direct pipe would keep the filter's trailing
+# newline that `$(...)` strips, diverging on non-empty output).
 snapshot_hash() {
   local dir="$1"
-  ( cd "$dir" && bash "$FILTER" 2>/dev/null | md5sum | awk '{print $1}' )
+  local raw
+  raw=$(cd "$dir" && bash "$FILTER" 2>/dev/null)
+  printf '%s' "$raw" | md5sum | awk '{print $1}'
 }
 
 # --- Baseline: clean tree, no drift at all -----------------------------------

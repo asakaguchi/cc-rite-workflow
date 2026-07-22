@@ -451,8 +451,8 @@ out=$(run_pcc "$R")
 assert "D-01 fresh manifest-recorded worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-110" ] && echo 1 || echo 0 )"
 assert "D-01 branch force-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-110 >/dev/null 2>&1 && echo 1 || echo 0 )"
 assert_grep "D-01 bypass is LOGGED (not silent)" "$R/pcc.err" "age guard をバイパスします"
-# Hardening: the manifest entry is consumed in the SAME run (was: next-run Step
-# 4.5 verify-drop). A lingering entry is no longer inert with the bypass keyed
+# Hardening: the manifest entry is consumed in the SAME run. A lingering entry
+# is no longer inert with the bypass keyed
 # on it — a same-named branch recreated in a new claim-free worktree would
 # inherit the bypass. Single-entry manifest → the whole file is removed.
 assert "D-01 manifest entry consumed (file removed)" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && echo 1 || echo 0 )"

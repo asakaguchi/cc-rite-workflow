@@ -1171,13 +1171,17 @@ if [ -d "$session_wt_root" ]; then
             _mf_rc=0
             grep -vxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" > "$session_branch_mf_keep" 2>/dev/null || _mf_rc=$?
             if [ "$_mf_rc" -ge 2 ]; then
-              echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_mf_rc)（manifest は変更せず、次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+              echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_mf_rc)（manifest は変更せず、残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
             elif [ -s "$session_branch_mf_keep" ]; then
               if ! cp "$session_branch_mf_keep" "$manifest_path" 2>/dev/null; then
                 echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
               fi
-            else
-              rm -f "$manifest_path" 2>/dev/null || true
+            elif ! rm -f "$manifest_path" 2>/dev/null; then
+              # The single-entry arm's unlink can fail too (EACCES/EROFS on the
+              # .rite/ parent — sandbox masks have blocked repo writes before,
+              # Issue #1959). `rm -f` returns 0 for a missing file, so this
+              # WARNING never fires spuriously.
+              echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
             fi
             rm -f "$session_branch_mf_keep" 2>/dev/null || true
             session_branch_mf_keep=""

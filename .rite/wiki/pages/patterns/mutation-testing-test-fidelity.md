@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-22T21:35:00+00:00"
+updated: "2026-07-22T22:38:07+00:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260722T133807Z-pr-1972.md"
   - type: "reviews"
     ref: "raw/reviews/20260722T020659Z-pr-1967.md"
   - type: "reviews"
@@ -801,3 +803,4 @@ PR #1970 cycle 2 で追加した TC-15（`.claude/settings.local.json` コピー
 - [PR #1969 cycle 4 review — test の pass-message が実際の assertion coverage より多くを主張 (overclaim) する問題を mutation testing で検出](../../raw/reviews/20260722T063747Z-pr-1969.md)
 - [PR #1969 cycle 4 fix — pass-message の文言を実際の assertion coverage に合わせて narrowing (新規 assertion 追加ではなく文言修正で解消)](../../raw/fixes/20260722T064426Z-pr-1969.md)
 - [PR #1970 review results (cycle 3, mergeable) — 隔離 scratchpad での mutation test により TC-15 の実効性を実証 (適用 29)](../../raw/reviews/20260722T122232Z-pr-1970-cycle3.md)
+- [PR #1972 review results — テストのみ変更 (branch_remote 経路の回帰テスト追加) で 4 reviewer 全員が独立にスクラッチコピーへの mutation で新規テストの検出力を実証、0 findings / 1 cycle mergeable](../../raw/reviews/20260722T133807Z-pr-1972.md)

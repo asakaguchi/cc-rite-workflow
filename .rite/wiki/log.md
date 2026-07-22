@@ -21,6 +21,7 @@
 * **Create**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — raw/reviews/20260722T102818Z-pr-1970.md, raw/fixes/20260722T103236Z-pr-1970.md, raw/reviews/20260722T112806Z-pr-1970-cycle2.md, raw/fixes/20260722T113522Z-pr-1970-cycle2.md, raw/reviews/20260722T122232Z-pr-1970-cycle3.md を新規ページ化
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260722T122232Z-pr-1970-cycle3.md を統合 — 隔離 scratchpad での mutation test により新設テストの実効性を実証する適用例 (適用 29) を追加
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260722T133807Z-pr-1972.md を統合 — テストのみ変更 PR で 4 reviewer 全員が独立に mutation 検証を実施した事例を追加
 
 ## 2026-07-21
 

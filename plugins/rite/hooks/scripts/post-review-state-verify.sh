@@ -148,13 +148,18 @@ fi
 # only real working-tree changes.
 # Unlike raw `git status --porcelain`, the filter depends on `mktemp` (sandbox TMPDIR
 # restrictions can make this fail even though plain `git status` would succeed), so its
-# exit code is checked explicitly (pipefail propagates through the subshell command
-# substitution) instead of being silently treated as an empty-but-valid hash.
+# exit code is checked explicitly. The filter's own output is captured first (not piped
+# directly into the hash command) so the check does not depend on `pipefail` — this
+# mirrors the capture-first pattern used on the snapshot side (pr-review SKILL.md
+# ステップ 4.0.A), which cannot rely on pipefail because each Bash tool invocation starts
+# a fresh shell with pipefail off and no state carried over from prior blocks.
 if [ -n "$_hash_cmd" ]; then
-  current_worktree_hash=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh" | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
+  _wth_raw=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh")
   if [ $? -ne 0 ]; then
     echo "WARNING: git-status-filtered.sh failed — worktree drift axis skipped for this check" >&2
     current_worktree_hash=""
+  else
+    current_worktree_hash=$(printf '%s' "$_wth_raw" | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
   fi
 else
   current_worktree_hash=""

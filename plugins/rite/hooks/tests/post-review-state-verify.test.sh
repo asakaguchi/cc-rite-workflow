@@ -38,9 +38,13 @@ fi
 # snapshot_hash() below reimplements the SKILL.md command rather than reading it,
 # so nothing else in this suite would catch a regression where the SKILL.md side
 # reverts to raw `git status --porcelain`. Pin the source text directly.
+# The capture-first pattern (filter output captured into _wth_raw before hashing,
+# so the exit-code check does not depend on pipefail — each Bash tool invocation
+# starts a fresh shell with pipefail off) puts the git-status-filtered.sh call on
+# its own line rather than inline in the ORIG_WTH assignment.
 assert_grep_in_section "SKILL.md 4.0.A: ORIG_WTH routed through git-status-filtered.sh" \
   "$PR_REVIEW_SKILL" \
-  '^### 4\.0\.A ' '^### 4\.0\.W' 'ORIG_WTH=.*git-status-filtered'
+  '^### 4\.0\.A ' '^### 4\.0\.W' '_wth_raw=.*git-status-filtered'
 
 cleanup_dirs=()
 cleanup() {
@@ -102,5 +106,33 @@ drift3=$(printf '%s' "$out3" | jq -r '.drift' 2>/dev/null)
 type3=$(printf '%s' "$out3" | jq -r '.type' 2>/dev/null)
 assert "T-02b: real edit alongside ghost mount still reports drift=true" "true" "$drift3"
 assert "T-02b: drift type is worktree" "worktree" "$type3"
+
+# --- T-03: git-status-filtered.sh failure (e.g. mktemp failing under a
+#     write-restricted TMPDIR) must surface a WARNING and skip the worktree
+#     axis rather than silently treating an empty hash as a valid one -------
+# A copy of VERIFY is run from a scratch dir whose lib/git-status-filtered.sh
+# is a stub that always fails, so SCRIPT_DIR (derived from the copy's own
+# path) resolves to the failing stub regardless of cwd. This exercises the
+# capture-first exit-code check independent of pipefail state.
+fail_dir=$(mktemp -d) && cleanup_dirs+=("$fail_dir") || { echo "ERROR: mktemp -d failed, aborting" >&2; exit 1; }
+mkdir -p "$fail_dir/lib"
+cp "$VERIFY" "$fail_dir/post-review-state-verify.sh"
+cat > "$fail_dir/lib/git-status-filtered.sh" << 'STUB_EOF'
+#!/bin/bash
+echo "WARNING: git-status-filtered: mktemp failed" >&2
+exit 1
+STUB_EOF
+chmod +x "$fail_dir/lib/git-status-filtered.sh"
+
+sbx4=$(make_sandbox) && cleanup_dirs+=("$sbx4") || { echo "ERROR: make_sandbox failed, aborting" >&2; exit 1; }
+branch4=$(cd "$sbx4" && git branch --show-current)
+stderr4=$(mktemp) && cleanup_dirs+=("$stderr4")
+out4=$(cd "$sbx4" && bash "$fail_dir/post-review-state-verify.sh" --original-branch "$branch4" --original-worktree-hash "nonempty-snapshot-hash" --auto-recover true 2>"$stderr4")
+drift4=$(printf '%s' "$out4" | jq -r '.drift' 2>/dev/null)
+assert "T-03: filter failure does not report drift (axis skipped, not silently matched)" "false" "$drift4"
+case "$(cat "$stderr4")" in
+  *"git-status-filtered.sh failed"*) pass "T-03: filter failure surfaces a WARNING" ;;
+  *) fail "T-03: filter failure surfaces a WARNING (stderr: $(cat "$stderr4"))" ;;
+esac
 
 print_summary "$(basename "$0")"

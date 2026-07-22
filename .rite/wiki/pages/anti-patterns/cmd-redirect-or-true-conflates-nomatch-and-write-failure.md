@@ -61,6 +61,7 @@ fi
 ## 関連ページ
 
 - [mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)
+- [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](./mkdir-success-only-check-and-redirect-diagnostic-leak.md)
 
 ## ソース
 

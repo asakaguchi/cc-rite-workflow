@@ -2,7 +2,7 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-05-27T01:30:00Z"
+updated: "2026-07-22T08:20:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260521T083746Z-pr-1078.md"
@@ -24,6 +24,12 @@ sources:
     ref: "raw/reviews/20260526T161411Z-pr-1151.md"
   - type: "fixes"
     ref: "raw/fixes/20260526T160217Z-pr-1151.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260722T063747Z-pr-1969.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260722T064426Z-pr-1969.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260722T080039Z-pr-1969-mergeable.md"
 tags: []
 confidence: high
 ---
@@ -163,3 +169,6 @@ PR #1151 (`wiki/*` commands の `Phase N` → `ステップ N` heading rename、
 - [PR #1078 cycle 1 fix patterns (累積 13 findings の 7 件 batch fix、cycle 1 で Simplification Charter cross-validated 違反検出、printf vs echo 同一 SoT 内 style consistency、Step 0 → AskUserQuestion silent fall-through 防止 MUST 句強化、Phase 5.4.4.1 detector 不在主張の prose 誤記訂正の 4 fix pattern)](../../raw/fixes/20260521T073426Z-pr-1078.md)
 - [PR #1151 cycle 4 mergeable (大規模 rename PR の 4-cycle 累積収束、18→3→2→0 trajectory、archive doc tail residue pattern + intra-document contradiction の実測)](../../raw/reviews/20260526T161411Z-pr-1151.md)
 - [PR #1151 cycle 3 fix (archive doc 2 箇所最終 revert、front-matter policy preservation 軸の cycle 1↔2↔3 往復解消)](../../raw/fixes/20260526T160217Z-pr-1151.md)
+- [PR #1969 cycle 4 review (5-cycle 収束の中間、findings が実装ロジックからテスト scaffolding/文書精度へシフトする finding-cycling を観測)](../../raw/reviews/20260722T063747Z-pr-1969.md)
+- [PR #1969 cycle 4 fix (pass-message narrowing + gitignore 保証の self-contained 化、収束後半典型の surgical fix 2 件)](../../raw/fixes/20260722T064426Z-pr-1969.md)
+- [PR #1969 cycle 6/mergeable review (5-cycle shrinking 4→4→1→2→1→0 で 0 findings 到達、cycle 5 の brace group finding が正しく解消されたことを確認)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)

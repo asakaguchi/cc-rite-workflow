@@ -2,12 +2,16 @@
 title: "自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)"
 domain: "anti-patterns"
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-04-19T03:30:00+00:00"
+updated: "2026-07-22T08:20:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260419T032159Z-pr-586.md"
   - type: "fixes"
     ref: "raw/fixes/20260419T032801Z-pr-586.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260722T063747Z-pr-1969.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260722T064426Z-pr-1969.md"
 tags: []
 confidence: high
 ---
@@ -54,3 +58,5 @@ PR #586 で `.gitignore` への negation 自動注入 (`/rite:wiki:init` Phase 1
 
 - [PR #586 initial review (dogfooding bias 検出)](../../raw/reviews/20260419T032159Z-pr-586.md)
 - [PR #586 cycle 4 fix (anchor 存在 check 追加)](../../raw/fixes/20260419T032801Z-pr-586.md)
+- [PR #1969 cycle 4 review (プラグイン自身の repo ではコメントの gitignore 保証が成立するが、downstream consuming repo では `/rite:setup` が生成する narrower gitignore しか無く保証が崩れる dogfooding bias の別バリアント)](../../raw/reviews/20260722T063747Z-pr-1969.md)
+- [PR #1969 cycle 4 fix (ランタイム作成ディレクトリに専用 `.gitignore` を書き込み、リポジトリの ambient 状態に依存しない self-contained な保証へ是正)](../../raw/fixes/20260722T064426Z-pr-1969.md)

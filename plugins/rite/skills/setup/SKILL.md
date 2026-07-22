@@ -1186,10 +1186,15 @@ bash {plugin_root}/hooks/state-path-resolve.sh
 その値を `{repo_root}` として、`.claude/settings.local.json`（コミットされる `.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。書込先はユーザーローカル設定として扱う意図のファイルだが、**リポジトリの `.gitignore` に明示エントリがなければコミット済み扱いになる**（開発者個人のグローバル gitignore に依存した除外は他の contributor 環境では効かない）ため、まず対象リポジトリの `.gitignore` に `.claude/settings.local.json` を保証してから書き込む（Phase 4.6 の gitignore 追記パターンと同形式）。方針転換の背景・(a)/(b)/(c) 比較検討は [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log) を参照（複製しない）:
 
 ```bash
-# .gitignore に .claude/settings.local.json エントリを保証（未カバー時のみ追記）
+# .gitignore に .claude/settings.local.json エントリを保証（未カバー時のみ追記）。
+# 追記が sandbox 等で失敗しても silent にしない — gitignore_ok=false は下の marker 判定に
+# 反映し、settings 側が already_present でも retry させる（旧「案内のみ」フローで settings に
+# 手動で path 追加済み・gitignore 未対応のユーザーが、gitignore 追記だけ失敗して
+# 未保護のまま放置される回帰を防ぐ）。
 gitignore_file="{repo_root}/.gitignore"
+gitignore_ok=true
 if ! grep -qF ".claude/settings.local.json" "$gitignore_file" 2>/dev/null; then
-  echo ".claude/settings.local.json" >> "$gitignore_file"
+  echo ".claude/settings.local.json" >> "$gitignore_file" 2>/dev/null || gitignore_ok=false
 fi
 
 settings_file="{repo_root}/.claude/settings.local.json"
@@ -1200,11 +1205,12 @@ already=$(jq --arg p "{repo_root}" \
   '(.sandbox.filesystem.allowWrite // []) | any(. == $p)' \
   "$settings_file" 2>/dev/null)
 
-if [ "$already" = "true" ]; then
+if [ "$already" = "true" ] && [ "$gitignore_ok" = "true" ]; then
   echo "[CONTEXT] SANDBOX_ALLOWLIST_AUTOWRITE=already_present; path={repo_root}"
 elif jq --arg p "{repo_root}" \
     '.sandbox.filesystem.allowWrite = ((.sandbox.filesystem.allowWrite // []) + [$p] | unique)' \
-    "$settings_file" > "$settings_file.tmp" 2>/dev/null && mv "$settings_file.tmp" "$settings_file"; then
+    "$settings_file" > "$settings_file.tmp" 2>/dev/null && mv "$settings_file.tmp" "$settings_file" \
+    && [ "$gitignore_ok" = "true" ]; then
   echo "[CONTEXT] SANDBOX_ALLOWLIST_AUTOWRITE=added; path={repo_root}"
 else
   rm -f "$settings_file.tmp"
@@ -1212,7 +1218,7 @@ else
 fi
 ```
 
-sandbox の write 制限下では、上記スクリプトの `jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になるケースがある（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該コマンドを一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1896 と同じ扱い）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
+**sandbox + multi_session 環境では、上記スクリプトが `added`/`already_present` を返さず初回から marker `failed` になるのが既定経路である**（例外ケースではない）。`jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になる（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該 bash ブロック全体を一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1896 と同じ扱い。ブロック全体の再実行は `grep -qF` / `unique` により冪等なので、gitignore 追記側だけ再実行するより安全）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
 
 `SANDBOX_ALLOWLIST_AUTOWRITE` marker で分岐する:
 

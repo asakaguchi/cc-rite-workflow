@@ -575,11 +575,18 @@ Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響
   「These paths are enforced at the OS level」と明記されており、`/sandbox` コマンドでのユーザー
   操作を経ずに設定ファイルへの記述だけで有効になる。main checkout root は開発者ごとに異なる絶対パス
   のため、コミットされる `.claude/settings.json` ではなく `.claude/settings.local.json`
-  （gitignore 対象・ユーザーローカル）へ書き込む。この判断は、従来の「設定ファイルへの自動書き込みは
-  MUST NOT」という Phase 4.8 の方針を **`.claude/settings.local.json` に限定して**撤回するもの
-  であり、コミットされる共有設定（`.claude/settings.json`）を自動変更する話ではない。書き込みに
-  失敗した場合（読み取り専用ファイルシステム等）は非 blocking のまま従来の手動案内メッセージへ
-  フォールバックする。
+  （ユーザーローカル設定として書き込む意図のファイル）へ書き込む。この判断は、従来の「設定ファイルへの
+  自動書き込みは MUST NOT」という Phase 4.8 の方針を **`.claude/settings.local.json` に限定して**
+  撤回するものであり、コミットされる共有設定（`.claude/settings.json`）を自動変更する話ではない。
+  ただし「ユーザーローカル」という性質は当該リポジトリの `.gitignore` に明示エントリがあって初めて
+  保証される（開発者個人のグローバル gitignore への依存は他の contributor 環境では効かず、機械固有の
+  絶対パスがコミットされる経路が残る）。Phase 4.8 は書込前に対象リポジトリの `.gitignore` へ
+  `.claude/settings.local.json` エントリを保証してから追記する（詳細は
+  [Phase 4.8 本体](../skills/setup/SKILL.md#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942)）。
+  書き込みが sandbox の write 制限で失敗しても bash 呼び出し自体は正常終了しうる（`else` 節に落ちて
+  marker のみ `failed` になる）ため、再試行の要否は「コマンド自体の失敗」ではなく marker の値で判定する
+  — `failed` であれば理由を問わず `dangerouslyDisableSandbox: true` で一度だけ再試行し、それでも
+  `failed` の場合のみ非 blocking で従来の手動案内メッセージへフォールバックする。
 - **反映タイミングの不確実性**: 設定変更が同一セッション内で即座に反映されるか、Claude Code の
   再起動が必要かは公式ドキュメントで明言されていない。安全側に倒し、案内メッセージでは「次回セッション
   から有効になる場合がある」旨を明記する。

@@ -475,7 +475,7 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896-1942) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated by its own check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 / 4.9 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated by its own check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 / 4.9 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
@@ -1183,9 +1183,15 @@ Then:
 bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
-その値を `{repo_root}` として、`.claude/settings.local.json`（gitignore 対象のユーザーローカル設定。コミットされる `.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。方針転換の背景・(a)/(b)/(c) 比較検討は [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log) を参照（複製しない）:
+その値を `{repo_root}` として、`.claude/settings.local.json`（コミットされる `.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。書込先はユーザーローカル設定として扱う意図のファイルだが、**リポジトリの `.gitignore` に明示エントリがなければコミット済み扱いになる**（開発者個人のグローバル gitignore に依存した除外は他の contributor 環境では効かない）ため、まず対象リポジトリの `.gitignore` に `.claude/settings.local.json` を保証してから書き込む（Phase 4.6 の gitignore 追記パターンと同形式）。方針転換の背景・(a)/(b)/(c) 比較検討は [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log) を参照（複製しない）:
 
 ```bash
+# .gitignore に .claude/settings.local.json エントリを保証（未カバー時のみ追記）
+gitignore_file="{repo_root}/.gitignore"
+if ! grep -qF ".claude/settings.local.json" "$gitignore_file" 2>/dev/null; then
+  echo ".claude/settings.local.json" >> "$gitignore_file"
+fi
+
 settings_file="{repo_root}/.claude/settings.local.json"
 mkdir -p "$(dirname "$settings_file")"
 [ -f "$settings_file" ] || echo '{}' > "$settings_file"
@@ -1206,7 +1212,7 @@ else
 fi
 ```
 
-上記 bash が sandbox の write 制限（`.claude/settings*.json` は sandbox 既定で書込拒否対象）で「読み込み専用ファイルシステムです」等のエラーとなり **コマンド自体が失敗**した場合は、当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1896 と同じ扱い）。再実行後も `SANDBOX_ALLOWLIST_AUTOWRITE=failed`（JSON 破損等 sandbox 起因でない失敗）の場合は、下記の手動案内メッセージにフォールバックする。
+sandbox の write 制限下では、上記スクリプトの `jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になるケースがある（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該コマンドを一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1896 と同じ扱い）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
 
 `SANDBOX_ALLOWLIST_AUTOWRITE` marker で分岐する:
 
@@ -1214,6 +1220,7 @@ fi
 |---|---|
 | `already_present` | 既に設定済み。何も表示せず Phase 4.9 へ（`--upgrade` の再実行毎にノイズを出さないため） |
 | `added` | 下記「自動追加時のメッセージ」を表示して Phase 4.9 へ |
+| `failed`（初回） | `dangerouslyDisableSandbox: true` で同一コマンドを一度だけ再試行し、再試行後の marker で再判定 |
 | `failed`（`dangerouslyDisableSandbox: true` 再試行後も失敗） | 下記「フォールバック時のメッセージ」（手動案内）を表示して Phase 4.9 へ |
 
 **自動追加時のメッセージ**（原因の詳細本文は複製せず、要約 + 1 行ポインタに留める）:

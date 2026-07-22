@@ -453,14 +453,21 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching
   or nested under the candidate), so a long-lived session cannot delete its own active
   worktree mid-flight; then strict `^issue-[0-9]+$` name under
-  `worktree_base`, claim not live (or absent + mtime > 24h), and a clean
+  `worktree_base`, claim not live (or absent + mtime > 24h — except a worktree whose
+  checked-out branch is **reap-manifest-recorded**, i.e. cleanup already verified the
+  PR merged and deferred the removal: that explicit "reap me" record bypasses the age
+  guard, since the harness refreshes the worktree root mtime every session and the
+  guard would otherwise leak the deferred tree forever, Issue #1966), and a clean
   `git status --porcelain` (a dirty worktree is never auto-reaped — the sole exception is
   an admin-HEAD-missing, git-unrecognized **corpse** whose status is structurally
   undeterminable: it bypasses the status gate and is reaped, working tree + admin dir,
   behind the same claim + 24h age guards, Issue #1957). Once the worktree is gone, its
   branch is recovered rather than left untouched: `git branch -d` (safe-delete) runs
   first so an unmerged branch is preserved; if that's refused but the reap manifest
-  confirms the PR was merged, `git branch -D` force-deletes it; an unmerged,
+  confirms the PR was merged, `git branch -D` force-deletes it. On any successful
+  recovery (`-d` and `-D` alike) the branch's manifest entry is consumed in the same
+  run (a lingering entry is no longer inert once it also keys
+  the age-guard bypass, Issue #1966); an unmerged,
   manifest-unrecorded branch is kept with a WARNING (Issue #1670). A corpse's HEAD can't
   be read, so branch recovery is structurally skipped for it.
 

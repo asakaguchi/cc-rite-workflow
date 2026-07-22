@@ -162,10 +162,12 @@ mutation_find_out=""
 revert_find_out=""
 # Step 4.5 manifest reap の survivor 書き出し用 (NUL 不使用だが trap で確実に掃除する)
 manifest_keep=""
+# Step 5 branch recovery の manifest エントリ即時消費用 (Issue #1966)
+session_branch_mf_keep=""
 _rite_pr_cycle_cleanup() {
   rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}" "${mutation_find_err:-}" \
         "${revert_find_err:-}" "${workdir_find_out:-}" "${mutation_find_out:-}" "${revert_find_out:-}" \
-        "${manifest_keep:-}"
+        "${manifest_keep:-}" "${session_branch_mf_keep:-}"
 }
 trap 'rc=$?; _rite_pr_cycle_cleanup; exit $rc' EXIT
 trap '_rite_pr_cycle_cleanup; exit 130' INT
@@ -587,12 +589,17 @@ if [ -f "$manifest_path" ]; then
     if [ "$DRY_RUN" = "0" ]; then
       if [ -s "$manifest_keep" ]; then
         if ! cp "$manifest_keep" "$manifest_path" 2>/dev/null; then
-          echo "WARNING: manifest '$manifest_path' の書き戻しに失敗しました (回収済エントリが残存する可能性)" >&2
+          echo "WARNING: manifest '$manifest_path' の書き戻しに失敗しました (回収済エントリが残存し age-guard バイパスを継承する可能性 — Issue #1966)" >&2
           errors=$((errors + 1))
         fi
-      else
-        # All entries reaped/dropped → remove the now-empty manifest.
-        rm -f "$manifest_path" 2>/dev/null || true
+      # All entries reaped/dropped → remove the now-empty manifest. The unlink
+      # can fail like Step 5's consumption arm (EACCES/EROFS on the .rite/
+      # parent — sandbox masks have blocked repo writes before, Issue #1959),
+      # and with the #1966 bypass keyed on lingering entries a silent failure
+      # here is no longer inert — surface it (WARNING only, no errors++: the
+      # entries were all processed, next run's verify-drop self-heals).
+      elif ! rm -f "$manifest_path" 2>/dev/null; then
+        echo "WARNING: manifest '$manifest_path' の削除に失敗しました（全エントリ処理済みだが残存 — 残存エントリが age-guard バイパスを継承する可能性、次 run の verify-drop による自己修復待ち）。" >&2
       fi
     fi
     rm -f "$manifest_keep" 2>/dev/null || true
@@ -612,7 +619,11 @@ fi
 #      `.rite/wiki-worktree` などの非 issue worktree 名前空間
 #      とは交差しない)
 #   2. claim liveness (S3) が live でない (issue-claim.sh check が stale、または
-#      claim 不在 free のとき mtime > 24h の age guard を再利用)
+#      claim 不在 free のとき mtime > 24h の age guard を再利用)。例外 (Issue
+#      #1966): checkout 中 branch が reap manifest に記録済み (= cleanup.md が
+#      PR merged を確認して記録した deferred worktree) なら age guard をバイパス
+#      して即 reap する — ハーネスの .claude/.cc-writes churn が root mtime を
+#      セッション毎に更新するため、age guard 単独では永久リークする
 #   3. `git -C <wt> status --porcelain` が空 (dirty worktree は絶対に auto-reap
 #      しない — WARNING + 手動コマンド提示で skip)。例外 (Issue #1957): corpse
 #      (admin dir の HEAD 欠落 + git 非認識 — sandbox のマスクマウント下で
@@ -1026,7 +1037,27 @@ if [ -d "$session_wt_root" ]; then
         # — this path would otherwise hide the anomaly without a WARNING. The
         # corpse falls through to the logged corpse age guard below (same 24h
         # window), which skips it loudly.
-        if [ "$_corpse" -eq 0 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
+        #
+        # Manifest bypass (Issue #1966): a worktree whose checked-out branch is
+        # manifest-recorded (`branch\t<name>`) skips the age guard. cleanup.md
+        # writes that entry ONLY after verifying the PR merged (recovery=auto)
+        # and releases the claim unconditionally, so the real-world deferred
+        # worktree arrives here claim-FREE — exactly this arm. The record is an
+        # explicit rite-origin "reap me" intent (the Step 4.5 doctrine), so the
+        # in-flight ambiguity the age guard protects against does not exist.
+        # Without the bypass the promised next-session recovery never converges:
+        # the harness touches the worktree root every session (.claude/.cc-writes
+        # churn), refreshing the mtime past the 24h window forever. A corpse
+        # cannot resolve its branch (rev-parse fails → "") and keeps falling
+        # through to the logged corpse age guard below.
+        _wt_branch=""
+        if [ "$_corpse" -eq 0 ]; then
+          _wt_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null) || _wt_branch=""
+        fi
+        if [ -n "$_wt_branch" ] && [ "$_wt_branch" != "HEAD" ] && [ -f "$manifest_path" ] \
+           && grep -qxF "branch$(printf '\t')$_wt_branch" "$manifest_path" 2>/dev/null; then
+          echo "[pr-cycle-cleanup] manifest 記録済み (merge 確認済み) session worktree のため age guard をバイパスします: $(printf '%s' "$wt_path" | neutralize_ctrl)" >&2
+        elif [ "$_corpse" -eq 0 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
           continue
         fi
         ;;
@@ -1103,19 +1134,65 @@ if [ -d "$session_wt_root" ]; then
         # documented in rite-tmp-artifact.sh: `_reaped_branch` comes straight from
         # `git rev-parse --abbrev-ref HEAD` without the recorder's leading-dash guard,
         # so `--` is the explicit backstop against an option-injecting branch name.
+        _branch_recovered=0
         if git branch -d -- "$_reaped_branch" >/dev/null 2>&1; then
           session_branches_deleted=$((session_branches_deleted + 1))
+          _branch_recovered=1
         elif [ -f "$manifest_path" ] && grep -qxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" 2>/dev/null; then
           if git branch -D -- "$_reaped_branch" >/dev/null 2>&1; then
             session_branches_deleted=$((session_branches_deleted + 1))
-            # The stale manifest `branch\t<name>` entry self-heals on the next run's
-            # Step 4.5 (verify fails → already-gone → dropped), so no rewrite here.
+            _branch_recovered=1
           else
             echo "WARNING: failed to reap session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'" >&2
             errors=$((errors + 1))
           fi
         else
           echo "WARNING: session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)' は未マージのため保持しました（不要なら手動削除: git branch -D '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'）。" >&2
+        fi
+        # Consume the manifest entry NOW on ANY successful recovery — -d and -D
+        # alike. With the Gate 2 free-arm age-guard bypass keyed on this
+        # entry, a lingering entry is no longer inert: a same-named branch
+        # recreated in a new claim-free worktree before the next run's
+        # verify-drop would inherit the bypass. The -d arm is unreachable for
+        # recorded branches under rite's standard squash flow (`-d` always
+        # refuses squash residue) but is closed for symmetry — a future merge
+        # strategy change must not reopen the window. The guard grep makes this
+        # a no-op for unrecorded branches (plain merged recovery — 未記録 branch).
+        # Best-effort: each failure falls back to the old next-run self-heal,
+        # but NEVER silently (mirrors Step 4.5's WARNING discipline; no
+        # errors++ — self-heal keeps the run functionally correct).
+        if [ "$_branch_recovered" -eq 1 ] && [ -f "$manifest_path" ] \
+           && grep -qxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" 2>/dev/null; then
+          if session_branch_mf_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mf-XXXXXX" 2>/dev/null); then
+            # grep rc=1 (no survivors) is the expected single-entry case; rc>=2
+            # (grep failure / write failure — ENOSPC arrives here after the
+            # 0-byte mktemp above succeeded — or signal death) must NOT be
+            # conflated with it: a failed write leaves an empty keep file that
+            # would flip [ -s ] into the rm -f arm and silently delete the
+            # unrecovered co-pending entries of a multi-entry manifest. Capture
+            # the rc and on rc>=2 skip the consumption entirely (manifest
+            # unchanged → next-run Step 4.5 verify-drop self-heal).
+            _mf_rc=0
+            grep -vxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" > "$session_branch_mf_keep" 2>/dev/null || _mf_rc=$?
+            if [ "$_mf_rc" -ge 2 ]; then
+              echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_mf_rc)（manifest は変更せず、残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+            elif [ -s "$session_branch_mf_keep" ]; then
+              if ! cp "$session_branch_mf_keep" "$manifest_path" 2>/dev/null; then
+                echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+              fi
+            elif ! rm -f "$manifest_path" 2>/dev/null; then
+              # The single-entry arm's unlink can fail too (EACCES/EROFS on the
+              # .rite/ parent — sandbox masks have blocked repo writes before,
+              # Issue #1959). `rm -f` returns 0 for a missing file, so this
+              # WARNING never fires spuriously.
+              echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+            fi
+            rm -f "$session_branch_mf_keep" 2>/dev/null || true
+            session_branch_mf_keep=""
+          else
+            session_branch_mf_keep=""
+            echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+          fi
         fi
       fi
     else

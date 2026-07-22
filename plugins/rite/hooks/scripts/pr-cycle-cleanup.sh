@@ -1160,10 +1160,19 @@ if [ -d "$session_wt_root" ]; then
         if [ "$_branch_recovered" -eq 1 ] && [ -f "$manifest_path" ] \
            && grep -qxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" 2>/dev/null; then
           if session_branch_mf_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mf-XXXXXX" 2>/dev/null); then
-            # grep rc=1 (no survivors) is the expected single-entry case — the
-            # `|| true` keeps it from tripping `set -e`.
-            grep -vxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" > "$session_branch_mf_keep" 2>/dev/null || true
-            if [ -s "$session_branch_mf_keep" ]; then
+            # grep rc=1 (no survivors) is the expected single-entry case; rc>=2
+            # (grep failure / write failure — ENOSPC arrives here after the
+            # 0-byte mktemp above succeeded — or signal death) must NOT be
+            # conflated with it: a failed write leaves an empty keep file that
+            # would flip [ -s ] into the rm -f arm and silently delete the
+            # unrecovered co-pending entries of a multi-entry manifest. Capture
+            # the rc and on rc>=2 skip the consumption entirely (manifest
+            # unchanged → next-run Step 4.5 verify-drop self-heal).
+            _mf_rc=0
+            grep -vxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" > "$session_branch_mf_keep" 2>/dev/null || _mf_rc=$?
+            if [ "$_mf_rc" -ge 2 ]; then
+              echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_mf_rc)（manifest は変更せず、次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+            elif [ -s "$session_branch_mf_keep" ]; then
               if ! cp "$session_branch_mf_keep" "$manifest_path" 2>/dev/null; then
                 echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
               fi

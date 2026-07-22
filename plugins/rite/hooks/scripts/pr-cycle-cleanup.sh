@@ -589,12 +589,17 @@ if [ -f "$manifest_path" ]; then
     if [ "$DRY_RUN" = "0" ]; then
       if [ -s "$manifest_keep" ]; then
         if ! cp "$manifest_keep" "$manifest_path" 2>/dev/null; then
-          echo "WARNING: manifest '$manifest_path' の書き戻しに失敗しました (回収済エントリが残存する可能性)" >&2
+          echo "WARNING: manifest '$manifest_path' の書き戻しに失敗しました (回収済エントリが残存し age-guard バイパスを継承する可能性 — Issue #1966)" >&2
           errors=$((errors + 1))
         fi
-      else
-        # All entries reaped/dropped → remove the now-empty manifest.
-        rm -f "$manifest_path" 2>/dev/null || true
+      # All entries reaped/dropped → remove the now-empty manifest. The unlink
+      # can fail like Step 5's consumption arm (EACCES/EROFS on the .rite/
+      # parent — sandbox masks have blocked repo writes before, Issue #1959),
+      # and with the #1966 bypass keyed on lingering entries a silent failure
+      # here is no longer inert — surface it (WARNING only, no errors++: the
+      # entries were all processed, next run's verify-drop self-heals).
+      elif ! rm -f "$manifest_path" 2>/dev/null; then
+        echo "WARNING: manifest '$manifest_path' の削除に失敗しました（全エントリ処理済みだが残存 — 残存エントリが age-guard バイパスを継承する可能性、次 run の verify-drop による自己修復待ち）。" >&2
       fi
     fi
     rm -f "$manifest_keep" 2>/dev/null || true

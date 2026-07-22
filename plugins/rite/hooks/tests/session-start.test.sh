@@ -1378,24 +1378,30 @@ echo ""
 echo "TC-1968-01 (AC-1): reap output is captured to .rite/logs/pr-cycle-cleanup.log"
 dir_reap_ac1="$TEST_DIR/reap-ac1"
 mkdir -p "$dir_reap_ac1"
+(cd "$dir_reap_ac1" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# TMPDIR isolation: a real git fixture lets reap run to completion, which also
+# triggers pr-cycle-cleanup.sh's orphan-workdir sweep under ${TMPDIR:-/tmp}. An
+# isolated TMPDIR keeps that sweep from touching the host's real temp dir.
+iso_tmpdir_ac1="$TEST_DIR/reap-ac1-tmpdir"
+mkdir -p "$iso_tmpdir_ac1"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
-# $dir_reap_ac1 is not a git repo, so pr-cycle-cleanup.sh exits 1 with an
-# "ERROR: not inside a git repository" line — that's fine, the test only
-# checks the output landed in the log file rather than being discarded.
-echo "{\"cwd\": \"$dir_reap_ac1\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
-if [ -s "$dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log" ]; then
-  pass "TC-1968-01: reap output written to .rite/logs/pr-cycle-cleanup.log"
+echo "{\"cwd\": \"$dir_reap_ac1\"}" | TMPDIR="$iso_tmpdir_ac1" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if grep -q '\[pr-cycle-cleanup\] status=' "$dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null; then
+  pass "TC-1968-01: reap status line written to .rite/logs/pr-cycle-cleanup.log"
 else
-  fail "TC-1968-01: expected non-empty log at $dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log"
+  fail "TC-1968-01: expected [pr-cycle-cleanup] status= line at $dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log, got: $(cat "$dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)"
 fi
 echo ""
 
 echo "TC-1968-02 (AC-2): reap output does not leak into hook stdout"
 dir_reap_ac2="$TEST_DIR/reap-ac2"
 mkdir -p "$dir_reap_ac2"
+(cd "$dir_reap_ac2" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+iso_tmpdir_ac2="$TEST_DIR/reap-ac2-tmpdir"
+mkdir -p "$iso_tmpdir_ac2"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
-output=$(echo "{\"cwd\": \"$dir_reap_ac2\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if ! printf '%s' "$output" | grep -q "pr-cycle-cleanup\|not inside a git repository"; then
+output=$(echo "{\"cwd\": \"$dir_reap_ac2\"}" | TMPDIR="$iso_tmpdir_ac2" bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! printf '%s' "$output" | grep -q '\[pr-cycle-cleanup\]'; then
   pass "TC-1968-02: hook stdout does not contain reap output"
 else
   fail "TC-1968-02: reap output leaked into hook stdout: $output"
@@ -1410,10 +1416,12 @@ mkdir -p "$dir_reap_ac3/.rite"
 touch "$dir_reap_ac3/.rite/logs"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 echo "{\"cwd\": \"$dir_reap_ac3\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_03=$?
-if [ "$rc1968_03" -eq 0 ]; then
-  pass "TC-1968-03: hook exits 0 even when the log dir cannot be created"
+# Assert the fallback branch actually ran: mkdir -p must have failed (the path
+# is still the file we touched, not a directory), not just "exit 0 either way".
+if [ "$rc1968_03" -eq 0 ] && [ -f "$dir_reap_ac3/.rite/logs" ] && [ ! -d "$dir_reap_ac3/.rite/logs" ]; then
+  pass "TC-1968-03: hook exits 0 and the discard fallback actually ran (mkdir failure confirmed)"
 else
-  fail "TC-1968-03: expected exit 0, got rc=$rc1968_03"
+  fail "TC-1968-03: expected exit 0 with mkdir failure intact, got rc=$rc1968_03, .rite/logs is $([ -d "$dir_reap_ac3/.rite/logs" ] && echo dir || echo not-a-dir)"
 fi
 echo ""
 

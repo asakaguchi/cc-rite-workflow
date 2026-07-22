@@ -380,8 +380,13 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # a log-write failure.
 if [ "$CWD" = "$STATE_ROOT" ]; then
   _reap_log_dir="$STATE_ROOT/.rite/logs"
-  if mkdir -p "$_reap_log_dir" 2>/dev/null; then
-    ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >"$_reap_log_dir/pr-cycle-cleanup.log" 2>&1 || true
+  # Test writability (not just dir creation) before committing to the log path:
+  # mkdir -p succeeds on a pre-existing read-only dir, and a later `>` open
+  # failure would otherwise skip reap entirely (no fallback, no log) instead of
+  # degrading to discard. The truncate below doubles as the "overwritten each
+  # run" reset, so the reap output is appended after it.
+  if mkdir -p "$_reap_log_dir" 2>/dev/null && { : > "$_reap_log_dir/pr-cycle-cleanup.log"; } 2>/dev/null; then
+    ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >>"$_reap_log_dir/pr-cycle-cleanup.log" 2>&1 || true
   else
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true
   fi

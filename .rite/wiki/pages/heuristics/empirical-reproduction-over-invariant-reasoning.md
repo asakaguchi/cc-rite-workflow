@@ -2,8 +2,10 @@
 title: "「invariant は logic 上成立」を信頼せず empirical reproduction で verify する"
 domain: "heuristics"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-05T05:45:26Z"
+updated: "2026-07-22T22:54:19Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260722T224239Z-pr-1973.md"
   - type: "reviews"
     ref: "raw/reviews/20260427T115727Z-pr-688.md"
   - type: "fixes"
@@ -118,6 +120,14 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 
 → reviewer disagreement を「矛盾」と受け取って一方を棄却するのではなく、各 reviewer がカバーした path を整理し、未カバー edge を runtime evidence で埋めるのが canonical。empirical reproduction over invariant reasoning の multi-reviewer 版。exit-code leak 自体の機構は [[trailing-and-shortcircuit-exit-code-leak]] を参照。
 
+### CRITICAL cross-validation 対立を実機 revert test で決着し 5 cycle で mergeable に収束した事例 (PR #1973)
+
+PR #1973 (Issue #1944) cycle 1 review で、既存 helper (`git-status-filtered.sh`、内部で `mktemp` に依存) への新規呼び出し経路が exit code チェックを欠く finding について、error-handling reviewer のみが CRITICAL (「TMPDIR 書込制限下で helper 自身が失敗し worktree drift axis が silent に無効化される」)、他 3 reviewer (application/prompt-engineer/security) は「raw `git status` から意図の変わらない置き換えであり non-blocking」と評価する正面対立が発生した。
+
+cross-validation debate の pre-debate guard (CRITICAL 指摘は自動討論せず即座にユーザーへエスカレーション) が発火し、orchestrator は両者の主張を reasoning で決着させず、TMPDIR を書込不可ディレクトリに向けた状態で `git-status-filtered.sh` を単体実行する **実機 revert test** を実施した。結果、helper は exit 1 で失敗し raw `git status` は成功する非対称を empirical に確認 — error-handling の技術的主張が正しいと実証され、ユーザーがこの評価を採用する判断を下した。「同じ意図の置き換えに見えても依存関係の増加で信頼性プロファイルが変わる」ことを reasoning だけでなく実機観測で決着させた事例。
+
+この PR はさらに cycle 2 で「cycle 1 fix 自身が pipefail dead-code バグを持つ」ことを 5 reviewer 全員が独立検出、cycle 3-4 で test coverage gap (guard logic の pin 漏れ、fixture が実装差分を observable にしていない) が段階的に発見され、severity が CRITICAL (cycle 1) → HIGH (cycle 2, 5 reviewer 一致の高確信度) → MEDIUM/LOW (cycle 3-4, test 品質) → 0 findings (cycle 5, mergeable) と単調に低下しながら 5 cycle (circuit breaker の上限直前) で収束した。CRITICAL な finding ほど早い cycle で発見され、cycle を重ねるごとに finding の性質が「機能的正しさ」から「test 品質」へと移行していくのは、reviewer が浅い層から深い層へ段階的に掘り下げていることを示す健全な収束パターン。
+
 ### 全 reviewer の実測検証規律が low-noise 収束を生む positive evidence (PR #1277)
 
 security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer (security / error-handling / test / performance / tech-writer) × 2 cycles の全員が実測検証を実施した:
@@ -148,3 +158,4 @@ security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer 
 - [PR #1246 review results (cycle 1) — reviewer 評価の割れ (exit 0 維持 vs leak) は coverage gap であり runtime observation で確証](../../raw/reviews/20260602T064758Z-pr-1246.md)
 - [PR #1246 fix results — 複数 reviewer 評価の割れを実機再現で確証して採否を決める](../../raw/fixes/20260602T065355Z-pr-1246.md)
 - [PR #1277 review results — 全 reviewer の実測検証規律による low-noise 2-cycle 収束](../../raw/reviews/20260605T045347Z-pr-1277.md)
+- [PR #1973 cycle 5 review results (mergeable) — CRITICAL cross-validation 対立を実機 revert test で決着、5 cycle で severity 単調減少しつつ収束](../../raw/reviews/20260722T224239Z-pr-1973.md)

@@ -2,8 +2,12 @@
 title: "mktemp 失敗は silent 握り潰さず WARNING を可視化する"
 domain: "patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-07T03:40:00+09:00"
+updated: "2026-07-22T22:54:19Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260722T212955Z-pr-1973.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260722T213801Z-pr-1973.md"
   - type: "reviews"
     ref: "raw/reviews/20260706T175107Z-pr-1771.md"
   - type: "fixes"
@@ -211,12 +215,39 @@ fi
 
 **「同じスクリプト内の複数の同種検証ロジック (I1/I2/I3) で 1 つだけガードが非対称に欠落する」** のは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の一種でもあり、本 pattern (silent-fallback-indistinguishable-from-success) と対称性欠落の 2 軸が重なって発火した事例。**「検証ツール自身が、検証しようとしている性質 (silent failure) を内部に持つ」self-referential 発火**は、PR #765 (bang-backtick self-reference)・PR #1043 (aggregate-label self-violation)・PR #1167 (wiki-lint self-application)・PR #1328 (parity test self-referential)・PR #1764 (drift-check family self-application) に続く累積事例であり、**新設の検証・lint ツールは自身の実装が検証対象の failure mode を含んでいないか個別レビューする**ことが必要。
 
+### 既存 helper への新規呼び出し追加は helper 自身の呼び出し規約を継承する義務を負う (PR #1973)
+
+PR #1973 (Issue #1944 — pr-review drift 検出の porcelain hash が sandbox ghost-mount 差分で誤警報を出す修正) で、既存ヘルパー `lib/git-status-filtered.sh` (#1936 で導入、内部で `mktemp` に依存) を **新規の呼び出し経路** (`post-review-state-verify.sh` の worktree drift axis と `pr-review/SKILL.md` ステップ 4.0.A の snapshot 側) から呼び出す fix が、helper 自身の exit code チェックを行わずに出力をそのまま hash 化していた:
+
+```bash
+# ❌ NG: 既存 helper を新規呼び出しするが、helper 自身の失敗を無視する
+current_worktree_hash=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh" | md5sum | awk '{print $1}')
+```
+
+raw `git status --porcelain` は TMPDIR 書込制限下でも成功するため、この置き換え以前は起きなかった failure mode が新たに生まれた: `git-status-filtered.sh` は内部で `mktemp` を使うため、TMPDIR 書込制限下では helper 自身が exit 1 で失敗し、`current_worktree_hash` が空文字列 (= 「変更なし」と誤解釈されうる値) に static に縮退する。これは「同じ意図の置き換え」でも **依存関係が増えると信頼性プロファイルが変わる** ことをレビュアー間で見解が分かれさせた事例で、error-handling reviewer が CRITICAL、他 3 reviewer (application/prompt-engineer/security) が non-blocking と評価する cross-validation 対立を生んだ。CRITICAL guard により自動討論せず即座にユーザーへエスカレーションし、実機 revert test (TMPDIR を書込不可ディレクトリに向けて `git-status-filtered.sh` を単体実行し exit code を観測) で error-handling の技術的主張が正しいことを実証してユーザーが採用を決定した。
+
+canonical fix は本ページの標準形と同じ exit code 明示チェック + WARNING + 空文字列 fallback:
+
+```bash
+# ✅ OK: helper 自身の呼び出し規約 (exit code チェック) を継承する
+_wth_raw=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh")
+if [ $? -ne 0 ]; then
+  echo "WARNING: git-status-filtered.sh failed — worktree drift axis skipped for this check" >&2
+  current_worktree_hash=""
+else
+  current_worktree_hash=$(printf '%s' "$_wth_raw" | md5sum | awk '{print $1}')
+fi
+```
+
+**教訓**: raw syscall (`git status`) を「既存の共有ヘルパー経由」に置き換える fix は、多くの場合 DRY 化として歓迎されるが、helper 自身が持つ追加依存 (`mktemp` 等) の failure surface を継承する。置き換え PR のレビューでは「helper の呼び出し規約 (exit code チェック / stderr 分離) を呼び出し側が遵守しているか」を独立の検証観点として持つ必要がある。本件はさらに二次的な落とし穴 (embedded markdown bash block での exit code チェックが `pipefail` 未宣言により dead code 化する) を生んだ — 詳細は [Embedded markdown bash block の observability 三要素](./embedded-bash-block-observability-trio.md) を参照。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](./trap-register-before-mktemp.md)
 - [stderr ノイズ削減: truncate ではなく selective surface で解く](../heuristics/stderr-selective-surface-over-truncate.md)
 - [[flatten-refactor-deletion-scope-classification]] ([flatten-refactor-deletion-scope-classification.md](../heuristics/flatten-refactor-deletion-scope-classification.md))
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)](./embedded-bash-block-observability-trio.md)
 
 ## ソース
 
@@ -231,3 +262,5 @@ fi
 - [PR #1155 cycle 2 fix (6 site 対称セットの partial fix トラップ回収、grep 網羅検査の経験則化)](../../raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md)
 - [PR #1771 cycle 1 review (Issue #1709、sentinel 検証スクリプト自身の I3 ロジックで grep no-match/実エラー区別欠落を HIGH 検出、I1/I2 の同型ガードとの非対称も指摘)](../../raw/reviews/20260706T175107Z-pr-1771.md)
 - [PR #1771 cycle 1 fix (grep rc を明示 capture し rc>1 で exit 2、I1/I2 と対称なガードに修正)](../../raw/fixes/20260706T175443Z-pr-1771.md)
+- [PR #1973 cycle 1 review (Issue #1944、既存 helper `git-status-filtered.sh` への新規呼び出し経路が exit code チェックを欠落、error-handling reviewer が CRITICAL / 他 3 reviewer が non-blocking の cross-validation 対立)](../../raw/reviews/20260722T212955Z-pr-1973.md)
+- [PR #1973 cycle 1 fix (実機 revert test で TMPDIR 書込制限下の mktemp 失敗を再現し error-handling の主張を実証、exit code チェック + WARNING + 空文字列 fallback で修正)](../../raw/fixes/20260722T213801Z-pr-1973.md)

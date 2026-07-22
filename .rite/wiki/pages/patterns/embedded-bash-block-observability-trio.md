@@ -2,8 +2,12 @@
 title: "Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)"
 domain: "patterns"
 created: "2026-05-17T09:08:26Z"
-updated: "2026-05-17T09:08:26Z"
+updated: "2026-07-22T22:54:19Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260722T221143Z-pr-1973.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260722T221542Z-pr-1973.md"
   - type: "reviews"
     ref: "raw/reviews/20260517T000446Z-pr-1004.md"
   - type: "reviews"
@@ -102,6 +106,39 @@ repo=$(gh repo view --json name --jq '.name') || {
 
 これにより orchestrator state dependency を排除し、bash invocation の独立性を担保する。
 
+### 変種: 明示的な exit code チェックすら dead code 化する capture-first の必要性 (PR #1973)
+
+要素 (1) `set -o pipefail` 宣言の欠如は、`if cmd | jq` のような **暗黙の** silent suppression だけでなく、開発者が明示的に書いた exit code チェックすら dead code 化する、より insidious な変種を生む。PR #1973 (Issue #1944) では、開発者が「pipefail 対策のつもり」で以下を書いていた:
+
+```bash
+# ❌ NG: 明示的にチェックしているつもりが dead code
+ORIG_WTH=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh" | md5sum | awk '{print $1}')
+if [ $? -ne 0 ]; then
+  echo "WARNING: ..." >&2
+  ORIG_WTH=""
+fi
+```
+
+このコードは一見正しく見える (`$?` を直後でチェックしている) が、Claude Code の Bash tool は **各呼び出しごとに fresh shell を起動し、shell state (pipefail を含む) は呼び出し間で一切継承されない**。同じ pattern を standalone `.sh` script (file scope で `set -uo pipefail` を宣言) に書けば正しく動作するが、markdown に埋め込まれた bash block では pipefail が OFF のデフォルト状態のまま実行されるため、`$?` は pipeline 最終段 (`awk`) の exit code (常に 0) を返し、`if [ $? -ne 0 ]` は**永久に発火しない**。同じ実装パターンが sibling ファイル (post-review-state-verify.sh、standalone script) では正しく動作していたため、cycle 1 fix の時点ではこの非対称に気付かれなかった。cycle 2 review で 5 reviewer 全員がこの dead code を独立に検出し、CRITICAL → 全員一致で確定した。
+
+**canonical fix: capture-first pattern** — pipe の出力を非パイプの command substitution で一旦変数に captureし、`$?` を **その直後** (pipefail 状態に依存しない箇所) でチェックしてから、captured 値を後続コマンドに渡す:
+
+```bash
+# ✅ OK: capture-first — pipefail の有無に関わらず exit code チェックが機能する
+_wth_raw=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh")
+_wth_rc=$?
+if [ "$_wth_rc" -ne 0 ]; then
+  echo "WARNING: git-status-filtered.sh failed — worktree drift snapshot skipped" >&2
+  ORIG_WTH=""
+else
+  ORIG_WTH=$(printf '%s' "$_wth_raw" | md5sum | awk '{print $1}')
+fi
+```
+
+`_wth_raw=$(bash ...)` は単一コマンドの command substitution であり、`$?` はそのコマンド自身の exit code を返す (pipe が絡まないため pipefail 設定に非依存)。この後で `printf | md5sum | awk` のような pure なテキスト変換 pipe に captured 値を渡せば、変換 pipe 自体は失敗しない (入力が既に確定しているため) ので pipefail 有無を問わず安全になる。
+
+**教訓**: `set -o pipefail` を宣言できない/宣言していない embedded bash block では、「pipe の直後で `$?` をチェックする」という直感的パターンは dead code になりうる。**`$?` チェックが機能する保証があるのは、直前のコマンドが単一コマンド（pipe を含まない command substitution）である場合のみ**。pipe を含む処理の失敗を検出したい場合は、capture-first (非パイプ command substitution で captureしてから変換する) が pipefail 状態に依存しない唯一の canonical pattern。同一実装パターンが「本来動作する」standalone script と「動作しない」markdown embedded block の両方に存在する非対称は、レビューで見逃されやすい (Asymmetric Fix Transcription の一種)。
+
 ### 累積観測
 
 PR #1004 (Issue #1003 = Projects Status In Review 遷移漏れ修正) の review-fix loop で 3 要素の同時欠落が 3 site (start.md / start-finalize.md / post-compact.sh) で同時 surface し、cycle 3 fix で全 site 揃って canonical 実装に統一。これは Wiki 経験則 [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の sibling site 対称化と組み合わせて適用すべき canonical 規範。
@@ -117,3 +154,5 @@ PR #1004 (Issue #1003 = Projects Status In Review 遷移漏れ修正) の review
 - [PR #1004 cycle 2 review (3 reviewer 独立検出 / F-01 syntax error + pipefail / dangling references)](../../raw/reviews/20260517T000446Z-pr-1004.md)
 - [PR #1004 cycle 3 review (Self-violation cascade / DRY 4-site / Observability gap F-08/F-09/F-10)](../../raw/reviews/20260517T004634Z-pr-1004.md)
 - [PR #1004 cycle 3 fix (stderr stage separation / sub-shell scope-internal retrieval / state_root_inaccessible emit)](../../raw/fixes/20260517T020335Z-pr-1004.md)
+- [PR #1973 cycle 3 review (Issue #1944、5 reviewer 独立検出 — 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化)](../../raw/reviews/20260722T221143Z-pr-1973.md)
+- [PR #1973 cycle 3 fix (capture-first pattern で pipefail 非依存の exit code チェックに修正)](../../raw/fixes/20260722T221542Z-pr-1973.md)

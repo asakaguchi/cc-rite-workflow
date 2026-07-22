@@ -2,8 +2,14 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-05-20T06:26:58Z"
+updated: "2026-07-22T22:54:19Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260722T221143Z-pr-1973.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260722T222828Z-pr-1973.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260722T223211Z-pr-1973.md"
   - type: "reviews"
     ref: "raw/reviews/20260424T095915Z-pr-655-cycle6.md"
   - type: "reviews"
@@ -292,6 +298,52 @@ PR #1069 は本ページで codify した「Cross-file cross-site coverage (PR #
 | Cross-file cross-site coverage (PR #1066) | 複数ファイル間の同型 logic 対称化 | test pin を全 sites 分独立配置 + cross-file 対称化 PR の test diff を `-N file +1 test` パターンで reviewer check |
 | **3-axis mutation verification (PR #1069)** | anchor 強化 + cross-file coverage を併用する fix | 正方向 mutation (各 site 削除で FAIL) + 逆方向 mutation (docstring 擬似挿入で PASS 維持 = anchor strictness verify) を独立 axis で実行 |
 
+### Guard-logic-not-just-routing pin gap sub-pattern (PR #1973)
+
+本ページの既存 sub-pattern はいずれも「pin claim の site 数」または「pin claim の factual accuracy」の gap を扱うが、PR #1973 (Issue #1944) では **pin テストが「ルーティングの存在」のみを検証し「ガードロジック自体の存在」を検証しない** という、より細かい粒度の gap が顕在化した。
+
+markdown skill ファイル (`pr-review/SKILL.md` ステップ 4.0.A) の該当行が `_wth_raw=.*git-status-filtered` という正規表現で pin されていたが、これは「新規 helper へのルーティングが存在するか」だけを検証する。cycle 1 で追加された exit code ガード (`_wth_rc` チェック + WARNING) だけを部分的に revert しても (ルーティング行自体は残したまま) 、この pin は PASS し続ける — ガードロジックの有無を検出できない **partial revert blind spot**。cycle 3 review で test-reviewer が独立に検出し、2 つ目の pin (`_wth_rc.*-ne 0` で guard 自体の存在を検証) を追加することで解消した。
+
+```bash
+# ❌ 不十分: ルーティングの存在のみを pin (ガードロジックの有無を検出できない)
+assert_grep_in_section "SKILL.md 4.0.A: ORIG_WTH routed through git-status-filtered.sh" \
+  "$PR_REVIEW_SKILL" '^### 4\.0\.A ' '^### 4\.0\.W' '_wth_raw=.*git-status-filtered'
+
+# ✅ OK: ガードロジック自体の存在も独立に pin する (2 本目の assert)
+assert_grep_in_section "SKILL.md 4.0.A: filter failure guard present (WARNING + skip on non-zero exit)" \
+  "$PR_REVIEW_SKILL" '^### 4\.0\.A ' '^### 4\.0\.W' '_wth_rc.*-ne 0'
+```
+
+### Non-exercising fixture sub-pattern: happy-path のみの fixture では実装差分が観測不可能 (PR #1973)
+
+cycle 3 の capture-first fix (前掲) を守るための test helper `snapshot_hash()` も capture-first パターンに書き換えられたが、cycle 4 review で test-reviewer が **既存 4 テストケース (baseline/T-01/T-02/T-02b) がすべて clean tree (filter 出力が空文字列) のみを snapshot している**ことを検出した。capture-first (`$(...)` が末尾改行を strip する) と naive な direct-pipe (末尾改行を保持する) は、**入力が空文字列のときは出力も同一になる** ため、既存 fixture ではこの実装差分を観測できない — 実機検証で `snapshot_hash()` を direct-pipe に戻しても既存 11 assertion は全て PASS したままだった (dirty tree で異なる hash: `d801c2f6…` vs `629f80c2…` を実証)。
+
+```bash
+# ❌ 不十分: clean tree のみの fixture — capture-first と direct-pipe が区別不能
+sbx0=$(make_sandbox)
+wth0=$(snapshot_hash "$sbx0")  # 入力が空文字列 → capture-first も direct-pipe も同一 hash
+
+# ✅ OK: dirty tree で snapshot する fixture を追加 (T-04) — 実装差分が観測可能になる
+sbx5=$(make_sandbox)
+( cd "$sbx5" && echo already-dirty >> a )  # 非空の filter 出力を作る
+wth5=$(snapshot_hash "$sbx5")  # capture-first と direct-pipe で異なる hash になる入力
+```
+
+**教訓**: 「本番コードの実装方式変更を守る regression test」を書く際、fixture が **その実装方式の違いが observable になる入力** を最低 1 つ含んでいるかを確認する必要がある。空入力・no-op 入力のみの fixture は、実装方式に依らず同一結果を返すため、実装が正しいことを検証しているように見えて実際には検証していない (protection theater の一種)。
+
+#### 累積対策 (PR #1973 で codify)
+
+| Sub-pattern | scope | codify 方法 |
+|-------------|-------|------------|
+| Protection theater (claim-actual gap) | 任意 | mutation test の silent PASS 検出 |
+| Wording-revision drift (cross-file asymmetric) | helper ↔ test pin | docstring に test 同期義務を明記 |
+| Same-file 3-site sync (PR #909) | 同一ファイル内 | コメント末尾に sync ルールを 1 行明文化 |
+| 副次的主張のファクト誤認 (PR #909) | 任意 | POSIX ERE / regex engine の literal 動作で empirical 検証 |
+| Cross-file cross-site coverage (PR #1066) | 複数ファイル間の同型 logic 対称化 | test pin を全 sites 分独立配置 + cross-file 対称化 PR の test diff を `-N file +1 test` パターンで reviewer check |
+| 3-axis mutation verification (PR #1069) | anchor 強化 + cross-file coverage を併用する fix | 正方向 mutation (各 site 削除で FAIL) + 逆方向 mutation (docstring 擬似挿入で PASS 維持 = anchor strictness verify) を独立 axis で実行 |
+| **Guard-logic-not-just-routing pin gap (PR #1973)** | 1 site 内の複数要素 (ルーティング vs ガードロジック) | ルーティングの pin とガードロジックの pin を別 assertion に分離配置し、partial revert を独立検出可能にする |
+| **Non-exercising fixture (PR #1973)** | fixture 設計 | 実装方式の違いが observable になる非空/非デフォルト入力を fixture に最低 1 つ含める |
+
 ## 関連ページ
 
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
@@ -313,3 +365,5 @@ PR #1069 は本ページで codify した「Cross-file cross-site coverage (PR #
 - [PR #1066 review — cross-file 3-site 対称化 fix の test pin が 1-site only で cross-file coverage gap (3 reviewer cross-validated HIGH)](../../raw/reviews/20260520T011841Z-pr-1066.md)
 - [PR #1066 cycle 1 fix — test を 3-site 拡張 (4-case → 18-case = 3 sites × 2 literal pin + positive 6 + negative 6) し cross-file 対称化を test 層で担保](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
 - [PR #1069 review — T-04e anchor 化 + ready.md 対称 coverage + 3-axis mutation verification (正方向 2 軸 + 逆方向 docstring 擬似挿入 1 軸) で canonical fix model を別 context に再適用 (test-reviewer + code-quality-reviewer)](../../raw/reviews/20260520T061355Z-pr-1069.md)
+- [PR #1973 cycle 4 review (Issue #1944、test-reviewer が snapshot_hash() の全 fixture が clean tree のみで capture-first/direct-pipe の実装差分を observable にしていないと検出、実機検証で direct-pipe に戻しても既存 11 assertion が全 PASS することを実証)](../../raw/reviews/20260722T222828Z-pr-1973.md)
+- [PR #1973 cycle 4 fix (T-04: dirty tree snapshot fixture を追加し capture-first の実装差分を observable にする regression test を確立)](../../raw/fixes/20260722T223211Z-pr-1973.md)

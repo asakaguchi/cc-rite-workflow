@@ -23,6 +23,10 @@
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260722T133807Z-pr-1972.md を統合 — テストのみ変更 PR で 4 reviewer 全員が独立に mutation 検証を実施した事例を追加
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
+* **Update**: [mktemp 失敗は silent 握り潰さず WARNING を可視化する](pages/patterns/mktemp-failure-surface-warning.md) — raw/reviews/20260722T212955Z-pr-1973.md, raw/fixes/20260722T213801Z-pr-1973.md を統合 — 既存 helper への新規呼び出し追加は helper 自身の呼び出し規約 (exit code チェック) を継承する義務を負う変種を追加
+* **Update**: [Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)](pages/patterns/embedded-bash-block-observability-trio.md) — raw/reviews/20260722T221143Z-pr-1973.md, raw/fixes/20260722T221542Z-pr-1973.md を統合 — 明示的な exit code チェックすら Bash tool の per-invocation pipefail-off で dead code 化する変種と capture-first canonical fix を追加
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260722T221143Z-pr-1973.md, raw/reviews/20260722T222828Z-pr-1973.md, raw/fixes/20260722T223211Z-pr-1973.md を統合 — guard-logic-not-just-routing pin gap と non-exercising fixture の 2 sub-pattern を追加
+* **Update**: [「invariant は logic 上成立」を信頼せず empirical reproduction で verify する](pages/heuristics/empirical-reproduction-over-invariant-reasoning.md) — raw/reviews/20260722T224239Z-pr-1973.md を統合 — CRITICAL cross-validation 対立を実機 revert test で決着し 5 cycle で mergeable に収束した事例を追加
 
 ## 2026-07-21
 

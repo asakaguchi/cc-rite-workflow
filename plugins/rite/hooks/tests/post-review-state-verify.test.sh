@@ -64,11 +64,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Snapshot helper: mirrors the exact command pr-review SKILL.md ステップ 4.0.A
-# uses for ORIG_WTH — capture-first (filter output captured before hashing, same
-# as production) so dirty-tree snapshots hash identically to the real 4.0.A /
-# verify-side computation (a direct pipe would keep the filter's trailing
-# newline that `$(...)` strips, diverging on non-empty output).
+# Snapshot helper: mirrors the happy-path hash computation pr-review SKILL.md
+# ステップ 4.0.A uses for ORIG_WTH — capture-first (filter output captured
+# before hashing, same as production) so dirty-tree snapshots hash identically
+# to the real 4.0.A / verify-side computation (a direct pipe would keep the
+# filter's trailing newline that `$(...)` strips, diverging on non-empty
+# output). Unlike 4.0.A / verify, this helper does not reproduce their
+# error-handling (stderr propagation, exit-code guard) — it only needs to
+# produce the same hash for the happy-path fixtures below.
 snapshot_hash() {
   local dir="$1"
   local raw
@@ -148,5 +151,22 @@ case "$(cat "$stderr4")" in
   *"git-status-filtered.sh failed"*) pass "T-03: filter failure surfaces a WARNING" ;;
   *) fail "T-03: filter failure surfaces a WARNING (stderr: $(cat "$stderr4"))" ;;
 esac
+
+# --- T-04: snapshot taken on an already-dirty tree, unchanged before verify,
+#     must NOT report drift ----------------------------------------------------
+# baseline/T-01/T-02/T-02b all snapshot a clean tree (empty filter output), so
+# they cannot distinguish the capture-first hash computation from a naive
+# direct-pipe one — both produce the same empty-input hash. This case snapshots
+# a tree that already has an uncommitted change, then verifies with no further
+# change, exercising the capture-first path on non-empty filter output (where
+# a direct pipe's retained trailing newline would diverge from `$(...)`'s
+# stripped one and falsely report drift).
+sbx5=$(make_sandbox) && cleanup_dirs+=("$sbx5") || { echo "ERROR: make_sandbox failed, aborting" >&2; exit 1; }
+branch5=$(cd "$sbx5" && git branch --show-current)
+( cd "$sbx5" && echo already-dirty >> a ) >/dev/null 2>&1
+wth5=$(snapshot_hash "$sbx5")
+out5=$(cd "$sbx5" && bash "$VERIFY" --original-branch "$branch5" --original-worktree-hash "$wth5" --auto-recover true)
+drift5=$(printf '%s' "$out5" | jq -r '.drift' 2>/dev/null)
+assert "T-04: dirty-at-snapshot tree, unchanged at verify, reports drift=false" "false" "$drift5"
 
 print_summary "$(basename "$0")"

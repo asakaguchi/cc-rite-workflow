@@ -1129,36 +1129,53 @@ if [ -d "$session_wt_root" ]; then
         # documented in rite-tmp-artifact.sh: `_reaped_branch` comes straight from
         # `git rev-parse --abbrev-ref HEAD` without the recorder's leading-dash guard,
         # so `--` is the explicit backstop against an option-injecting branch name.
+        _branch_recovered=0
         if git branch -d -- "$_reaped_branch" >/dev/null 2>&1; then
           session_branches_deleted=$((session_branches_deleted + 1))
+          _branch_recovered=1
         elif [ -f "$manifest_path" ] && grep -qxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" 2>/dev/null; then
           if git branch -D -- "$_reaped_branch" >/dev/null 2>&1; then
             session_branches_deleted=$((session_branches_deleted + 1))
-            # Consume the manifest entry NOW (was: next-run Step 4.5 verify-drop).
-            # With the Gate 2 free-arm age-guard bypass keyed on this entry
-            # (Issue #1966), a lingering entry is no longer inert: a same-named
-            # branch recreated in a new claim-free worktree before the next run's
-            # verify-drop would inherit the bypass. Best-effort — a failed rewrite
-            # falls back to the old next-run self-heal.
-            session_branch_mf_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mf-XXXXXX" 2>/dev/null) || session_branch_mf_keep=""
-            if [ -n "$session_branch_mf_keep" ]; then
-              # grep rc=1 (no survivors) is the expected single-entry case — the
-              # `|| true` keeps it from tripping `set -e`.
-              grep -vxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" > "$session_branch_mf_keep" 2>/dev/null || true
-              if [ -s "$session_branch_mf_keep" ]; then
-                cp "$session_branch_mf_keep" "$manifest_path" 2>/dev/null || true
-              else
-                rm -f "$manifest_path" 2>/dev/null || true
-              fi
-              rm -f "$session_branch_mf_keep" 2>/dev/null || true
-              session_branch_mf_keep=""
-            fi
+            _branch_recovered=1
           else
             echo "WARNING: failed to reap session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'" >&2
             errors=$((errors + 1))
           fi
         else
           echo "WARNING: session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)' は未マージのため保持しました（不要なら手動削除: git branch -D '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'）。" >&2
+        fi
+        # Consume the manifest entry NOW on ANY successful recovery — -d and -D
+        # alike (was: next-run Step 4.5 verify-drop, then -D-only in the first
+        # #1966 cut). With the Gate 2 free-arm age-guard bypass keyed on this
+        # entry, a lingering entry is no longer inert: a same-named branch
+        # recreated in a new claim-free worktree before the next run's
+        # verify-drop would inherit the bypass. The -d arm is unreachable for
+        # recorded branches under rite's standard squash flow (`-d` always
+        # refuses squash residue) but is closed for symmetry — a future merge
+        # strategy change must not reopen the window. The guard grep makes this
+        # a no-op for unrecorded branches (plain merged recovery, TC-4 shape).
+        # Best-effort: each failure falls back to the old next-run self-heal,
+        # but NEVER silently (mirrors Step 4.5's WARNING discipline; no
+        # errors++ — self-heal keeps the run functionally correct).
+        if [ "$_branch_recovered" -eq 1 ] && [ -f "$manifest_path" ] \
+           && grep -qxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" 2>/dev/null; then
+          if session_branch_mf_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-mf-XXXXXX" 2>/dev/null); then
+            # grep rc=1 (no survivors) is the expected single-entry case — the
+            # `|| true` keeps it from tripping `set -e`.
+            grep -vxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" > "$session_branch_mf_keep" 2>/dev/null || true
+            if [ -s "$session_branch_mf_keep" ]; then
+              if ! cp "$session_branch_mf_keep" "$manifest_path" 2>/dev/null; then
+                echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+              fi
+            else
+              rm -f "$manifest_path" 2>/dev/null || true
+            fi
+            rm -f "$session_branch_mf_keep" 2>/dev/null || true
+            session_branch_mf_keep=""
+          else
+            session_branch_mf_keep=""
+            echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
+          fi
         fi
       fi
     else

@@ -464,8 +464,9 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   behind the same claim + 24h age guards, Issue #1957). Once the worktree is gone, its
   branch is recovered rather than left untouched: `git branch -d` (safe-delete) runs
   first so an unmerged branch is preserved; if that's refused but the reap manifest
-  confirms the PR was merged, `git branch -D` force-deletes it and the manifest entry
-  is consumed in the same run (a lingering entry is no longer inert once it also keys
+  confirms the PR was merged, `git branch -D` force-deletes it. On any successful
+  recovery (`-d` and `-D` alike) the branch's manifest entry is consumed in the same
+  run (a lingering entry is no longer inert once it also keys
   the age-guard bypass, Issue #1966); an unmerged,
   manifest-unrecorded branch is kept with a WARNING (Issue #1670). A corpse's HEAD can't
   be read, so branch recovery is structurally skipped for it.

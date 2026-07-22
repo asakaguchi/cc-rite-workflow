@@ -17,6 +17,7 @@
 * **Update**: [reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する](pages/heuristics/reviewer-regression-claim-revert-test-attribution.md) — raw/fixes/20260722T025804Z-pr-1967.md を統合 — pre-existing 行が本 PR の意味論変更で不活性でなくなった場合は revert test が PR 由来と判定する変種を追加
 * **Skip**: [20260722T035442Z-pr-1967.md](raw/reviews/20260722T035442Z-pr-1967.md) — review-fix loop の収束パターン（severity 逓減・前 cycle 判断の非反転）は既存の類似経験則群と重複度が高く、単独ページ化・既存ページ更新のいずれの追加価値も限定的
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
 
 ## 2026-07-21
 

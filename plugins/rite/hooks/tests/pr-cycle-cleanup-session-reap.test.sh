@@ -632,5 +632,47 @@ assert_grep "C-04 Gate 3 conservative-skip WARNING (not the corpse path)" "$R/pc
 assert_not_grep "C-04 no corpse WARNING emitted" "$R/pcc.err" "corpse session worktree"
 case "$out" in *"session_worktrees=0"*) pass "C-04 status reports session_worktrees=0" ;; *) fail "C-04 status: $out" ;; esac
 
+# ===========================================================================
+# Issue #1945 — corpse age-guard manifest bypass, keyed on PATH not branch. A
+# corpse cannot resolve its checked-out branch (git no longer recognizes the
+# tree), so the #1966 branch-keyed bypass above structurally never matches
+# one — every corpse would wait the full 24h even when cleanup.md Step 4-W
+# already recorded the failed removal. cleanup.md now records the worktree's
+# own PATH into the manifest when removal fails/is skipped for a
+# busy/sandbox-mask reason (only when the PR was merged — AC-4 parity with
+# the branch bypass). Step 5's corpse age guard checks for that PATH entry
+# before falling back to the 24h wait.
+# ===========================================================================
+
+echo "=== C-05 (#1945): fresh corpse + manifest-recorded PATH → reaped (age-guard bypass, no branch needed) ==="
+R=$(make_repo 140); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-140.json"   # cleanup releases the claim unconditionally
+printf 'worktree\t%s\n' "$R/.rite/worktrees/issue-140" > "$R/.rite/tmp-artifacts.tsv"
+make_corpse "$R" 140
+out=$(run_pcc "$R")
+assert "C-05 fresh manifest-recorded corpse reaped (working tree)" "0" "$( [ -d "$R/.rite/worktrees/issue-140" ] && echo 1 || echo 0 )"
+assert "C-05 fresh manifest-recorded corpse reaped (admin dir)" "0" "$( [ -d "$R/.git/worktrees/issue-140" ] && echo 1 || echo 0 )"
+assert_grep "C-05 bypass is LOGGED (not silent)" "$R/pcc.err" "manifest 記録済み \(削除失敗確認済み\) corpse session worktree のため age guard をバイパスします"
+assert "C-05 manifest entry consumed (file removed)" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "C-05 status reports session_worktrees=1" ;; *) fail "C-05 status: $out" ;; esac
+
+echo "=== C-05b (#1945 control): fresh corpse + manifest records a DIFFERENT path → survives (surgical, age guard intact) ==="
+R=$(make_repo 141); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-141.json"
+# A real, existing-but-not-a-git-worktree directory: Step 4.5's dirty check on
+# it is indeterminate (not a worktree) so it KEEPS the entry (survives to
+# reach Step 5's exact-match grep) — a non-vacuous mismatch, mirroring D-03's
+# approach for the branch bypass.
+mkdir -p "$R/.rite/worktrees/issue-141-decoy"
+printf 'worktree\t%s\n' "$R/.rite/worktrees/issue-141-decoy" > "$R/.rite/tmp-artifacts.tsv"
+make_corpse "$R" 141
+out=$(run_pcc "$R")
+assert "C-05b mismatched-entry fresh corpse survives (age guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-141" ] && echo 1 || echo 0 )"
+assert_grep "C-05b age-guard skip WARNING on stderr (not silent)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+assert "C-05b mismatch entry survived Step 4.5 (non-vacuous: bypass grep saw it)" "1" "$( grep -qxF "worktree$(printf '\t')$R/.rite/worktrees/issue-141-decoy" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "C-05b status reports session_worktrees=0" ;; *) fail "C-05b status: $out" ;; esac
+
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1957 corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; Issue #1966 free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); wiki-worktree excluded; session-start best-effort wiring."
+  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1957 corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; Issue #1966 free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); Issue #1945 corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the #1966 branch bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."

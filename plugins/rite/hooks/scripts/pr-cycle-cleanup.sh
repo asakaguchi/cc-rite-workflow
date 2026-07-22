@@ -1077,7 +1077,22 @@ if [ -d "$session_wt_root" ]; then
     # stale-claim path too (AC-4: a fresh corpse is never reaped). The skip is
     # logged, not silent: a corpse's existence is itself an anomaly the user
     # should see before the guard expires.
-    if [ "$_corpse" -eq 1 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
+    #
+    # Manifest bypass (Issue #1945): a corpse cannot resolve its checked-out
+    # branch (git no longer recognizes the tree), so the branch-keyed bypass
+    # above (Issue #1966, free-claim arm) structurally never fires for it —
+    # every corpse would wait the full 24h even when cleanup.md already tried
+    # and failed to remove this exact path. cleanup.md Step 4-W records the
+    # worktree's own PATH (not branch) into the manifest at the moment
+    # `git worktree remove` fails or is skipped for a busy/sandbox-mask reason
+    # (only when {pr_merged}=true, mirroring the branch bypass's AC-4 gate), so
+    # a manifest hit here means "rite already confirmed this path needs reaping" —
+    # the same "reap me" intent the branch bypass encodes, keyed differently
+    # because a corpse has no resolvable branch.
+    if [ "$_corpse" -eq 1 ] && [ -f "$manifest_path" ] \
+       && grep -qxF "worktree$(printf '\t')$wt_path" "$manifest_path" 2>/dev/null; then
+      echo "[pr-cycle-cleanup] manifest 記録済み (削除失敗確認済み) corpse session worktree のため age guard をバイパスします: $(printf '%s' "$wt_path" | neutralize_ctrl)" >&2
+    elif [ "$_corpse" -eq 1 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
       echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) は age guard (24h) 未達のため回収を見送ります。" >&2
       continue
     fi
@@ -1120,6 +1135,34 @@ if [ -d "$session_wt_root" ]; then
       # (uses the pre-removal canonical path) so re-entry / harness cwd-restore is
       # not pointed at the just-removed dir. Non-blocking (AC-5).
       _rite_null_worktree_refs "$wt_path" "$_wt_canon"
+
+      # Manifest entry consumption (Issue #1945, symmetric with the branch
+      # consumption below — #1966): a lingering `worktree\t<path>` entry is not
+      # inert — the corpse age-guard bypass above is keyed on it, so a
+      # DIFFERENT worktree later created at this same path (e.g. the issue
+      # reopened) would inherit the bypass and skip the 24h protection it
+      # never earned. Step 4.5's own "already gone" check
+      # (`[ ! -e "$_m_val" ]`) does not catch this: once a NEW worktree exists
+      # at the reused path, the entry looks "present" again. Best-effort: each
+      # failure falls back to Step 4.5's indeterminate-status keep on the next
+      # run (never silently drops an entry a failed write left behind).
+      if [ -f "$manifest_path" ] && grep -qxF "worktree$(printf '\t')$wt_path" "$manifest_path" 2>/dev/null; then
+        if _wt_mf_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-wtmf-XXXXXX" 2>/dev/null); then
+          _wt_mf_rc=0
+          grep -vxF "worktree$(printf '\t')$wt_path" "$manifest_path" > "$_wt_mf_keep" 2>/dev/null || _wt_mf_rc=$?
+          if [ "$_wt_mf_rc" -ge 2 ]; then
+            echo "WARNING: manifest エントリ 'worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_wt_mf_rc)（次 run の Step 4.5 による自己修復待ち）。" >&2
+          elif [ -s "$_wt_mf_keep" ]; then
+            cp "$_wt_mf_keep" "$manifest_path" 2>/dev/null \
+              || echo "WARNING: manifest エントリ 'worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（次 run の Step 4.5 による自己修復待ち）。" >&2
+          elif ! rm -f "$manifest_path" 2>/dev/null; then
+            echo "WARNING: manifest エントリ 'worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（次 run の Step 4.5 による自己修復待ち）。" >&2
+          fi
+          rm -f "$_wt_mf_keep" 2>/dev/null || true
+        else
+          echo "WARNING: manifest エントリ 'worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（次 run の Step 4.5 による自己修復待ち）。" >&2
+        fi
+      fi
 
       # Branch recovery (#1670): the worktree is gone, so its branch is no longer
       # checked out and can be deleted. SAFE-delete first — `git branch -d` refuses

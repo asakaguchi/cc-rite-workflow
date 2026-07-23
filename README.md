@@ -11,7 +11,7 @@
 
 From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
 
-https://github.com/user-attachments/assets/abc7455a-ed0a-40c9-964e-cee8c4262f35
+https://github.com/user-attachments/assets/b1f50f60-6c7c-4d86-9ceb-9071ae4b1c9f
 
 ## Why "Rite"?
 

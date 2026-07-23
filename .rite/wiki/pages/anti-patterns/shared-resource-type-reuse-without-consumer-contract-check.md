@@ -1,0 +1,64 @@
+---
+type: "anti-patterns"
+title: "共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる"
+domain: "anti-patterns"
+description: "既存の共有リソース（reap manifest の type エントリ等）の名前空間を新機能で再利用する際、その共有リソースの既存消費者が持つ暗黙の不変条件（コメントで明示済み）を確認しないと、健全なリソースを警告なしに破壊する CRITICAL な回帰を生む。"
+created: "2026-07-23T04:14:28Z"
+updated: "2026-07-23T04:14:28Z"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260723T005459Z-pr-1974.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260723T010449Z-pr-1974.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260723T020925Z-pr-1974-cycle2.md"
+tags: ["shared-resource-contract", "namespace-reuse", "reap-manifest", "existing-consumer-verification", "mutation-testing", "cross-validation"]
+confidence: high
+---
+
+# 共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる
+
+## 概要
+
+新機能実装で既存の共有リソース（reap manifest の type 名前空間等）を再利用する際、その共有リソースの既存消費者（別のロジック段）が持つ契約——多くはコード内コメントで明示された不変条件——を確認しないまま実装すると、共有リソースの解釈が衝突し、既存の健全なリソースが無警告で破壊されうる。PR #1974 (Issue #1945) cycle 1 で、error-handling reviewer の実機再現と prompt-engineer reviewer の文書整合性チェックという異なるアプローチが同一の根本原因に収束し、CRITICAL として確定した。
+
+## 詳細
+
+### 発生した構造
+
+`rite-tmp-artifact.sh` の reap manifest は `<type>\t<value>` 形式で `branch` / `worktree` 等の type を持つ。`pr-cycle-cleanup.sh` の Step 4.5 は `worktree` type のエントリを「ephemeral tmp artifact 専用」という暗黙契約のもとで **ungated に reap（無条件削除）** する設計だった。この契約はコード内コメントには明示されていたが、実装コード自体には type ごとの意味論を強制する仕組みがなかった。
+
+新機能（sandbox 環境で worktree 削除が失敗した場合に manifest へ記録する）を実装する際、既存の `worktree` type をそのまま再利用してしまうと、live claim を持つ健全なセッション worktree が Step 4.5 の ungated pass で警告なしに完全削除される。scratch 環境での実機再現によりこの破壊が確認された。
+
+### 検出のクロスバリデーション
+
+- **error-handling reviewer**: scratch 環境で実際に「live claim を持つ worktree が type=worktree で manifest 記録される」シナリオを再現し、Step 4.5 実行で削除されることを実機確認
+- **prompt-engineer reviewer**: 独立して、コード内コメントに明示された「`worktree` type は ephemeral tmp artifact 専用」契約と、新機能の記録ロジックの意味論的な不一致を文書レベルで発見
+
+異なるアプローチ（実機再現 vs 文書整合性）が同一の根本原因に収束したことで、単一レビュアーでは見逃されうる契約違反が高い確信度で確定した。
+
+### 修正方針
+
+型名を再利用せず **専用 type を新設**（本件では `session_worktree`）し、既存消費者（Step 4.5）の case 文が未知 type として自然にスキップする設計を採用した。これにより既存ロジックを一切変更せず、新機能を安全に分離できる。専用 type 側には別途、既に消滅したパスのみを drop する self-heal 専用の case arm を新設し、reap は行わずに Step 5（gated reap、self-exclusion / claim-liveness / live-cwd gate 通過後のみ）へ委譲する設計とした。
+
+### 実装が進化するとコメントが追随しない risk（cycle 2 での追加検出）
+
+cycle 1 修正後、cycle 2 レビューで test / prompt-engineer reviewer が独立に、修正内容に対するさらなる MEDIUM 指摘を発見した。1 つは新機能実装後にコメントを段階的に追加する過程（後から専用 case arm を追加する等）でコメントが実装に追随せず自己矛盾を残すリスクで、**複数ファイルに複製されたコメントは特に drift しやすい**（本件では `cleanup/SKILL.md` / `pr-cycle-cleanup.sh` / `rite-tmp-artifact.sh` の 3 ファイルに同一趣旨のコメントが複製されていた）。もう 1 つは producer 側（recorder + guard）の discriminating test coverage 欠如で、安全ゲート（`{pr_merged}=true` guard）を剥がす mutation がテストスイートを無検知で通過することが mutation test で実証された（詳細は [[mutation-testing-test-fidelity]] 適用 10 参照）。
+
+### 教訓
+
+1. **新機能で既存の共有リソースの型/名前空間を再利用する前に、その型の全消費者（他のロジック段）の契約を確認する** — コード内コメントに書かれた不変条件であっても、型を再利用する新規実装者がそれを見落とすリスクは構造的に存在する
+2. **専用 type/namespace の新設は既存契約に触れない安全な分離策** — 既存消費者のロジックを変更せず、未知 type の自然な no-op スキップに委ねられる
+3. **実機再現とドキュメント整合性チェックという異なる検出アプローチのクロスバリデーション** が、単一アプローチでは見逃されうる契約違反を高確信度で確定させる
+4. **複数ファイルに複製されたコメントは実装の段階的進化に追随せず drift しやすい** — 新契約を宣言するコメントは重複させず、SoT を明示するか、複製箇所すべてを同一 PR 内で同期する
+
+## 関連ページ
+
+- [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
+- [Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する](./canonical-helper-bypass.md)
+
+## ソース
+
+- [PR #1974 review results (cycle 1, CRITICAL 検出)](../../raw/reviews/20260723T005459Z-pr-1974.md)
+- [PR #1974 fix results (cycle 1, 専用 type 新設による修正)](../../raw/fixes/20260723T010449Z-pr-1974.md)
+- [PR #1974 review results (cycle 2, コメント drift 追加検出)](../../raw/reviews/20260723T020925Z-pr-1974-cycle2.md)

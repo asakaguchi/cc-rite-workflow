@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-22T22:38:07+00:00"
+updated: "2026-07-23T04:14:28Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260723T021111Z-pr-1974-cycle2.md"
   - type: "reviews"
     ref: "raw/reviews/20260722T133807Z-pr-1972.md"
   - type: "reviews"
@@ -739,6 +741,28 @@ PR #1970 cycle 2 で追加した TC-15（`.claude/settings.local.json` コピー
 
 教訓: mutation testing を実施する際、対象コードが本番の作業ブランチ（PR の diff 対象）そのものである場合、mutation の適用先を **実リポジトリの外（一時ディレクトリ等の隔離コピー）** に限定することで、reviewer の READ-ONLY 制約（working tree を変更しない）を守りながら実効性検証ができる。適用 5〜9 で確立された「mutation で実装を kill してテストが red になるか確認する」手法を、reviewer 自身が対象 PR の branch を直接操作できない制約下でも安全に実行するための具体的な実装パターン。
 
+### 適用 30: 安全ゲートを剥がす mutation は producer 側 (recorder + guard) にも discriminating assert が無いと consumer 側だけでは無検知で通過する (PR #1974 cycle 2 で実証)
+
+PR #1974 (Issue #1945) cycle 2 で、新規追加した `session_worktree` type の manifest 記録ロジック（recorder + `{pr_merged}=true` guard）に対し、consumer 側（reap ロジック）の discriminating test は用意されていたが、**producer 側（recorder + guard 自体）** には対応するテストが存在しなかった。test reviewer が両方のブロック（sandbox-mask 分岐 / busy-failed 分岐）から `{pr_merged}=true` guard を剥がす mutation を適用したところ、既存テストスイートが無検知で通過することを実測した。
+
+```bash
+# 反面教材 — consumer 側 (reap ロジック) のみ discriminating assert を持つ
+# producer 側 (recorder + guard) は「呼ばれたら記録される」ことしか検証していない
+
+# Mutation: 両ブロックから {pr_merged}=true ガードを除去
+# （未マージ corpse worktree のパスも無条件で記録されるようになる）
+# 期待: producer 側の test が FAIL する
+# 実測: 全テスト PASS → producer 側に discriminating assert が存在しない
+```
+
+#### Canonical 対策
+
+`assert_grep_in_section` で該当分岐 (sandbox-mask / busy-failed) それぞれについて、**record 呼び出しと `{pr_merged}=true` ガードの両方が同一セクション内に存在すること**を固定する。汎用の「`pr_merged` という語がどこかにある」だけの assert では、ガードが record 呼び出しから外れて常時記録に regression しても検知できない — 検出対象の 2 要素（呼び出しとガード）を **同一の狭いセクション境界内** で共起させる assert でなければ discriminating power を持たない。
+
+#### 教訓
+
+新機能が「安全ゲート（`{pr_merged}=true` 等の条件）付きで既存の共有インフラを呼び出す」形の場合、テストカバレッジは **consumer 側（呼び出された結果をどう処理するか）だけでなく producer 側（呼び出す条件そのもの）にも discriminating assert が必要**。producer 側のテストが「呼ばれたら動く」ことしか検証せず「ガードなしでは呼ばれないこと」を検証していないと、安全ゲート自体を剥がす regression がテストスイートを無検知で通過する。本パターンは適用 5 の Self-grep tautology / Path filter coverage gap と同型 (呼び出し条件の mutation に対する identification power 0) だが、対象を「安全ゲート付き呼び出しの producer/consumer 両面カバレッジ」に一般化したもの。関連する共有リソース契約違反の背景は [[shared-resource-type-reuse-without-consumer-contract-check]] を参照。
+
 ## 関連ページ
 
 - [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](../heuristics/defensive-code-needs-its-own-failure-path-test.md)
@@ -804,3 +828,4 @@ PR #1970 cycle 2 で追加した TC-15（`.claude/settings.local.json` コピー
 - [PR #1969 cycle 4 fix — pass-message の文言を実際の assertion coverage に合わせて narrowing (新規 assertion 追加ではなく文言修正で解消)](../../raw/fixes/20260722T064426Z-pr-1969.md)
 - [PR #1970 review results (cycle 3, mergeable) — 隔離 scratchpad での mutation test により TC-15 の実効性を実証 (適用 29)](../../raw/reviews/20260722T122232Z-pr-1970-cycle3.md)
 - [PR #1972 review results — テストのみ変更 (branch_remote 経路の回帰テスト追加) で 4 reviewer 全員が独立にスクラッチコピーへの mutation で新規テストの検出力を実証、0 findings / 1 cycle mergeable](../../raw/reviews/20260722T133807Z-pr-1972.md)
+- [PR #1974 fix results (cycle 2) — producer 側 (recorder + guard) の discriminating assert 欠如を安全ゲート剥がし mutation で実測、consumer 側のみのカバレッジでは無検知で通過することを確認 (適用 30)](../../raw/fixes/20260723T021111Z-pr-1974-cycle2.md)

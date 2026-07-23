@@ -1,3 +1,11 @@
+## 2026-07-23
+
+* **Create**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — raw/reviews/20260723T005459Z-pr-1974.md, raw/fixes/20260723T010449Z-pr-1974.md を新規ページ化
+* **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — raw/reviews/20260723T020925Z-pr-1974-cycle2.md を統合 — 複数ファイルに複製されたコメントは実装の段階的進化に追随せず drift しやすい観点を追加
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/fixes/20260723T021111Z-pr-1974-cycle2.md を統合 — 安全ゲートを剥がす mutation は producer 側にも discriminating assert が必要という適用 30 を追加
+* **Create**: [テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする](pages/patterns/awk-flip-flop-range-start-pattern-anchoring.md) — raw/fixes/20260723T031622Z-pr-1974-cycle3.md を新規ページ化
+* **Update**: [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md を統合 — PR #1974 の CRITICAL 1件起点 4-cycle 収束記録を追加
+
 ## 2026-07-22
 
 * **Skip**: [20260721T223012Z-pr-1964.md](raw/reviews/20260721T223012Z-pr-1964.md) — 純粋な docs-only PR で指摘0件。両レビュアーが独立に検出した boundary 推奨（SPEC.md:1404 の記述粒度差）は本 PR スコープ外として Decision Log に記録済みで、新規の経験則・矛盾は抽出できなかった

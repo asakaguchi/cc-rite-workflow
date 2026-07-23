@@ -2,8 +2,10 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-07-22T08:20:00+00:00"
+updated: "2026-07-23T04:14:28Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md"
   - type: "reviews"
     ref: "raw/reviews/20260521T083746Z-pr-1078.md"
   - type: "fixes"
@@ -152,6 +154,17 @@ PR #1151 (`wiki/*` commands の `Phase N` → `ステップ N` heading rename、
 3. **archive doc の front-matter policy violation が cycle 1↔2 revert を発生させる**: cycle 1 fix で over-translation → cycle 2 で F-21 revert → cycle 3 で revert 漏れ tail residue という往復が発生。**reviewer 間で document classification (archive vs current) の認識を共有する仕組み** がないと、同一 file の同一行が cycle を往復する経路を生む (詳細は [Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む](../anti-patterns/archive-doc-frontmatter-policy-violation.md) 参照)
 4. **大規模 rename PR の収束式は `cycle_count ≈ 1 + ⌈log2(tail_residue_density)⌉`**: 本 PR では同 file 内に 8 件分散 → cycle 1 で 6 件 fix → 2 件 tail residue → cycle 2 で 1 件 → cycle 3 で残 1 件、と log2 オーダーで shrinking。経験則として、rename PR の cycle 1 完了時点で **同 file 内の全 `(Phase|ステップ) [0-9]` を pre-fix scan + audit** を導入すれば 4 cycle → 2 cycle に圧縮できる可能性
 
+### PR #1974 (Issue #1945): CRITICAL 1件の共有リソース契約違反から始まる 4-cycle 収束
+
+PR #1974（sandbox 環境での worktree 削除失敗時の自動回収ギャップ解消）は、CRITICAL 1 件（既存共有リソースの type 名前空間を新機能で再利用し既存消費者の契約を見落とす回帰、[[shared-resource-type-reuse-without-consumer-contract-check]] 参照）を起点に、4 cycle で段階的に収束した事例:
+
+- **Cycle 1 (CRITICAL × 1)**: error-handling reviewer の実機再現と prompt-engineer reviewer の文書整合性チェックという異なるアプローチが同一根本原因に収束し高確信度で確定。cycle 1 fix で専用 type 新設による安全な分離を実施
+- **Cycle 2 (MEDIUM × 3)**: cycle 1 修正自体に対し、test / prompt-engineer reviewer が独立に「ドキュメント精度（3 ファイル複製コメントの虚偽記述）」と「producer 側テストカバレッジ欠如（[[mutation-testing-test-fidelity]] 適用 30）」という異なる観点で追加指摘。mutation test の継続適用が両指摘の実証に寄与
+- **Cycle 3 (MEDIUM/HIGH 混在)**: application / error-handling reviewer が独立に、cycle 1-2 で新設したテストヘルパーの awk flip-flop レンジが start pattern の曖昧性で過検出することを発見（[[awk-flip-flop-range-start-pattern-anchoring]] 参照）。同時に prompt-engineer reviewer がテストコメント中の no_journal_comment 原則違反を検出
+- **Cycle 4 (0 findings, mergeable)**: 5 reviewer（security / application / error-handling / test / prompt-engineer）全員が 0 findings で合意。boundary 分類の非ブロッキング推奨事項 6 件は「本 PR のスコープ外」「既存パターンとの一貫性」を理由に修正不要と判断され、Decision Log への記録に留めた
+
+**他の累積収束事例との対比**: CRITICAL 1 件を起点に、各 cycle で異なる検出アプローチ（実機再現 / 文書整合性 / mutation testing）が異なる drift class（契約見落とし → ドキュメント精度・テストカバレッジ → テストヘルパー自体の過検出）を段階的に発掘する構造は、PR #1032 の「drift class が cycle ごとに異なる shrinking pattern」と同型。加えて本 PR は、review-fix loop の中で新設したテストヘルパー自身の検証ロジック（awk flip-flop レンジ）にバグが混入し、そのバグを後続 cycle の reviewer が独立検出する **「対策コード自身が新たな精査対象になる」自己言及的パターン**を実証した。
+
 ## 関連ページ
 
 - [Spec-vs-spec 矛盾は canonical SoT 表記のある側を優先する](../heuristics/spec-vs-spec-canonical-priority.md)
@@ -172,3 +185,4 @@ PR #1151 (`wiki/*` commands の `Phase N` → `ステップ N` heading rename、
 - [PR #1969 cycle 4 review (5-cycle 収束の中間、findings が実装ロジックからテスト scaffolding/文書精度へシフトする finding-cycling を観測)](../../raw/reviews/20260722T063747Z-pr-1969.md)
 - [PR #1969 cycle 4 fix (pass-message narrowing + gitignore 保証の self-contained 化、収束後半典型の surgical fix 2 件)](../../raw/fixes/20260722T064426Z-pr-1969.md)
 - [PR #1969 cycle 6/mergeable review (5-cycle shrinking 4→4→1→2→1→0 で 0 findings 到達、cycle 5 の brace group finding が正しく解消されたことを確認)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)
+- [PR #1974 cycle 4 review (5 reviewer 全員 0 findings、CRITICAL 1 → MEDIUM/HIGH 7 の 4-cycle 収束、boundary 推奨事項 6 件は Decision Log 記録のみ)](../../raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md)

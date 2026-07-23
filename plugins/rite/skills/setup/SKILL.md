@@ -1229,7 +1229,7 @@ fi
 | `failed`（初回） | `dangerouslyDisableSandbox: true` で同一コマンドを一度だけ再試行し、再試行後の marker で再判定 |
 | `failed`（`dangerouslyDisableSandbox: true` 再試行後も失敗） | 下記「フォールバック時のメッセージ」（手動案内）を表示して Phase 4.9 へ |
 
-**自動追加時のメッセージ**（原因の詳細本文は複製せず、要約 + 1 行ポインタに留める）:
+**自動追加時のメッセージ**（原因の詳細本文は複製せず、要約 + 1 行ポインタに留める）。以下のテンプレートをそのまま出力し、要約・言い換え（「〜旨を案内」等の間接話法を含む）をしないこと:
 
 ```
 ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、
@@ -1241,7 +1241,7 @@ fi
    詳細: git-worktree-patterns.md の #1896 対処節を参照
 ```
 
-**フォールバック時のメッセージ**（自動設定に失敗した場合のみ、従来どおり手動設定を案内）:
+**フォールバック時のメッセージ**（自動設定に失敗した場合のみ、従来どおり手動設定を案内）。以下のテンプレートをそのまま出力し、要約・言い換え（「〜旨を案内」等の間接話法を含む）をしないこと:
 
 ```
 ℹ️ sandbox 環境かつ multi_session が有効です。EnterWorktree でセッション worktree へ入場後、
@@ -1284,7 +1284,7 @@ fi
 
 一方 sandbox の有効判定は Phase 4.8 と同じ理由（bash コマンドでは検出できない — sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）により、Claude 自身の実行コンテキスト（system prompt に記述された sandbox のネットワーク許可リスト）を読んで行う。settings ファイルの `sandbox.enabled` を `jq` で読む経路は使わない（Phase 4.8 の判定方針と統一）。
 
-`SSH_ALIAS_REMOTE=yes` **かつ** sandbox 有効の両方が真のときのみ、以下を表示する（原因の因果連鎖や恒久対処の詳細本文は複製せず、要約 + [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) への 1 行ポインタに留める）:
+`SSH_ALIAS_REMOTE=yes` **かつ** sandbox 有効の両方が真のときのみ、以下を表示する（原因の因果連鎖や恒久対処の詳細本文は複製せず、要約 + [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) への 1 行ポインタに留める）。以下のテンプレートをそのまま出力し、要約・言い換え（「〜旨を案内」等の間接話法を含む）をしないこと:
 
 ```
 ℹ️ sandbox 環境かつ origin remote が SSH host alias（{host}）経由です。sandbox 内からの

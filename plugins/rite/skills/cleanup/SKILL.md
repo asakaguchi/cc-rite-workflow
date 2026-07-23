@@ -885,11 +885,16 @@ Status: {projects_status_result}
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、ひとつでも非ブロッキング失敗の付記（⚠️ / ℹ️ で始まる文、`{projects_status_result}` の `⚠️ 更新失敗` 行も含む）を伴うものがあれば、その付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
+`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、ひとつでも非ブロッキング失敗の付記を伴うものがあれば、その付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。対象は以下の 2 種類のみとし、正常フローで頻出する informational な skip 表示は対象外とする（⚠️/ℹ️ を無条件に集約すると `{wiki_ingest_check}` の legitimate skip（`reason=no_pending` 等、pending raw source が無いだけの通常状態）まで拾って AC-3 を壊すため — `{projects_check}` が既に採用している「実失敗のみ対象、skip は対象外」という設計に統一する）:
 
-**marker 完全不在（想定外クラッシュ）の取りこぼし防止**: `{session_worktree_check}` / `{local_branch_check}` / `{review_cleanup_check}` の 3 つは、対応する Step（4-W / 5 / 6）の `[CONTEXT]` marker が一つも出力されない想定外クラッシュ経路でも `x`（成功）として描画される fail-open 設計になっている（該当 3 check の判定ルール自体は変更しない）。このため `{outstanding_items_block}` は上記の「レンダリング済み付記文の走査」に加え、Step 4-W / Step 5 / Step 6 のいずれかで `[CONTEXT]` marker が一つも会話コンテキストに現れなかった場合も検知し、「⚠️ {該当ステップ} の実行結果が確認できませんでした。`git status` / `git branch --list` で状態を確認してください」を件数に算入したうえで列挙に追加する（marker 不在の判定は LLM が該当ステップの bash 出力を確認して行う）。
+- `⚠️` で始まる付記（実失敗を示す。`{projects_status_result}` の `⚠️ 更新失敗` 行も含む）
+- `{session_worktree_check}` / `{local_branch_check}` の `ℹ️` 付記（後続セッションでの回収が必要な残置を示す — 単なる情報共有ではなく回復コマンドを伴う残作業）
 
-いずれの check にも付記が無く、かつ marker 不在の想定外クラッシュも検知されなかった（すべて `x` かつ警告文なし）場合は次の 1 行のみを出力する:
+`{wiki_ingest_check}` の `ℹ️ Wiki ingest スキップ (...)` 行（`reason=disabled` / `auto_ingest_off` / `no_pending` / `concurrent_ingest`）は対象外とする（wiki-ingest 自体が意図的に skip した legitimate 状態であり、未完了の残作業ではない）。
+
+marker 完全不在（対応する Step の `[CONTEXT]` marker が一つも出力されない想定外クラッシュ）の検知は本節では行わない — 各 check の marker 設計は check ごとに異なり（例: `{review_cleanup_check}` は失敗時のみ marker を出す設計で、marker 不在は正常終了と等価。一律に「不在 = 異常」と扱うと正常フローで誤検知する）、既存の per-check 判定ルール（上記チェックリストの各行）が個別に担う責務であり、本節（集約）のスコープ外とする。
+
+いずれの check にも上記 2 種の付記が無い（すべて `x`、または `ℹ️` のみで legitimate skip）場合は次の 1 行のみを出力する:
 
 ```
 - なし（非ブロッキングで継続した失敗はありませんでした）

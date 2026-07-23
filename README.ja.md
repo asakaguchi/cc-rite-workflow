@@ -115,7 +115,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 | `/rite:wiki-init` | Experience Wiki のブランチとディレクトリ構成を初期化 |
 | `/rite:wiki-query` | キーワードに一致する経験則を Wiki ページから検索 |
 | `/rite:wiki-ingest` | Raw Source（レビュー・修正・Issue）を Wiki ページへ取り込み |
-| `/rite:wiki-lint` | 矛盾・陳腐化・孤児・壊れた相互参照を Wiki ページについて lint |
+| `/rite:wiki-lint` | 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照を Wiki ページについて lint |
 | `/rite:recover` | 中断した作業を再開 |
 | `/rite:skill-suggest` | コンテキストを分析し適用可能なスキルを提案 |
 

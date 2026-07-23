@@ -115,7 +115,7 @@ This will:
 | `/rite:wiki-init` | Initialize Experience Wiki branch and directory layout |
 | `/rite:wiki-query` | Query Wiki pages for heuristics matching keywords |
 | `/rite:wiki-ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
-| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, and broken cross-refs |
+| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts, and broken cross-refs |
 | `/rite:recover` | Resume interrupted work |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills |
 

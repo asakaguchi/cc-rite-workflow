@@ -1,3 +1,7 @@
+## 2026-07-24
+
+* **Skip**: [20260723T172336Z-pr-1986.md](raw/reviews/20260723T172336Z-pr-1986.md) — 指摘0件の機械的バージョン文字列更新PR。DRY非該当の判断はHyperFramesのシーン独立アーキテクチャに固有で汎用性が低く、既存の関連ページも無いため経験則化を見送った
+
 ## 2026-07-23
 
 * **Create**: [SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する](pages/anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md) — raw/reviews/20260723T052236Z-pr-1975.md, raw/fixes/20260723T052849Z-pr-1975.md を新規ページ化

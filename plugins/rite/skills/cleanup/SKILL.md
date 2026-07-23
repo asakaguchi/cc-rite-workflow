@@ -885,16 +885,11 @@ Status: {projects_status_result}
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、ひとつでも非ブロッキング失敗の付記を伴うものがあれば、その付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。対象は以下の 2 種類のみとし、正常フローで頻出する informational な skip 表示は対象外とする（⚠️/ℹ️ を無条件に集約すると `{wiki_ingest_check}` の legitimate skip（`reason=no_pending` 等、pending raw source が無いだけの通常状態）まで拾って AC-3 を壊すため — `{projects_check}` が既に採用している「実失敗のみ対象、skip は対象外」という設計に統一する）:
+`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
 
-- `⚠️` で始まる付記（実失敗を示す。`{projects_status_result}` の `⚠️ 更新失敗` 行も含む）
-- `{session_worktree_check}` / `{local_branch_check}` の `ℹ️` 付記（後続セッションでの回収が必要な残置を示す — 単なる情報共有ではなく回復コマンドを伴う残作業）
+判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルール（上記）はいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip（`{wiki_ingest_check}` の `reason=disabled`/`auto_ingest_off`/`no_pending`/`concurrent_ingest` 等）は `x` を割り当てる」という契約を既に持つ。付記文の絵文字 prefix は表示上の飾りに過ぎず（`{local_branch_check}` の `BRANCH_DELETE_FAILED`/`BRANCH_DELETE_UNMERGED` のように prefix を伴わない実失敗付記も存在する）、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。この統一により、prefix の有無に関わらず全 check の実失敗・残作業を漏れなく拾い、かつ legitimate skip（`x` 判定）は自然に除外される（追加の除外ルールは不要）。
 
-`{wiki_ingest_check}` の `ℹ️ Wiki ingest スキップ (...)` 行（`reason=disabled` / `auto_ingest_off` / `no_pending` / `concurrent_ingest`）は対象外とする（wiki-ingest 自体が意図的に skip した legitimate 状態であり、未完了の残作業ではない）。
-
-marker 完全不在（対応する Step の `[CONTEXT]` marker が一つも出力されない想定外クラッシュ）の検知は本節では行わない — 各 check の marker 設計は check ごとに異なり（例: `{review_cleanup_check}` は失敗時のみ marker を出す設計で、marker 不在は正常終了と等価。一律に「不在 = 異常」と扱うと正常フローで誤検知する）、既存の per-check 判定ルール（上記チェックリストの各行）が個別に担う責務であり、本節（集約）のスコープ外とする。
-
-いずれの check にも上記 2 種の付記が無い（すべて `x`、または `ℹ️` のみで legitimate skip）場合は次の 1 行のみを出力する:
+いずれの check も `x`（すべて成功、または legitimate skip）の場合は次の 1 行のみを出力する:
 
 ```
 - なし（非ブロッキングで継続した失敗はありませんでした）

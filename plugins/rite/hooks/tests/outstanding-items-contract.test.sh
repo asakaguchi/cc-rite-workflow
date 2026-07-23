@@ -23,7 +23,7 @@ RECOVER="$SCRIPT_DIR/../../skills/recover/SKILL.md"
 echo "=== cleanup.md ステップ 12: 未完了事項の集約セクション (T-01, T-02) ==="
 assert_grep "Step 12 report has a 未完了事項 section" "$CLEANUP" '^未完了事項:$'
 assert_grep "Step 12 has the {outstanding_items_block} placeholder" "$CLEANUP" '\{outstanding_items_block\}'
-assert_grep "outstanding_items_block rule aggregates the same per-check warnings" "$CLEANUP" 'その付記文をそのまま箇条書きで列挙する'
+assert_grep "outstanding_items_block rule aggregates the same per-check annotations" "$CLEANUP" '付記文をそのまま箇条書きで列挙する'
 # T-01/T-02 感度強化: 6 個の check 名が enumeration 行に「この順序で」列挙されていることを
 # line-anchored pattern で pin する (各 check 名は checklist 本体・判定 prose にも独立に出現するため、
 # assert_grep_in_section によるセクションスコープは同一セクション内の別行にも同語が出現すると
@@ -32,6 +32,12 @@ assert_grep "outstanding_items_block rule aggregates the same per-check warnings
 # 直接 anchor する本方式はこの穴を持たない)。
 assert_grep "outstanding_items_block enumeration lists all 6 checks in order (T-01/T-02, AC-1/AC-2)" \
   "$CLEANUP" '\{base_update_check\}.*\{session_worktree_check\}.*\{local_branch_check\}.*\{projects_check\}.*\{wiki_ingest_check\}.*\{review_cleanup_check\}'
+# 判定基準は絵文字 prefix ではなくチェックボックスの空欄/x であることを pin する。
+# 絵文字 prefix 一致方式は {local_branch_check} の BRANCH_DELETE_FAILED/UNMERGED（prefix 無しの
+# bare-text 付記）を取りこぼし、まさに T-02 が守るべきシナリオ（ブランチ削除失敗）で
+# AC-1/AC-2 を破っていた。チェックボックス基準ならこの取りこぼしが構造的に起きない。
+assert_grep "outstanding_items_block selects by unchecked checkbox, not emoji prefix" "$CLEANUP" 'チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの'
+assert_not_grep "outstanding_items_block no longer relies on an emoji-prefix allowlist" "$CLEANUP" '`⚠️` で始まる付記'
 
 echo "=== cleanup.md ステップ 12: 失敗ゼロ件時の明示 (T-03, AC-3) ==="
 assert_grep "outstanding_items_block emits an explicit 'none' line when clean" "$CLEANUP" 'なし（非ブロッキングで継続した失敗はありませんでした）'

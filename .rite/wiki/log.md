@@ -12,6 +12,8 @@
 * **Skip**: [20260723T073946Z-pr-1977.md](raw/reviews/20260723T073946Z-pr-1977.md) — 指摘ゼロのクリーンレビュー結果のみで、新規の一般化可能な経験則を抽出できない（一時的な情報）
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=278, broken_refs=0
 
+* **Create**: [カテゴリ列挙の圧縮はブロッキング/informational の分類を SoT で確認してから削る](pages/heuristics/enumeration-compression-verify-blocking-classification.md) — raw/reviews/20260723T094207Z-pr-1980.md, raw/fixes/20260723T094612Z-pr-1980.md, raw/reviews/20260723T100548Z-pr-1980-cycle2.md を新規ページ化
+
 ## 2026-07-22
 
 * **Skip**: [20260721T223012Z-pr-1964.md](raw/reviews/20260721T223012Z-pr-1964.md) — 純粋な docs-only PR で指摘0件。両レビュアーが独立に検出した boundary 推奨（SPEC.md:1404 の記述粒度差）は本 PR スコープ外として Decision Log に記録済みで、新規の経験則・矛盾は抽出できなかった

@@ -378,12 +378,19 @@ esac
        echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path={flow_wt}" >&2
        # Issue #1945: このマスク検知は次に control が渡る側（admin dir 半壊 = corpse）の
        # 直接の前兆であり、corpse は checkout 中 branch を git で解決できないため
-       # ステップ 5 のブランチ名 manifest bypass（#1966）が構造的に効かない。パス自体を
+       # pr-cycle-cleanup.sh Step 5 のブランチ名 manifest bypass（#1966）が構造的に効かない。パス自体を
        # 事前に記録しておけば、pr-cycle-cleanup.sh の corpse age guard がこの記録を見て
        # 24h 待ちをバイパスできる（{pr_merged}=true のときのみ — AC-4: 未マージ PR の
        # 強制 cleanup では記録しない）。record 自体は non-blocking 契約（rite-tmp-artifact.sh）。
+       # `--type session_worktree`（`worktree` ではない）: `worktree` type は Step 4.5 の
+       # ungated reap（dirty チェックのみ、claim/self-exclusion/live-cwd ガード無し）が
+       # 消費する EPHEMERAL tmp artifact 専用の契約を持つ。session worktree のパスをそこに
+       # 混ぜると、Step 4.5 が Step 5 の保護ゲートを経ずに生存中の worktree を reap しうる
+       # （"session worktrees go through Step 5's gated reap, never here" 契約違反）。
+       # `session_worktree` type は Step 4.5 の case 文が未知 type として素通しするため、
+       # Step 5 の gated bypass（下記）のみがこの記録を消費する。
        if [ "{pr_merged}" = "true" ]; then
-         bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type worktree --id "{flow_wt}" 2>/dev/null || true
+         bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type session_worktree --id "{flow_wt}" 2>/dev/null || true
        fi
      else
        # git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定し、busy 検出の
@@ -403,10 +410,11 @@ esac
          # 部分破壊し corpse 化した場合、上記マスク検知分岐と同じ理由でブランチ名
          # bypass（#1966）が効かなくなる。パスを reap manifest に記録し、
          # pr-cycle-cleanup.sh の corpse age guard バイパスに委ねる
-         # （{pr_merged}=true のときのみ — AC-4）。非 corpse のまま残った場合は
-         # Step 4.5 の manifest worktree reap（age guard 無し・dirty チェックあり）が拾う。
+         # （{pr_merged}=true のときのみ — AC-4）。`--type session_worktree` を使う理由は
+         # 上記マスク検知分岐のコメントを参照（Step 4.5 の ungated ephemeral-worktree reap
+         # と混ぜず、Step 5 の gated bypass のみに消費させるため）。
          if [ "{pr_merged}" = "true" ]; then
-           bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type worktree --id "{flow_wt}" 2>/dev/null || true
+           bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type session_worktree --id "{flow_wt}" 2>/dev/null || true
          fi
        fi
        [ -n "$_wt_rm_err" ] && rm -f "$_wt_rm_err"
@@ -414,7 +422,7 @@ esac
      fi
      ```
      > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、worktree には自他いずれの cwd も無く `worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op だった経路（`in_worktree_unrecorded` 等）でも、残る live cwd は自セッションのハーネス（`$PPID` subtree）だけなので self-exclusion により rc=1（削除）となり、自己ブロッキングしない。rc=0（遅延）になるのは別セッションのハーネスが実際にこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — Issue #1957。remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（Issue #1923 AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へパスを記録する（Issue #1945）。corpse 化（admin dir 半壊で git がツリーを認識できなくなる状態）した場合、checkout 中 branch が解決不能でブランチ名 bypass（#1966）が構造的に効かないため、パス自体の記録で `pr-cycle-cleanup.sh` の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — Issue #1957。remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（Issue #1923 AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（Issue #1945。`worktree` type ではない — Step 4.5 の ephemeral tmp artifact 専用 ungated reap と混ぜないため）。corpse 化（admin dir 半壊で git がツリーを認識できなくなる状態）した場合、checkout 中 branch が解決不能でブランチ名 bypass（#1966）が構造的に効かないため、パス自体の記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（#1957）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
 

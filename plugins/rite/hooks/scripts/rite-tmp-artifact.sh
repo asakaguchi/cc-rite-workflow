@@ -10,9 +10,17 @@
 # explicitly recorded, so an unrelated user branch/worktree is never touched.
 #
 # Subcommand:
-#   record --type <branch|worktree> --id <value>
+#   record --type <branch|worktree|session_worktree> --id <value>
 #       Append one entry to the manifest. `value` is a local branch name
-#       (type=branch) or an absolute worktree path (type=worktree).
+#       (type=branch) or an absolute worktree path (type=worktree /
+#       type=session_worktree). `worktree` is reserved for EPHEMERAL tmp
+#       artifacts consumed by pr-cycle-cleanup.sh Step 4.5's ungated reap
+#       (dirty-check only — no claim/self-exclusion/live-cwd gates).
+#       `session_worktree` is for `.rite/worktrees/issue-N` paths, consumed
+#       ONLY by Step 5's gated corpse-age-guard bypass (Issue #1945); Step 4.5
+#       does not recognize this type and preserves it verbatim, per the
+#       existing "session worktrees go through Step 5's gated reap, never
+#       here" contract.
 #
 # Data contract (`<shared-root>/.rite/tmp-artifacts.tsv`, TAB-separated):
 #   <type>\t<value>
@@ -35,7 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_REL=".rite/tmp-artifacts.tsv"
 
 usage() {
-  echo "Usage: rite-tmp-artifact.sh record --type <branch|worktree> --id <value>" >&2
+  echo "Usage: rite-tmp-artifact.sh record --type <branch|worktree|session_worktree> --id <value>" >&2
 }
 
 cmd="${1:-}"
@@ -57,8 +65,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$art_type" in
-  branch|worktree) : ;;
-  *) echo "ERROR: --type must be 'branch' or 'worktree' (got '${art_type}')" >&2; exit 1 ;;
+  branch|worktree|session_worktree) : ;;
+  *) echo "ERROR: --type must be 'branch', 'worktree', or 'session_worktree' (got '${art_type}')" >&2; exit 1 ;;
 esac
 if [ -z "$art_id" ]; then
   echo "ERROR: --id is required and must be non-empty" >&2
@@ -96,12 +104,12 @@ case "$art_type" in
         echo "ERROR: branch --id may contain only [A-Za-z0-9._/-]" >&2; exit 1 ;;
     esac
     ;;
-  worktree)
+  worktree|session_worktree)
     # Worktree paths recorded by rite are always absolute (git worktree list /
     # mktemp -d -t emit absolute paths); a relative path here is a producer bug.
     case "$art_id" in
       /*) : ;;
-      *) echo "ERROR: worktree --id must be an absolute path" >&2; exit 1 ;;
+      *) echo "ERROR: $art_type --id must be an absolute path" >&2; exit 1 ;;
     esac
     ;;
 esac

@@ -27,9 +27,26 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-23
+
+### Added
+
+- **`cleanup`/`wiki-ingest`/`batch-run`/`recover` completion reports now aggregate an Outstanding Items section** instead of leaving non-blocking failures (a skipped wiki push, a deferred branch deletion, etc.) scattered only as inline checklist annotations that were easy to miss — the aggregated section states "none" explicitly when there are zero outstanding items. `cleanup` emits a `[cleanup:outstanding:N]` sentinel that `batch-run` rolls up across the whole batch's `--merge` completion notice, and `recover` gained an informational check (only when the resolved phase is `cleanup`/`completed`) that detects unpushed wiki commits or leftover local branches directly from git state. (#1946, #1975)
+
+### Fixed
+
+- **`setup` Phase 4.8/4.9 guidance messages are now output verbatim instead of being paraphrased into indirect reporting language by the executing agent** — an explicit instruction to output the template text verbatim, without summarizing, was added immediately before each message block. (#1976, #1978)
+- **Corpse worktrees (admin-dir half-broken and unrecognized by git) are now reclaimed immediately instead of waiting on the 24h age guard** — `cleanup`'s Step 4-W now records the worktree path to the reap manifest (`.rite/tmp-artifacts.tsv`) whenever removal is skipped (busy failure or sandbox mask) and the PR is confirmed merged, since a corpse worktree can't resolve its checked-out branch for the existing branch-name-based bypass (#1966) to apply. (#1945, #1974)
+- **`pr-review`'s worktree-axis drift detection no longer false-positives from sandbox ghost-mount entries** appearing on only one side of the snapshot/verify comparison — both `post-review-state-verify.sh`'s `current_worktree_hash` and `pr-review`'s Step 4.0.A `ORIG_WTH` now compute through the existing ghost-mount filter (`lib/git-status-filtered.sh`, #1936) instead of raw `git status --porcelain`. (#1944, #1973)
+- **Session worktree creation now duplicates `.claude/settings.local.json`** — `git worktree add` doesn't copy the gitignored `.claude/` directory, so the dogfooding override (`enabledPlugins["rite@rite-marketplace"]: false`) was lost in session worktrees, causing the cached marketplace version of skills to load instead of local changes. `open`'s Step 2.3-W and `ensure_session_worktree`'s branch_local/branch_remote paths both now copy the file when present. (#1943, #1970)
+- **Session-start's lazy reap (`pr-cycle-cleanup.sh`) output is now redirected to `.rite/logs/pr-cycle-cleanup.log`** instead of being discarded, so a silent reap skip (dirty skip, liveness skip, corpse age guard, etc.) can be diagnosed after the fact. (#1968, #1969)
+- **Merged-PR session worktrees and their local branches no longer leak permanently** — once a claim is released, the free-claim path fell into the "mtime under 24h → skip" branch forever, because the worktree root's mtime is refreshed every session by harness `.claude/.cc-writes` churn. The manifest-recorded free-claim path now bypasses that age guard so the next session's reap can reclaim it. (#1966, #1967)
+- **Sandbox mask-mounted worktrees no longer half-break during `cleanup`'s `git worktree remove --force`** — when the sandbox has bind-mounted a character device over the admin dir's `config.worktree`, Step 4-W now detects the mask beforehand and skips the remove attempt entirely (deferring to lazy reap via a `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` marker + WARNING) instead of corrupting the admin dir (missing `HEAD`) into an unrecoverable "not a git repository" state. Lazy reap's Step 5 also gained corpse detection (missing admin `HEAD` AND unrecognized by git) that bypasses Gate 3's previous permanent skip. (#1957, #1959)
+
 ### Changed
 
-- **`setup` Phase 4.8 now auto-configures the sandbox write allowlist instead of only guiding the user to do it manually** — when `multi_session` is enabled and a filesystem-write-restricted sandbox is detected, `/rite:setup` ensures `.claude/settings.local.json` is covered by the repo's `.gitignore` (added if missing — a personal global gitignore alone doesn't protect other contributors) and idempotently appends the main checkout root's absolute path to that file's `sandbox.filesystem.allowWrite` (the shared `.claude/settings.json` is never modified). This resolves the manual-setup burden noted in 0.9.0's Known Limitations. A sandbox-caused write failure is retried once with the sandbox disabled; only a failure that persists after retry falls back to the previous manual-guidance message.
+- **`setup` Phase 4.8 now auto-configures the sandbox write allowlist instead of only guiding the user to do it manually** — when `multi_session` is enabled and a filesystem-write-restricted sandbox is detected, `/rite:setup` ensures `.claude/settings.local.json` is covered by the repo's `.gitignore` (added if missing — a personal global gitignore alone doesn't protect other contributors) and idempotently appends the main checkout root's absolute path to that file's `sandbox.filesystem.allowWrite` (the shared `.claude/settings.json` is never modified). This resolves the manual-setup burden noted in 0.9.0's Known Limitations. A sandbox-caused write failure is retried once with the sandbox disabled; only a failure that persists after retry falls back to the previous manual-guidance message. (#1942, #1965)
+- **`wiki-ingest` now pushes to the `wiki` branch once at the end of the flow instead of after every raw-source commit / lint pass**, cutting sandbox-bypass repetition on SSH host alias remotes (previously up to 8 pushes in one session, some duplicated 11 seconds apart). Per-source commits use a new `--commit-only` mode; a single `--push-only` runs in the new Step 8.6 regardless of `auto_lint`. `wiki-lint`'s standalone invocation is unaffected (still commits and pushes immediately); only its `--auto` (ingest-invoked) path defers to ingest's push. (#1941, #1955)
 
 ## [0.9.0] - 2026-07-21
 
@@ -797,6 +814,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.9.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.1...v0.8.2

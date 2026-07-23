@@ -19,6 +19,10 @@ When `parallel.mode: "worktree"` is set in `rite-config.yml`, each parallel agen
 - [Worktree Cleanup](#worktree-cleanup) - Removal and safety mechanisms
 - [Safety Mechanisms](#safety-mechanisms) - Preventing forgotten worktree removal
 - [Configuration Reference](#configuration-reference) - rite-config.yml settings
+- [SSH host alias 経由の git push/fetch が sandbox のネットワーク許可リストでブロックされる](#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) - Bad Gateway failures when `origin` uses an SSH host alias remote
+- [worktree cwd から main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる](#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) - State writes rejected as read-only filesystem after `EnterWorktree`
+- [sandbox write-allowlist 設定の自動化（Decision Log）](#sandbox-write-allowlist-設定の自動化decision-log) - Why setup Phase 4.8 auto-writes `sandbox.filesystem.allowWrite` instead of guidance-only
+- [sandbox の write-block マスクマウントが git status に幽霊 untracked エントリを生む](#sandbox-の-write-block-マスクマウントが-git-status-に幽霊-untracked-エントリを生む) - Ghost `??` entries from sandbox `/dev/null` bind mounts, not real files
 
 ---
 
@@ -449,10 +453,23 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching
   or nested under the candidate), so a long-lived session cannot delete its own active
   worktree mid-flight; then strict `^issue-[0-9]+$` name under
-  `worktree_base`, claim not live (or absent + mtime > 24h), and a clean
-  `git status --porcelain` (a dirty worktree is never auto-reaped). Reap **never deletes
-  the branch** (push-pending / unpushed work is preserved; branch cleanup stays the
-  responsibility of the normal `cleanup` path).
+  `worktree_base`, claim not live (or absent + mtime > 24h — except a worktree whose
+  checked-out branch is **reap-manifest-recorded**, i.e. cleanup already verified the
+  PR merged and deferred the removal: that explicit "reap me" record bypasses the age
+  guard, since the harness refreshes the worktree root mtime every session and the
+  guard would otherwise leak the deferred tree forever, Issue #1966), and a clean
+  `git status --porcelain` (a dirty worktree is never auto-reaped — the sole exception is
+  an admin-HEAD-missing, git-unrecognized **corpse** whose status is structurally
+  undeterminable: it bypasses the status gate and is reaped, working tree + admin dir,
+  behind the same claim + 24h age guards, Issue #1957). Once the worktree is gone, its
+  branch is recovered rather than left untouched: `git branch -d` (safe-delete) runs
+  first so an unmerged branch is preserved; if that's refused but the reap manifest
+  confirms the PR was merged, `git branch -D` force-deletes it. On any successful
+  recovery (`-d` and `-D` alike) the branch's manifest entry is consumed in the same
+  run (a lingering entry is no longer inert once it also keys
+  the age-guard bypass, Issue #1966); an unmerged,
+  manifest-unrecorded branch is kept with a WARNING (Issue #1670). A corpse's HEAD can't
+  be read, so branch recovery is structurally skipped for it.
 
 ### SSH host alias 経由の `git push`/`fetch` が sandbox のネットワーク許可リストでブロックされる
 
@@ -534,6 +551,104 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
 `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、
 Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響を受けないため、sandbox 有効のまま
 実行する。
+
+### sandbox write-allowlist 設定の自動化（Decision Log）
+
+上記の恒久対処（write 許可リストへ main checkout root を追加）は、当初 `/rite:setup` Phase 4.8 で
+**案内表示のみ**（設定ファイルへの自動書き込みは MUST NOT）としていた。しかし実運用データから、
+この手動設定への依存自体が UX 問題であることが判明したため、Issue #1942 で自動化へ方針転換した。
+
+**根拠データ**: 2026-07-20 の 1 セッションで、許可リスト未設定に起因する state-write バイパス
+（`dangerouslyDisableSandbox: true` の都度実行）が 30〜45 回発生（セッション 73fa87c6=45 回、
+5ea9d2e1=41 回）。同日、ユーザーが手動で許可リストへ main checkout root を追加した結果、以降の
+セッションでは state-write バイパスが 0 回に収束した。恒久対処自体は機能するが、「ユーザーが毎回
+手動で設定する」という導線が UX 上のボトルネックだった。
+
+**比較検討した 3 方向**:
+
+| 方向 | 内容 | 採否 |
+|------|------|------|
+| (a) 案内強化のみ | Phase 4.8 のメッセージに、なぜ必要か（state 共有 + flock 排他設計）の説明とコピペ用 JSON snippet を追加する。設定ファイルへの自動書き込みは行わない | 不採用（単独では） |
+| (b) state root を worktree ローカルへ移す設計変更 | `state-path-resolve.sh` の解決先を main checkout でなく worktree ローカルにし、変更を同期する | **不採用** |
+| (c) 許可リスト設定の自動化 | `/rite:setup` Phase 4.8 が `.claude/settings.local.json` の `sandbox.filesystem.allowWrite` へ main checkout root を idempotent に自動追記する | **採用** |
+
+- **(b) を不採用とした理由**: state root を main checkout に統一しているのは、`state-path-resolve.sh` の
+  flock 排他制御（linked worktree 間で同一ロックファイルを共有し、per-inode の排他を成立させるため）が
+  前提になっている。state root を worktree ローカルに分散させると、この排他設計そのものを作り直す必要が
+  あり、本 Issue の Non-goal「flock 排他設計の無条件廃止」と衝突する。M 複雑度の見積りを超える高い
+  blast radius を持つため見送った。
+- **(c) を採用した理由**: `sandbox.filesystem.allowWrite` は Claude Code 公式ドキュメント
+  （[Configure the sandboxed Bash tool](https://code.claude.com/docs/en/sandboxing.md)）で
+  「These paths are enforced at the OS level」と明記されており、`/sandbox` コマンドでのユーザー
+  操作を経ずに設定ファイルへの記述だけで有効になる。main checkout root は開発者ごとに異なる絶対パス
+  のため、コミットされる `.claude/settings.json` ではなく `.claude/settings.local.json`
+  （ユーザーローカル設定として書き込む意図のファイル）へ書き込む。この判断は、従来の「設定ファイルへの
+  自動書き込みは MUST NOT」という Phase 4.8 の方針を **`.claude/settings.local.json` に限定して**
+  撤回するものであり、コミットされる共有設定（`.claude/settings.json`）を自動変更する話ではない。
+  ただし「ユーザーローカル」という性質は当該リポジトリの `.gitignore` に明示エントリがあって初めて
+  保証される（開発者個人のグローバル gitignore への依存は他の contributor 環境では効かず、機械固有の
+  絶対パスがコミットされる経路が残る）。Phase 4.8 は書込前に対象リポジトリの `.gitignore` へ
+  `.claude/settings.local.json` エントリを保証してから追記する（詳細は
+  [Phase 4.8 本体](../skills/setup/SKILL.md#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942)）。
+  書き込みが sandbox の write 制限で失敗しても bash 呼び出し自体は正常終了しうる（`else` 節に落ちて
+  marker のみ `failed` になる）ため、再試行の要否は「コマンド自体の失敗」ではなく marker の値で判定する
+  — `failed` であれば理由を問わず `dangerouslyDisableSandbox: true` で一度だけ再試行し、それでも
+  `failed` の場合のみ非 blocking で従来の手動案内メッセージへフォールバックする。
+- **反映タイミングの不確実性**: 設定変更が同一セッション内で即座に反映されるか、Claude Code の
+  再起動が必要かは公式ドキュメントで明言されていない。安全側に倒し、案内メッセージでは「次回セッション
+  から有効になる場合がある」旨を明記する。
+
+### sandbox の write-block マスクマウントが `git status` に幽霊 untracked エントリを生む
+
+sandbox が有効な環境（worktree の内外を問わない）では、`git status` にリポジトリ直下の `.bashrc` /
+`.gitconfig` / `.claude/settings.json` / `.mcp.json` 等が `??`（未追跡）として列挙されることがある。
+これは実在の未追跡ファイルではない。
+
+**症状**:
+
+```
+$ git status --short
+?? .bashrc
+?? .gitconfig
+?? .claude/settings.json
+?? .mcp.json
+```
+
+```
+$ ls -la .bashrc
+crw-rw-rw- 1 nobody nogroup 1, 3  7月 20 09:39 .bashrc
+```
+
+`ls -la` の1桁目が `c`（character device）になっている点に注目する。通常ファイルであれば `-` になる。
+
+**原因**: Bash tool の sandbox write-block 機構は、書き込みを拒否したい保護対象パス（シェル
+dotfile、`.claude/settings.json`、`.mcp.json` 等）へ `/dev/null` のキャラクタデバイスを bind mount
+する。結果としてそのパス上には実ファイルではなくデバイスノードが存在する状態になり、`git status` は
+これを「git 管理外の新規パス」として `??` に分類する。しかし対象は実ファイルの内容変化ではなくデバイス
+ノードであり、作業ツリーの実体は変化していない（sandbox 外で同じ `git status` を実行すると clean に
+なる）。
+
+**列挙は例示であり網羅ではない**: 上記のパスは観測された一例に過ぎず、どのパスが保護対象になるかは
+sandbox 設定に依存して変わる。ファイル名の allowlist で判定してはならない。判定は常に下記の機構ベース
+（`test -c`）で行う。
+
+**実在確認手順**:
+
+- 当該パスがキャラクタデバイスかどうかを判定する: `test -c <path> && echo "ghost mount" || echo "real file"`
+- または sandbox の外側（通常のシェル）で同じ `git status` を実行し、差分が実在するか確認する
+
+**canonical な判定経路**: dirty 判定を行う hook / script は `hooks/scripts/lib/git-status-filtered.sh`
+を経由する。この helper は `git status --porcelain -z` の出力のうち `??` エントリで `test -c` により
+キャラクタデバイスと判定されたものだけを機械的に除外し、それ以外の全ステータス（staged / unstaged /
+unmerged / renamed / copied）はそのまま通す。ファイル名 allowlist を持たない機構ベース設計のため、
+sandbox 設定が変わっても追随できる。
+
+**実行エージェントへの指示**: この現象で列挙される `??` エントリを「未追跡ファイルの異常」「リポジトリ
+汚染」として報告しない。削除・`git add`・コミットを試みない。dirty 判定が必要な箇所では `git status`
+を直接パースせず `git-status-filtered.sh` を使う。
+
+**関連 Issue**: #1936（`git-status-filtered.sh` 導入元）/ #1944（drift-hash 経路の sandbox 内外
+コンテキスト混在による誤警報の残件、本節の対象外）
 
 > **Canonical spec**: This file documents the operational *patterns*; the canonical
 > runtime specification for the session-worktree layer (lifecycle, claim, reap,

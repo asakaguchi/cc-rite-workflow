@@ -79,11 +79,13 @@ setup_wiki_worktree() {
     || { echo "FAIL: setup_wiki_worktree failed (branch/bare/remote/push/worktree)" >&2; exit 1; }
 }
 
-# Drop an untracked page under the worktree's .rite/wiki tree.
+# Drop an untracked page under the worktree's .rite/wiki tree. NAME defaults
+# to test.md (existing single-page callers); pass a distinct NAME per call to
+# simulate multiple raw-source pages landing in one ingest run (#1941).
 add_pending() {
-  local repo="$1"
+  local repo="$1" name="${2:-test.md}"
   mkdir -p "$repo/.rite/wiki-worktree/.rite/wiki/pages"
-  printf '# test page\n' > "$repo/.rite/wiki-worktree/.rite/wiki/pages/test.md"
+  printf '# test page (%s)\n' "$name" > "$repo/.rite/wiki-worktree/.rite/wiki/pages/$name"
 }
 
 run_in() { local repo="$1"; shift; ( cd "$repo" && bash "$SCRIPT" "$@" ) 2>/dev/null; }
@@ -171,5 +173,104 @@ if git -C "$commit_repo" ls-tree -r --name-only wiki | grep -q '.rite/wiki/pages
 else
   fail "committed page not found on wiki branch"
 fi
+
+# --- --commit-only / --push-only: batch/defer push (#1941) -------------------
+# AC-1: a caller processing several raw sources commits each one locally
+# (--commit-only) and pushes ONCE (--push-only) instead of once per commit.
+
+# --commit-only lands the commit locally but does NOT push (origin/wiki stays put).
+commitonly_repo="$(new_repo true)"; SANDBOXES+=("$commitonly_repo")
+setup_wiki_worktree "$commitonly_repo"
+add_pending "$commitonly_repo" page1.md
+origin_before_co="$(git -C "$commitonly_repo" rev-parse origin/wiki)"
+co_out="$(run_in "$commitonly_repo" --commit-only)"
+if printf '%s' "$co_out" | grep -qE 'committed=1; branch=wiki;.*push=deferred'; then
+  pass "--commit-only reports committed=1 + push=deferred"
+else
+  fail "expected committed=1 + push=deferred; got: $co_out"
+fi
+origin_after_co="$(git -C "$commitonly_repo" rev-parse origin/wiki)"
+assert "--commit-only does not advance origin/wiki (push deferred, 0 pushes)" \
+  "$origin_before_co" "$origin_after_co"
+wiki_after_co="$(git -C "$commitonly_repo" rev-parse wiki)"
+assert "--commit-only advances the local wiki branch" \
+  "advanced" \
+  "$([ "$origin_before_co" != "$wiki_after_co" ] && echo advanced || echo unchanged)"
+
+# --push-only then pushes what --commit-only landed locally.
+po_out="$(run_in "$commitonly_repo" --push-only)"
+if printf '%s' "$po_out" | grep -qE 'branch=wiki;.*push=ok'; then
+  pass "--push-only reports push=ok"
+else
+  fail "expected push=ok; got: $po_out"
+fi
+origin_after_po="$(git -C "$commitonly_repo" rev-parse origin/wiki)"
+assert "--push-only advances origin/wiki to match local wiki HEAD" \
+  "$wiki_after_co" "$origin_after_po"
+
+# A second --push-only with nothing new to send self-gates to no-op (no network call).
+noop_out="$(run_in "$commitonly_repo" --push-only)"
+if printf '%s' "$noop_out" | grep -qE 'push=no-op'; then
+  pass "--push-only self-gates to push=no-op when nothing is ahead of origin"
+else
+  fail "expected push=no-op on a second --push-only call; got: $noop_out"
+fi
+
+# --- commit-only x N then push-only x 1 -> exactly one push lands all N commits ---
+# (#1941 AC-1 proxy: count actual `git push` invocations landing on the bare
+# origin via a post-receive hook, rather than inferring it from script output.)
+countpush_repo="$(new_repo true)"; SANDBOXES+=("$countpush_repo")
+setup_wiki_worktree "$countpush_repo"
+bare_dir="$(git -C "$countpush_repo" remote get-url origin)"
+push_count_file="$(mktemp)"; SANDBOXES+=("$push_count_file")
+cat > "$bare_dir/hooks/post-receive" <<HOOK
+#!/bin/sh
+echo push >> "$push_count_file"
+HOOK
+chmod +x "$bare_dir/hooks/post-receive"
+
+for i in 1 2 3; do
+  add_pending "$countpush_repo" "page-$i.md"
+  run_in "$countpush_repo" --commit-only --message "chore(wiki): page $i" >/dev/null
+done
+run_in "$countpush_repo" --push-only >/dev/null
+
+push_events="$(wc -l < "$push_count_file" | tr -d '[:space:]')"
+assert "3 commit-only commits + 1 push-only call -> exactly 1 push lands (#1941 AC-1)" \
+  "1" "$push_events"
+pages_on_wiki="$(git -C "$countpush_repo" ls-tree -r --name-only wiki | grep -c '\.rite/wiki/pages/page-' || true)"
+assert "all 3 commit-only commits are present on the wiki branch" "3" "$pages_on_wiki"
+assert "origin/wiki matches local wiki HEAD after the single push" \
+  "$(git -C "$countpush_repo" rev-parse wiki)" "$(git -C "$countpush_repo" rev-parse origin/wiki)"
+
+# --- --push-only failure (non-NFF): local commit survives, exit 4, no retry ---
+# (#1941 AC-2/AC-3: a failed deferred push does not lose the local commit and
+# is not auto-retried within the same call. The "no retry on non-NFF" internal
+# behavior itself is already pinned at the lib level by
+# worktree-git-nff-retry.test.sh TC-3; this test pins the wiki-worktree-commit.sh
+# integration contract: push=failed + local commit preserved.)
+pushfail_repo="$(new_repo true)"; SANDBOXES+=("$pushfail_repo")
+setup_wiki_worktree "$pushfail_repo"
+bogus_origin="$(mktemp -d)"; SANDBOXES+=("$bogus_origin")
+git -C "$pushfail_repo" remote set-url origin "$bogus_origin"
+add_pending "$pushfail_repo" pageX.md
+run_in "$pushfail_repo" --commit-only >/dev/null
+wiki_head_before_push="$(git -C "$pushfail_repo" rev-parse wiki)"
+pf_out="$(run_in "$pushfail_repo" --push-only)"; pf_rc=$?
+assert "--push-only against an unreachable origin exits 4" "4" "$pf_rc"
+if printf '%s' "$pf_out" | grep -qE 'push=failed'; then
+  pass "--push-only reports push=failed for a non-NFF failure"
+else
+  fail "expected push=failed; got: $pf_out"
+fi
+wiki_head_after_push="$(git -C "$pushfail_repo" rev-parse wiki)"
+assert "local wiki commit survives a failed deferred push" \
+  "$wiki_head_before_push" "$wiki_head_after_push"
+
+# --- --commit-only / --push-only mutual exclusivity + --dry-run guard --------
+assert "--commit-only and --push-only together exits 1" "1" \
+  "$(rc_in "$nopending_repo" --commit-only --push-only)"
+assert "--push-only with --dry-run exits 1" "1" \
+  "$(rc_in "$nopending_repo" --push-only --dry-run)"
 
 print_summary "wiki-worktree-commit.sh"

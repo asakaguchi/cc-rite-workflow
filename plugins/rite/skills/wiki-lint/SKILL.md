@@ -773,6 +773,24 @@ if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
   exit 0
 fi
 
+# Claude placeholder {mode} 残留 fail-fast gate (同型 gate: ステップ 1.1 / 1.3)。#1941 wiki push
+# batch/defer: --auto (ingest から呼ばれた) なら push を ingest 側の集約 push (ingest.md ステップ 8.6)
+# に委ね、ここでは --commit-only で commit のみ行う。standalone 実行 (mode 空) は従来どおり commit + push
+# を即座に行う (standalone lint はそれ自身で完結した 1 フローのため、集約する相手が存在しない)。
+mode="{mode}"
+case "$mode" in
+  "{"*"}")
+    echo "ERROR: ステップ 8.3 の {mode} placeholder が literal substitute されていません (値: '$mode')" >&2
+    echo "  Claude は lint skill 呼び出し時の args 文字列 (--auto / 空) を literal で置換する必要があります" >&2
+    exit 1
+    ;;
+esac
+if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
+  auto_mode=true
+else
+  auto_mode=false
+fi
+
 # {log_entry} placeholder 残留検知 fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7))
 log_entry="{log_entry}"
 case "$log_entry" in
@@ -794,7 +812,14 @@ case "$branch_strategy" in
     # set -euo pipefail 下で commit_out=$(bash ...) が rc != 0 のとき bash が即時 exit する罠を回避。
     # set +e で囲み rc capture を保証する。2>&1 は付けない (構造化 stdout / WARNING stderr の責務分離維持)。
     set +e
-    commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
+    if [ "$auto_mode" = "true" ]; then
+      # --auto: ingest から呼ばれている。push は ingest.md ステップ 8.6 の集約 push に委ね、
+      # ここでは commit のみ行う (#1941 AC-1)。
+      commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message "$commit_msg")
+    else
+      # standalone: この lint 実行自身が唯一のフローのため、従来どおり即座に commit + push する。
+      commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
+    fi
     commit_rc=$?
     set -e
     echo "$commit_out"
@@ -803,7 +828,7 @@ case "$branch_strategy" in
       0) : ;;
       2) echo "[CONTEXT] WIKI_LINT_COMMIT=skipped; reason=wiki-disabled-or-no-pending" >&2 ;;
       3) echo "WARNING: wiki-worktree-commit.sh で git 操作失敗 (rc=3)。log.md 追記は非ブロッキングのため継続します" >&2 ;;
-      4) echo "WARNING: wiki-worktree-commit.sh で commit landed but push 失敗 (rc=4)。次回再 push が必要" >&2 ;;
+      4) echo "WARNING: wiki-worktree-commit.sh で commit landed but push 失敗 (rc=4)。次回再 push が必要 (standalone 実行時のみ到達 — --commit-only は push を行わない)" >&2 ;;
       *) echo "WARNING: wiki-worktree-commit.sh が予期しない rc=$commit_rc で失敗しました。log.md 追記は非ブロッキングのため継続します" >&2 ;;
     esac
     ;;
@@ -984,7 +1009,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 - **原則 exit 0**: 検出件数・事前チェック失敗・ブランチ読取失敗のいずれも非ブロッキング
 - **例外 (`exit 1` fail-fast)**:
   - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7) で同型。設定ミスの silent 通過防止)
-  - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3)
+  - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 / 8.3)
   - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 の partial pollution gate、LLM substitute 忘れによる silent 誤分類防止。各 helper 内で検知)
   - ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数検知 (silent `lint:clean` 誤 emit 防止)
   - ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種、literal 残留 commit landed 防止)
@@ -1000,7 +1025,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
 | GNU date 非互換環境 | 陳腐化検出 skip（exit 0 + WARNING + `stale_check_ok=skipped_no_gnu_date`） | ステップ 4 (helper 内) |
 | Wiki 未初期化 | `/rite:wiki-init` を案内 (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0) | ステップ 1.3 |
-| `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 |
+| `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 / 8.3 |
 | helper 委譲ステップの placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 の partial pollution) | **exit 1 で fail-fast** (silent 誤分類防止、各 helper 内で検知) | ステップ 4 / 5 / 6.0 / 6.2 / 7 |
 | ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数 | **exit 1 で fail-fast** (silent `lint:clean` 誤 emit 防止) | ステップ 8.1 |
 | ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種) | **exit 1 で fail-fast** (literal 残留 commit landed 防止) | ステップ 8.3 |

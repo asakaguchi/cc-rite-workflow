@@ -1,5 +1,5 @@
 #!/bin/bash
-# T-2: 4 reviewer (security/database/devops/dependencies) で scope=nit-noted 禁止が明記
+# T-2: 4 reviewer (security/application/devops/dependencies) で scope=nit-noted 禁止が明記
 #
 # Verification:
 #   - _reviewer-base.md の Scope Assignment Flowchart 内の Hypothetical Exception カテゴリ節に
@@ -26,7 +26,7 @@ assert_grep "_reviewer-base.md: '### Hypothetical Exception カテゴリの nit-
   '^### Hypothetical Exception カテゴリの nit-noted 禁止$'
 
 # 2. 4 reviewer 名がすべて _reviewer-base.md の該当節に登場
-for r in security database devops dependencies; do
+for r in security application devops dependencies; do
   assert_grep_in_section "_reviewer-base.md Hypothetical Exception section: $r reviewer reference" \
     "$BASE_FILE" \
     '^### Hypothetical Exception カテゴリの nit-noted 禁止$' \
@@ -40,7 +40,7 @@ assert_grep "severity-levels.md: '### Hypothetical Exception カテゴリの sco
   '^### Hypothetical Exception カテゴリの scope 制約$'
 
 # 4. 4 reviewer 名と nit-noted 禁止記述が severity-levels.md に列挙
-for r in security database devops dependencies; do
+for r in security application devops dependencies; do
   assert_grep_in_section "severity-levels.md scope 制約 section: $r reviewer reference" \
     "$SEVERITY_FILE" \
     '^### Hypothetical Exception カテゴリの scope 制約$' \

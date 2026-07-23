@@ -146,7 +146,7 @@ multi_session:
   1. `git status --porcelain` で dirty 確認。dirty なら AskUserQuestion（stash して続行 / 中止）。stash は common git dir 格納のため worktree 削除後も `git stash pop` 可能。
   2. `ExitWorktree(action: "keep")` で main checkout に復帰（path 入場 worktree は remove でも消えない仕様のため常に keep）。
   3. main から `git worktree remove {path}` → `git worktree prune`。
-  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。
+  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。sandbox が admin dir の `config.worktree` にマスクマウントを張っている場合（Issue #1957）は remove 試行自体が admin dir を半壊させるため、削除前に検知して remove を**一切実行せず** `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` を表示して遅延 reap へ委譲する。
   5. 冪等性: main から再実行された場合は cwd 判定で 1〜2 をスキップ。worktree 既削除なら 3 もスキップ。
 - **Step 4（base pull）の安全化**: main checkout が `{base}` 上にある場合のみ `git pull --ff-only origin {base}`（index.lock 競合 3 回リトライ）。
   別 branch 上なら **switch せず WARNING + skip**（WARNING 文面に「main checkout を {base} に戻す」復旧手順を含める）。従来モード（enabled=false）は現行動作を維持。
@@ -208,14 +208,14 @@ multi_session:
 3 ゲート全通過時のみ reap:
 
 1. `{worktree_base}` 配下かつディレクトリ名が `^issue-[0-9]+$` に**完全一致**（strict regex doctrine 踏襲）
-2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）
-3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）
+2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）。例外（Issue #1966）: checkout 中 branch が **reap manifest に記録済み**（= cleanup.md が PR merged を確認して記録した deferred worktree — cleanup は claim を無条件解放するため必ず claim 不在でここに到達する）なら age guard を**バイパス**して即 reap する。ハーネスが worktree root の mtime をセッション毎に更新（`.claude/.cc-writes` churn）するため、age guard 単独では merged 済み deferred worktree が永久リークする
+3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）。例外（Issue #1957）: **corpse**（admin dir の `HEAD` 欠落 + git 非認識の AND — sandbox マスク下の remove が半壊させた残骸）は status 判定が構造的に不可能なため本ゲートをバイパスし、claim 非 live + 24h age guard 通過後に `rm -rf`（working tree + admin dir）+ `prune` で回収する（HEAD 存在で status rc≠0 のものは従来どおり安全側 skip）
 
 **Gate 0 — self-exclusion（後続で追加された第 4 の保護層）**: 上記 3 ゲートの**前段**に、実行中の自セッション worktree（起動時 cwd、または `RITE_WORKTREE` env が候補 worktree と一致/配下）を reap 対象から除外するガードを設ける。long-lived セッションが review 開始時（review.md Step 1.0.0）に**自分の作業中 worktree**（clean かつ claim free/stale で 3 ゲートを全通過しうる）を削除する事故を防ぐ。dirty(3)/claim(2) 保護とは独立した第 4 の保護層。
 
 処理は既存 `_reap_mutation_worktree` と同型: `git worktree remove --force` → fallback `rm -rf` → `git worktree prune` + 対応 claim ファイル削除。
 
-**branch recovery（Issue #1670 で精緻化）**: 初期設計は「branch は削除しない（作業保全）」だったが、これだと cleanup.md が別 live セッションの在席で削除を遅延した feature ブランチが回収経路を持たず永久残置（dead-letter）した。現在は worktree reap 後にその branch を**安全に回収**する: `git branch -d`（safe — 未マージは拒否するため**未マージ作業は破壊しない**）を第一手とし、`-d` が squash-merge 残渣で拒否しても **reap manifest に記録された branch**（cleanup.md が PR merged を確認して `rite-tmp-artifact.sh record --type branch` で記録）のみ `git branch -D` で強制削除する。manifest 未記録の未マージ branch は WARNING を出して保持する。これにより「branch は保全」方針は「**merge 確認済み branch のみ回収・未マージ作業は破壊しない**」へと精緻化された。
+**branch recovery（Issue #1670 で精緻化）**: 初期設計は「branch は削除しない（作業保全）」だったが、これだと cleanup.md が別 live セッションの在席で削除を遅延した feature ブランチが回収経路を持たず永久残置（dead-letter）した。現在は worktree reap 後にその branch を**安全に回収**する: `git branch -d`（safe — 未マージは拒否するため**未マージ作業は破壊しない**）を第一手とし、`-d` が squash-merge 残渣で拒否しても **reap manifest に記録された branch**（cleanup.md が PR merged を確認して `rite-tmp-artifact.sh record --type branch` で記録）のみ `git branch -D` で強制削除する。manifest 未記録の未マージ branch は WARNING を出して保持する。これにより「branch は保全」方針は「**merge 確認済み branch のみ回収・未マージ作業は破壊しない**」へと精緻化された。manifest 記録は branch の強制削除だけでなく **worktree reap 自体の free-claim age guard バイパス**もライセンスする（Issue #1966、ゲート 2 の例外を参照）。branch 回収の成功時（`-d` / `-D` のいずれも）は manifest エントリを**同一 run 内で即時消費**する — バイパス導入後は残存エントリが不活性でなくなる（同名 branch が claim-free の新 worktree に再作成された場合にバイパスを継承しうる）ため、従来の「次 run の Step 4.5 verify-drop による自己修復」依存をやめた。消費は best-effort（mktemp / 書き戻し失敗時は WARNING を出して自己修復にフォールバック。silent には失敗しない）。
 
 トリガー: cleanup.md の既存 `pr-cycle-cleanup.sh` 呼び出しに内包 + `session-start.sh`（main checkout 起動時）から `|| true` の best-effort 呼び出し
 （worktree list + status check のみの軽量処理で hook timeout 30s 内に収まることをテストで担保）。

@@ -1373,6 +1373,169 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-1968: lazy reap output redirected to log file instead of discarded (#1968)
+# --------------------------------------------------------------------------
+echo "TC-1968-01 (AC-1): reap output is captured to .rite/logs/pr-cycle-cleanup.log"
+dir_reap_ac1="$TEST_DIR/reap-ac1"
+mkdir -p "$dir_reap_ac1"
+(cd "$dir_reap_ac1" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# TMPDIR isolation: a real git fixture lets reap run to completion, which also
+# triggers pr-cycle-cleanup.sh's orphan-workdir sweep under ${TMPDIR:-/tmp}. An
+# isolated TMPDIR keeps that sweep from touching the host's real temp dir.
+iso_tmpdir_ac1="$TEST_DIR/reap-ac1-tmpdir"
+mkdir -p "$iso_tmpdir_ac1"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac1\"}" | TMPDIR="$iso_tmpdir_ac1" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if grep -q '\[pr-cycle-cleanup\] status=' "$dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null; then
+  pass "TC-1968-01: reap status line written to .rite/logs/pr-cycle-cleanup.log"
+else
+  fail "TC-1968-01: expected [pr-cycle-cleanup] status= line at $dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log, got: $(cat "$dir_reap_ac1/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)"
+fi
+echo ""
+
+echo "TC-1968-02 (AC-2): reap output does not leak into hook stdout"
+dir_reap_ac2="$TEST_DIR/reap-ac2"
+mkdir -p "$dir_reap_ac2"
+(cd "$dir_reap_ac2" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+iso_tmpdir_ac2="$TEST_DIR/reap-ac2-tmpdir"
+mkdir -p "$iso_tmpdir_ac2"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_reap_ac2\"}" | TMPDIR="$iso_tmpdir_ac2" bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! printf '%s' "$output" | grep -q '\[pr-cycle-cleanup\]'; then
+  pass "TC-1968-02: hook stdout does not contain reap output"
+else
+  fail "TC-1968-02: reap output leaked into hook stdout: $output"
+fi
+echo ""
+
+echo "TC-1968-03 (AC-3): log dir creation failure falls back to discard, hook still exits 0"
+dir_reap_ac3="$TEST_DIR/reap-ac3"
+mkdir -p "$dir_reap_ac3/.rite"
+# A file named "logs" at the target path blocks `mkdir -p .../.rite/logs`,
+# forcing the fallback-to-discard branch without disturbing other .rite/ state.
+touch "$dir_reap_ac3/.rite/logs"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac3\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_03=$?
+# Assert the fallback branch actually ran: mkdir -p must have failed (the path
+# is still the file we touched, not a directory), not just "exit 0 either way".
+if [ "$rc1968_03" -eq 0 ] && [ -f "$dir_reap_ac3/.rite/logs" ] && [ ! -d "$dir_reap_ac3/.rite/logs" ]; then
+  pass "TC-1968-03: hook exits 0 with mkdir failure intact (fallback branch not directly asserted)"
+else
+  fail "TC-1968-03: expected exit 0 with mkdir failure intact, got rc=$rc1968_03, .rite/logs is $([ -d "$dir_reap_ac3/.rite/logs" ] && echo dir || echo not-a-dir)"
+fi
+echo ""
+
+echo "TC-1968-05 (AC-1): a reap WARNING line (not just the status line) is captured to the log"
+dir_reap_ac5="$TEST_DIR/reap-ac5"
+mkdir -p "$dir_reap_ac5"
+(cd "$dir_reap_ac5" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+iso_tmpdir_ac5="$TEST_DIR/reap-ac5-tmpdir"
+mkdir -p "$iso_tmpdir_ac5"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+# An invalid RITE_SESSION_LIVENESS_TTL_HOURS is the lightest-weight way to make
+# pr-cycle-cleanup.sh emit a WARNING line (no worktree/manifest fixture needed) —
+# AC-1 names "WARNING / status" lines, and TC-1968-01 only exercises the latter.
+echo "{\"cwd\": \"$dir_reap_ac5\"}" | TMPDIR="$iso_tmpdir_ac5" RITE_SESSION_LIVENESS_TTL_HOURS="invalid" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if grep -q '^WARNING:' "$dir_reap_ac5/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null; then
+  pass "TC-1968-05: reap WARNING line captured to log"
+else
+  fail "TC-1968-05: expected a WARNING line in $dir_reap_ac5/.rite/logs/pr-cycle-cleanup.log, got: $(cat "$dir_reap_ac5/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)"
+fi
+echo ""
+
+echo "TC-1968-06 (AC-3): mkdir succeeds but the log file itself is not writable → falls back to discard"
+dir_reap_ac6="$TEST_DIR/reap-ac6"
+mkdir -p "$dir_reap_ac6/.rite/logs"
+# Existing read-only dir: mkdir -p is a no-op success even though writes inside
+# it fail — the exact gap the writability probe (`{ : > file; } 2>/dev/null`)
+# in session-start.sh closes.
+chmod 555 "$dir_reap_ac6/.rite/logs"
+# Verify chmod actually enforces read-only for this user/filesystem before
+# asserting on the hook's behavior: root bypasses DAC bits entirely, and some
+# filesystems (WSL2 DrvFs, certain overlay/container mounts) don't enforce
+# owner write bits either — in either case a probe write here would silently
+# succeed, making the assertion below meaningless rather than a real check.
+# Braced so the open-failure message (not just the `:` command's own stderr)
+# is captured by the redirect too — same pattern as session-start.sh's probe.
+if { : > "$dir_reap_ac6/.rite/logs/.write-probe"; } 2>/dev/null; then
+  rm -f "$dir_reap_ac6/.rite/logs/.write-probe"
+  pass "TC-1968-06: filesystem/user does not enforce chmod 555 here — skipping assertion (not a real read-only dir on this host)"
+else
+  LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+  echo "{\"cwd\": \"$dir_reap_ac6\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_06=$?
+  # A naive `if mkdir -p ...; then` (without the writability probe) would still
+  # leave no log file here (the later `>file` redirect fails too), so absence of
+  # the log file alone can't distinguish the fix from the bug it closes. What
+  # distinguishes them: with the probe, the redirect that touches the read-only
+  # dir is `{ : > file; } 2>/dev/null` (silenced); without it, the *reap
+  # invocation's own* redirect (`>file 2>&1`, no local silencing) would fail and
+  # bash would print its own "cannot create/Permission denied" line — with a
+  # `session-start.sh: line N:` prefix — to the hook's stderr.
+  if [ "$rc1968_06" -eq 0 ] && [ ! -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] \
+       && ! grep -qE 'session-start\.sh: (line|行) [0-9]+:' "$LAST_STDERR_FILE"; then
+    pass "TC-1968-06: hook exits 0, falls back to discard, and no bash redirect error leaks to stderr"
+  else
+    fail "TC-1968-06: expected exit 0, no log file, no bash redirect error; got rc=$rc1968_06, log exists: $([ -e "$dir_reap_ac6/.rite/logs/pr-cycle-cleanup.log" ] && echo yes || echo no), stderr: $(cat "$LAST_STDERR_FILE")"
+  fi
+fi
+chmod 755 "$dir_reap_ac6/.rite/logs" 2>/dev/null || true
+echo ""
+
+echo "TC-1968-04 (AC-4): reap not invoked from a worktree-rooted CWD → log left untouched"
+main_repo_1968="$TEST_DIR/reap-ac4-main"
+mkdir -p "$main_repo_1968"
+(cd "$main_repo_1968" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+wt_1968="$TEST_DIR/reap-ac4-wt"
+(cd "$main_repo_1968" && git worktree add -q -b "feat/issue-1968-test" "$wt_1968") >/dev/null 2>&1
+mkdir -p "$main_repo_1968/.rite/logs"
+echo "PRE-EXISTING" > "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$wt_1968\"}" | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if [ "$(cat "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)" = "PRE-EXISTING" ]; then
+  pass "TC-1968-04: reap not invoked from worktree cwd → main-repo log unchanged"
+else
+  fail "TC-1968-04: main-repo log was modified even though reap should not run from a worktree cwd: $(cat "$main_repo_1968/.rite/logs/pr-cycle-cleanup.log" 2>/dev/null)"
+fi
+echo ""
+
+echo "TC-1968-07 (self-contained gitignore): reap log dir gets its own .gitignore (*) on first creation"
+dir_reap_ac7="$TEST_DIR/reap-ac7"
+mkdir -p "$dir_reap_ac7"
+(cd "$dir_reap_ac7" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# TMPDIR isolation: same rationale as TC-1968-01/02/05 (real git fixture lets reap
+# complete, which also triggers the orphan-workdir sweep under ${TMPDIR:-/tmp}).
+iso_tmpdir_ac7="$TEST_DIR/reap-ac7-tmpdir"
+mkdir -p "$iso_tmpdir_ac7"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac7\"}" | TMPDIR="$iso_tmpdir_ac7" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if [ "$(cat "$dir_reap_ac7/.rite/logs/.gitignore" 2>/dev/null)" = "*" ]; then
+  pass "TC-1968-07: .rite/logs/.gitignore created with content '*' (self-excludes without relying on downstream setup coverage)"
+else
+  fail "TC-1968-07: expected .rite/logs/.gitignore with content '*', got: $(cat "$dir_reap_ac7/.rite/logs/.gitignore" 2>/dev/null)"
+fi
+echo ""
+
+echo "TC-1968-08 (regression: .gitignore write failure does not leak a bash redirect error): .gitignore path collides with a directory"
+dir_reap_ac8="$TEST_DIR/reap-ac8"
+mkdir -p "$dir_reap_ac8"
+(cd "$dir_reap_ac8" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# Name collision: pre-create .gitignore as a directory so the `-f` check is
+# false (attempt proceeds) but the printf redirect fails (can't write a file
+# where a directory exists) — same failure shape as the read-only-dir case in
+# TC-1968-06, without needing DAC bits (portable across root/WSL2/overlayfs).
+mkdir -p "$dir_reap_ac8/.rite/logs/.gitignore"
+iso_tmpdir_ac8="$TEST_DIR/reap-ac8-tmpdir"
+mkdir -p "$iso_tmpdir_ac8"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_reap_ac8\"}" | TMPDIR="$iso_tmpdir_ac8" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1968_08=$?
+if [ "$rc1968_08" -eq 0 ] && ! grep -qE 'session-start\.sh: (line|行) [0-9]+:' "$LAST_STDERR_FILE"; then
+  pass "TC-1968-08: .gitignore write failure (path collision) does not leak bash redirect error to stderr"
+else
+  fail "TC-1968-08: expected exit 0, no bash redirect error; got rc=$rc1968_08, stderr: $(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

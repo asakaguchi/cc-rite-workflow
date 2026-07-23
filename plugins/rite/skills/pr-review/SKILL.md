@@ -1138,18 +1138,43 @@ Reviewer subagent が READ-ONLY 契約を破って parent session の working tr
 # detached HEAD は `DETACHED:<short-hash>` sentinel に置換 (verifier 側で branch drift check を skip)。
 # ORIG_WTH は working tree / index の drift (Edit/Write in-place mutation や state-changing git) を
 # 捕捉する 4 軸目 (Issue #1860)。branch/stash/branch_list では見えない porcelain 差分を検出する。
+# 生の `git status --porcelain` ではなく git-status-filtered.sh 経由で計算する (Issue #1944):
+# このスナップショットとステップ 5.0.A の verify は異なる sandbox 実行コンテキストで走りうるため、
+# bwrap sandbox が overlay する ghost-mount `??` エントリ (#1936) が両側で食い違い、実変更が
+# 無くても hash 不一致 (false-positive drift) が起きる。フィルタを両側に適用することでその
+# ghost-mount 差分を打ち消し、実際の working-tree 変更のみが hash に反映されるようにする。
+# 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存する (sandbox の TMPDIR 制限下では
+# plain `git status` は成功してもフィルタは失敗しうる) ため、exit code を明示チェックする。
+# この bash block は Bash tool の 1 回の呼び出しとして新規シェルで実行され pipefail は既定 off
+# (呼び出し間でシェル状態は引き継がれない) なので、`filter | hash | awk` の `$?` は pipefail に
+# 依存させず、filter 自身の出力を先に非パイプで capture してから exit code を判定する
+# (capture-first)。post-review-state-verify.sh 側は単一スクリプト全体に `set -uo pipefail` が
+# かかるため pipefail 経由の `$?` チェックで足りるが、この SKILL.md block はそれとは独立した
+# 実行コンテキストのため同じ前提を流用できない。
 # rationale: references/design-rationale.md#state-snapshot-notes
 ORIG_BR=$(git branch --show-current 2>/dev/null || echo "")
 if [ -z "$ORIG_BR" ]; then
  ORIG_BR="DETACHED:$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 fi
 ORIG_SC=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
+_wth_raw=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh)
+_wth_rc=$?
 if command -v md5sum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | md5sum | awk '{print $1}')
- ORIG_WTH=$(git status --porcelain 2>/dev/null | md5sum | awk '{print $1}')
+ if [ "$_wth_rc" -ne 0 ]; then
+   echo "WARNING: git-status-filtered.sh failed — worktree drift snapshot skipped" >&2
+   ORIG_WTH=""
+ else
+   ORIG_WTH=$(printf '%s' "$_wth_raw" | md5sum | awk '{print $1}')
+ fi
 elif command -v shasum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | shasum | awk '{print $1}')
- ORIG_WTH=$(git status --porcelain 2>/dev/null | shasum | awk '{print $1}')
+ if [ "$_wth_rc" -ne 0 ]; then
+   echo "WARNING: git-status-filtered.sh failed — worktree drift snapshot skipped" >&2
+   ORIG_WTH=""
+ else
+   ORIG_WTH=$(printf '%s' "$_wth_raw" | shasum | awk '{print $1}')
+ fi
 else
  ORIG_BLH="" # hash 計算不可 — branch_list drift check は skip 扱い (verifier 側で空文字列を skip)
  ORIG_WTH="" # hash 計算不可 — worktree drift check は skip 扱い (verifier 側で空文字列を skip)

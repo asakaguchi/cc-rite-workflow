@@ -423,5 +423,305 @@ assert "B-03 issue-93 worktree reaped (recovery path ran)" "0" "$( [ -d "$R/.rit
 case "$out" in *"status=cleaned"*) pass "B-03 reports status=cleaned (no false failure)" ;; *) fail "B-03 status not cleaned: $out" ;; esac
 assert_not_grep "B-03 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
 
+# ===========================================================================
+# Issue #1966 — Gate 2 free-arm manifest bypass. cleanup.md defers the worktree
+# removal (self-cwd / live-cwd / sandbox mask), records the merge-confirmed
+# branch in the reap manifest (recovery=auto), and releases the claim
+# unconditionally — so the real-world deferred worktree arrives at Gate 2
+# claim-FREE with a FRESH mtime (the harness touches the worktree root every
+# session, so the 24h age guard never expires). A manifest-recorded branch is
+# an explicit rite-origin "reap me" intent → the age guard is bypassed; the
+# unrecorded shapes keep the guard.
+# ===========================================================================
+
+echo "=== D-01 (#1966): claim-free FRESH worktree, manifest-recorded branch → reaped (age-guard bypass) ==="
+R=$(make_repo 110); cleanup_dirs+=("$R")
+# The real-world leak shape (5 merged-PR worktrees observed on 2026-07-22):
+# squash-merge residue commit (`-d` refuses → manifest `-D` path runs
+# end-to-end), claim released by cleanup (free), mtime fresh (just created — no
+# age_dir). Old implementation: silent continue at the free-arm age guard →
+# permanent leak. Non-vacuous: drop the bypass and D-01 flips.
+echo "squashed" > "$R/.rite/worktrees/issue-110/done.txt"
+GITC "$R/.rite/worktrees/issue-110" add done.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-110" commit -q -m "feat: squash-merged work" >/dev/null 2>&1
+printf 'branch\tfeat/issue-110\n' > "$R/.rite/tmp-artifacts.tsv"   # cleanup.md's merge-confirmed record
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-110.json"                 # cleanup released the claim
+out=$(run_pcc "$R")
+assert "D-01 fresh manifest-recorded worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-110" ] && echo 1 || echo 0 )"
+assert "D-01 branch force-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-110 >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert_grep "D-01 bypass is LOGGED (not silent)" "$R/pcc.err" "age guard をバイパスします"
+# Hardening: the manifest entry is consumed in the SAME run. A lingering entry
+# is no longer inert with the bypass keyed
+# on it — a same-named branch recreated in a new claim-free worktree would
+# inherit the bypass. Single-entry manifest → the whole file is removed.
+assert "D-01 manifest entry consumed (file removed)" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "D-01 status reports session_worktrees=1" ;; *) fail "D-01 status: $out" ;; esac
+case "$out" in *"session_branches=1"*)  pass "D-01 status reports session_branches=1"  ;; *) fail "D-01 status: $out" ;; esac
+case "$out" in *"status=cleaned"*)      pass "D-01 reports status=cleaned (no false failure)" ;; *) fail "D-01 status: $out" ;; esac
+assert_not_grep "D-01 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
+
+echo "=== D-02 (#1966 control): claim-free FRESH worktree, NOT recorded → survives (age guard intact) ==="
+R=$(make_repo 111); cleanup_dirs+=("$R")
+# Same claim-free + fresh shape but no manifest entry → the in-flight
+# protection the age guard exists for must still hold.
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-111.json"
+out=$(run_pcc "$R")
+assert "D-02 unrecorded fresh worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-111" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "D-02 status reports session_worktrees=0" ;; *) fail "D-02 status: $out" ;; esac
+
+echo "=== D-03 (#1966 surgical): manifest records a DIFFERENT branch → fresh worktree survives ==="
+R=$(make_repo 112); cleanup_dirs+=("$R")
+# The bypass requires an EXACT match between the worktree's checked-out branch
+# and a manifest entry. The mismatch entry MUST survive Step 4.5 to reach the
+# Step 5 bypass grep at all: an entry naming a nonexistent branch is dropped by
+# Step 4.5's verify-already-gone (manifest deleted → identical code path to
+# D-02, vacuous). So the entry names a REAL branch checked out in a second,
+# claim-LIVE worktree (B-03's preservation structure): Step 4.5's `-D` fails
+# "used by worktree" and preserves the entry, and Step 5 evaluates issue-112's
+# bypass against a present-but-mismatched entry. SID_A stays active to protect
+# issue-113; only the candidate's claim is released.
+( cd "$R" && $GIT worktree add -q -b "feat/issue-113" ".rite/worktrees/issue-113" >/dev/null 2>&1 )
+RITE_STATE_ROOT="$R" bash "$IC" claim --issue 113 --session "$SID_A" --worktree "$R/.rite/worktrees/issue-113" >/dev/null 2>&1
+printf 'branch\tfeat/issue-113\n' > "$R/.rite/tmp-artifacts.tsv"
+rm -f "$R/.rite/state/issue-claims/issue-112.json"   # candidate is claim-free + fresh
+out=$(run_pcc "$R")
+assert "D-03 mismatched-entry fresh worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-112" ] && echo 1 || echo 0 )"
+assert "D-03 mismatch entry survived Step 4.5 (non-vacuous: bypass grep saw it)" "1" "$( grep -qxF "branch$(printf '\t')feat/issue-113" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+assert "D-03 live second worktree untouched" "1" "$( [ -d "$R/.rite/worktrees/issue-113" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "D-03 status reports session_worktrees=0" ;; *) fail "D-03 status: $out" ;; esac
+
+echo "=== D-04 (#1966 write-side surgical): multi-entry manifest → only the reaped entry is consumed ==="
+R=$(make_repo 120); cleanup_dirs+=("$R")
+# Two recorded branches: issue-120 (reap target — squash residue, claim-free,
+# fresh) and issue-121 (claim-LIVE second worktree — Step 4.5 preserves its
+# entry via "used by worktree", Step 5 skips its worktree via claim liveness).
+# After the run the manifest must still exist with ONLY the issue-121 entry:
+# this exercises the consumption's survivors-preserving `cp` branch (multi-entry
+# manifest) that D-01's single-entry `rm -f` branch cannot reach, and pins the
+# write-side surgical `grep -vxF` (an unrelated co-pending entry is never lost).
+echo "squashed" > "$R/.rite/worktrees/issue-120/done.txt"
+GITC "$R/.rite/worktrees/issue-120" add done.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-120" commit -q -m "feat: squash-merged work" >/dev/null 2>&1
+( cd "$R" && $GIT worktree add -q -b "feat/issue-121" ".rite/worktrees/issue-121" >/dev/null 2>&1 )
+RITE_STATE_ROOT="$R" bash "$IC" claim --issue 121 --session "$SID_A" --worktree "$R/.rite/worktrees/issue-121" >/dev/null 2>&1
+printf 'branch\tfeat/issue-120\nbranch\tfeat/issue-121\n' > "$R/.rite/tmp-artifacts.tsv"
+rm -f "$R/.rite/state/issue-claims/issue-120.json"   # target claim-free; SID_A stays active for issue-121
+out=$(run_pcc "$R")
+assert "D-04 target worktree reaped (bypass)" "0" "$( [ -d "$R/.rite/worktrees/issue-120" ] && echo 1 || echo 0 )"
+assert "D-04 target branch force-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-120 >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert "D-04 reaped entry consumed from manifest" "0" "$( grep -qxF "branch$(printf '\t')feat/issue-120" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+assert "D-04 co-pending entry preserved (cp survivors branch)" "1" "$( grep -qxF "branch$(printf '\t')feat/issue-121" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+assert "D-04 live second worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-121" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "D-04 status reports session_worktrees=1" ;; *) fail "D-04 status: $out" ;; esac
+case "$out" in *"status=cleaned"*) pass "D-04 reports status=cleaned (no false failure)" ;; *) fail "D-04 status: $out" ;; esac
+
+echo "=== D-05 (#1966 symmetry): manifest-recorded branch recovered via safe -d → entry consumed too ==="
+R=$(make_repo 130); cleanup_dirs+=("$R")
+# No residue commit → the branch is merged-even with develop and `git branch -d`
+# succeeds. Consumption must fire on the -d arm too (symmetrization): a
+# lingering entry after a -d recovery would keep licensing the bypass for a
+# same-named recreated branch, exactly like the -D arm.
+printf 'branch\tfeat/issue-130\n' > "$R/.rite/tmp-artifacts.tsv"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-130.json"
+out=$(run_pcc "$R")
+assert "D-05 fresh manifest-recorded worktree reaped (bypass)" "0" "$( [ -d "$R/.rite/worktrees/issue-130" ] && echo 1 || echo 0 )"
+assert "D-05 branch safe-recovered via -d (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-130 >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert "D-05 manifest entry consumed on -d arm (file removed)" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && echo 1 || echo 0 )"
+case "$out" in *"session_branches=1"*) pass "D-05 status reports session_branches=1" ;; *) fail "D-05 status: $out" ;; esac
+
+# ===========================================================================
+# Issue #1957 — corpse reap. A sandbox-masked `git worktree remove --force`
+# half-destroys the admin dir (HEAD alone unlinked; commondir/gitdir/index and
+# the working tree survive). Such a corpse fails EVERY `git -C <wt>` operation,
+# so Gate 3's conservative skip would protect it forever, and manual
+# `git worktree remove --force` is rejected by validation (no recovery path).
+# Step 5 now detects corpses (admin HEAD missing AND git does not recognize the
+# tree) and reaps them via rm -rf (working tree + admin dir) once the claim is
+# not live AND the tree aged past 24h (D-01: a corpse's dirty state is
+# structurally unexaminable; claim + age guards bound the accepted risk).
+# ===========================================================================
+
+# Corpse fixture: unlink the admin HEAD — the exact signature of the 13
+# real-world corpses observed on 2026-07-20〜21.
+make_corpse() { rm "$1/.git/worktrees/issue-$2/HEAD"; }
+# Age a dir's mtime past the 24h reap guard (GNU touch first, BSD fallback).
+age_dir() { touch -d '25 hours ago' "$1" 2>/dev/null || touch -t "$(date -v-25H +%Y%m%d%H%M)" "$1"; }
+
+echo "=== C-01 (#1957 AC-3): aged corpse + stale claim → reaped (working tree + admin dir) ==="
+R=$(make_repo 100); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_corpse "$R" 100
+age_dir "$R/.rite/worktrees/issue-100"
+out=$(run_pcc "$R")
+assert "C-01 corpse working tree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-100" ] && echo 1 || echo 0 )"
+assert "C-01 corpse admin dir reaped" "0" "$( [ -d "$R/.git/worktrees/issue-100" ] && echo 1 || echo 0 )"
+assert "C-01 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-100.json" ] && echo 1 || echo 0 )"
+assert_grep "C-01 corpse reap WARNING names the target" "$R/pcc.err" "corpse session worktree.*issue-100.*回収します"
+case "$out" in *"session_worktrees=1"*) pass "C-01 status reports session_worktrees=1" ;; *) fail "C-01 status: $out" ;; esac
+
+echo "=== C-02 (#1957 AC-4): fresh corpse (age ≤ 24h) + stale claim → NOT reaped + WARNING ==="
+R=$(make_repo 101); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+make_corpse "$R" 101
+out=$(run_pcc "$R")
+assert "C-02 fresh corpse survives (age guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-101" ] && echo 1 || echo 0 )"
+assert "C-02 admin dir survives" "1" "$( [ -d "$R/.git/worktrees/issue-101" ] && echo 1 || echo 0 )"
+assert_grep "C-02 age-guard skip WARNING on stderr (not silent)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-02 status reports session_worktrees=0" ;; *) fail "C-02 status: $out" ;; esac
+
+echo "=== C-02b (#1957 MUST silent-skip 禁止): free-claim fresh corpse → NOT reaped + WARNING (not silent) ==="
+R=$(make_repo 105); cleanup_dirs+=("$R")
+# The real-world corpse shape: cleanup releases the claim unconditionally, so the
+# corpse is claim-FREE (not stale). Deactivate the holder (liveness guard off) and
+# delete the claim file (release). Without the corpse exclusion in Gate 2's free
+# age guard, this skips through the pre-existing silent continue — stderr empty —
+# violating the Issue #1957 MUST (skips must be logged). Non-vacuous: revert the
+# `_corpse -eq 0` condition and the WARNING assert flips.
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-105.json"
+make_corpse "$R" 105
+out=$(run_pcc "$R")
+assert "C-02b free fresh corpse survives (age guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-105" ] && echo 1 || echo 0 )"
+assert_grep "C-02b free fresh corpse skip is LOGGED (corpse age guard WARNING)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-02b status reports session_worktrees=0" ;; *) fail "C-02b status: $out" ;; esac
+
+echo "=== C-03 (#1957 AC-4): aged corpse but LIVE claim → NOT reaped ==="
+R=$(make_repo 102); cleanup_dirs+=("$R")
+# SID_A stays active → the claim is live ("other" from SID_B). Aged + corpse,
+# so only the claim-side protections stand between the corpse and the reap
+# (non-vacuous for AC-4's claim-live half; whichever liveness guard fires, the
+# contract is survival).
+make_corpse "$R" 102
+age_dir "$R/.rite/worktrees/issue-102"
+out=$(run_pcc "$R")
+assert "C-03 claim-live corpse survives" "1" "$( [ -d "$R/.rite/worktrees/issue-102" ] && echo 1 || echo 0 )"
+assert "C-03 admin dir survives" "1" "$( [ -d "$R/.git/worktrees/issue-102" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "C-03 status reports session_worktrees=0" ;; *) fail "C-03 status: $out" ;; esac
+
+echo "=== C-03b (#1957 MUST): aged corpse + live worktree-less claim → NOT reaped + Gate 2 skip LOGGED ==="
+R=$(make_repo 106); cleanup_dirs+=("$R")
+# The open-claims-first window shape: the claim holder is live but the claim has
+# no worktree recorded yet (open Step 1.6 claims before the worktree exists), so
+# the claim-join liveness guard cannot match the tree and the corpse reaches
+# Gate 2's live-claim arm. That skip must be loud (Issue #1957 MUST) — the
+# protection is correct, the anomaly must still be visible.
+tmpc106=$(mktemp)
+jq 'del(.worktree)' "$R/.rite/state/issue-claims/issue-106.json" > "$tmpc106" && mv "$tmpc106" "$R/.rite/state/issue-claims/issue-106.json"
+make_corpse "$R" 106
+age_dir "$R/.rite/worktrees/issue-106"
+out=$(run_pcc "$R")
+assert "C-03b live worktree-less claim corpse survives" "1" "$( [ -d "$R/.rite/worktrees/issue-106" ] && echo 1 || echo 0 )"
+assert_grep "C-03b Gate 2 live-claim corpse skip is LOGGED (not silent)" "$R/pcc.err" "live claim \(other\) 保持中のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-03b status reports session_worktrees=0" ;; *) fail "C-03b status: $out" ;; esac
+
+echo "=== C-04 (#1957 AC-5): HEAD present + status rc≠0 (NOT a corpse) → conservative skip unchanged ==="
+R=$(make_repo 103); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+# Break commondir so git stops recognizing the tree while HEAD survives — the
+# corpse condition is an AND (HEAD missing AND unrecognized), so this must stay
+# on Gate 3's conservative-skip path. Aged + stale, so ONLY the AND-condition
+# keeps it protected (drop either half of the AND and this reaps).
+rm "$R/.git/worktrees/issue-103/commondir"
+age_dir "$R/.rite/worktrees/issue-103"
+out=$(run_pcc "$R")
+assert "C-04 non-corpse broken worktree survives (conservative skip)" "1" "$( [ -d "$R/.rite/worktrees/issue-103" ] && echo 1 || echo 0 )"
+assert_grep "C-04 Gate 3 conservative-skip WARNING (not the corpse path)" "$R/pcc.err" "status を判定できません"
+assert_not_grep "C-04 no corpse WARNING emitted" "$R/pcc.err" "corpse session worktree"
+case "$out" in *"session_worktrees=0"*) pass "C-04 status reports session_worktrees=0" ;; *) fail "C-04 status: $out" ;; esac
+
+# ===========================================================================
+# Issue #1945 — corpse age-guard manifest bypass, keyed on PATH not branch. A
+# corpse cannot resolve its checked-out branch (git no longer recognizes the
+# tree), so the #1966 branch-keyed bypass above structurally never matches
+# one — every corpse would wait the full 24h even when cleanup.md Step 4-W
+# already recorded the failed removal. cleanup.md now records the worktree's
+# own PATH into the manifest (under the distinct `session_worktree` type —
+# NOT the ephemeral-artifact `worktree` type Step 4.5 reaps ungated) when
+# removal fails/is skipped for a busy/sandbox-mask reason (only when the PR
+# was merged — AC-4 parity with the branch bypass). Step 5's corpse age
+# guard checks for that PATH entry before falling back to the 24h wait.
+# ===========================================================================
+
+echo "=== C-05 (#1945): fresh corpse + manifest-recorded PATH → reaped (age-guard bypass, no branch needed) ==="
+R=$(make_repo 140); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-140.json"   # cleanup releases the claim unconditionally
+printf 'session_worktree\t%s\n' "$R/.rite/worktrees/issue-140" > "$R/.rite/tmp-artifacts.tsv"
+make_corpse "$R" 140
+out=$(run_pcc "$R")
+assert "C-05 fresh manifest-recorded corpse reaped (working tree)" "0" "$( [ -d "$R/.rite/worktrees/issue-140" ] && echo 1 || echo 0 )"
+assert "C-05 fresh manifest-recorded corpse reaped (admin dir)" "0" "$( [ -d "$R/.git/worktrees/issue-140" ] && echo 1 || echo 0 )"
+assert_grep "C-05 bypass is LOGGED (not silent)" "$R/pcc.err" "manifest 記録済み \(削除失敗確認済み\) corpse session worktree のため age guard をバイパスします"
+assert "C-05 manifest entry consumed (file removed)" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "C-05 status reports session_worktrees=1" ;; *) fail "C-05 status: $out" ;; esac
+
+echo "=== C-05b (#1945 control): fresh corpse + manifest records a DIFFERENT path → survives (surgical, age guard intact) ==="
+R=$(make_repo 141); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-141.json"
+# A real, existing-but-not-a-git-worktree directory: Step 4.5's new
+# session_worktree case only checks path existence (no dirty check, no reap —
+# it defers entirely to Step 5), so an existing decoy path KEEPS the entry
+# (survives to reach Step 5's exact-match grep) — a non-vacuous mismatch,
+# mirroring D-03's approach for the branch bypass.
+mkdir -p "$R/.rite/worktrees/issue-141-decoy"
+printf 'session_worktree\t%s\n' "$R/.rite/worktrees/issue-141-decoy" > "$R/.rite/tmp-artifacts.tsv"
+make_corpse "$R" 141
+out=$(run_pcc "$R")
+assert "C-05b mismatched-entry fresh corpse survives (age guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-141" ] && echo 1 || echo 0 )"
+assert_grep "C-05b age-guard skip WARNING on stderr (not silent)" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+assert "C-05b mismatch entry survived Step 4.5 (non-vacuous: bypass grep saw it)" "1" "$( grep -qxF "session_worktree$(printf '\t')$R/.rite/worktrees/issue-141-decoy" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "C-05b status reports session_worktrees=0" ;; *) fail "C-05b status: $out" ;; esac
+
+echo "=== C-05c (#1945): manifest-recorded LIVE session worktree is NOT reaped by Step 4.5's ungated pass ==="
+R=$(make_repo 142); cleanup_dirs+=("$R")
+# A clean, healthy (non-corpse) session worktree whose path is manifest-recorded
+# (as would happen from a sandbox-mask-skip deferred removal) but SID_A (the
+# claim holder) stays live. If session_worktree entries were reaped by Step
+# 4.5's ungated worktree-type pass (dirty-check only, no claim/self-exclusion/
+# live-cwd gates), this live worktree would be destroyed silently. It must
+# survive entirely (Step 4.5 defers, Step 5's own claim-liveness Gate 2 also
+# protects it).
+printf 'session_worktree\t%s\n' "$R/.rite/worktrees/issue-142" > "$R/.rite/tmp-artifacts.tsv"
+out=$(run_pcc "$R")
+assert "C-05c live session worktree survives Step 4.5's ungated pass" "1" "$( [ -d "$R/.rite/worktrees/issue-142" ] && echo 1 || echo 0 )"
+assert "C-05c claim file survives (worktree never reached Step 5 reap either)" "1" "$( [ -f "$R/.rite/state/issue-claims/issue-142.json" ] && echo 1 || echo 0 )"
+assert "C-05c manifest entry survives (Step 4.5 preserved it verbatim, path still exists)" "1" "$( grep -qxF "session_worktree$(printf '\t')$R/.rite/worktrees/issue-142" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "C-05c status reports session_worktrees=0 (nothing reaped)" ;; *) fail "C-05c status: $out" ;; esac
+
+echo "=== C-05d (#1945): manifest-recorded session_worktree entry for an ALREADY-GONE path is dropped by Step 4.5 (self-heal) ==="
+R=$(make_repo 143); cleanup_dirs+=("$R")
+# The worktree was already reaped by a prior run (or never existed at this
+# path); the manifest entry is a stale leftover. Step 4.5's session_worktree
+# case must drop it (the "already gone" self-heal), same as the worktree/
+# branch cases already do for their own types.
+printf 'session_worktree\t%s\n' "$R/.rite/worktrees/issue-999-gone" > "$R/.rite/tmp-artifacts.tsv"
+run_pcc "$R" >/dev/null
+assert "C-05d stale already-gone entry is dropped" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && grep -qxF "session_worktree$(printf '\t')$R/.rite/worktrees/issue-999-gone" "$R/.rite/tmp-artifacts.tsv" && echo 1 || echo 0 )"
+
+echo "=== C-06 (#1945, mirrors D-04): multi-entry session_worktree manifest → only the reaped entry is consumed ==="
+R=$(make_repo 150); cleanup_dirs+=("$R")
+# Two recorded session_worktree entries: issue-150 (reap target — fresh
+# corpse, claim-free) and a co-pending decoy path that must survive the
+# consumption write-back untouched. This exercises the survivor-preserving
+# `cp` branch (multi-entry manifest) that C-05's single-entry `rm -f` branch
+# cannot reach — without this test, a survivor-drop bug in the cp branch
+# would go undetected by the full suite.
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-150.json"
+mkdir -p "$R/.rite/worktrees/issue-150-copending-decoy"
+printf 'session_worktree\t%s\nsession_worktree\t%s\n' \
+  "$R/.rite/worktrees/issue-150" "$R/.rite/worktrees/issue-150-copending-decoy" > "$R/.rite/tmp-artifacts.tsv"
+make_corpse "$R" 150
+out=$(run_pcc "$R")
+assert "C-06 target corpse reaped (bypass)" "0" "$( [ -d "$R/.rite/worktrees/issue-150" ] && echo 1 || echo 0 )"
+assert "C-06 target manifest entry consumed" "0" "$( grep -qxF "session_worktree$(printf '\t')$R/.rite/worktrees/issue-150" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+assert "C-06 co-pending entry preserved (cp survivors branch, not silently dropped)" "1" "$( grep -qxF "session_worktree$(printf '\t')$R/.rite/worktrees/issue-150-copending-decoy" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
+assert "C-06 co-pending decoy directory untouched" "1" "$( [ -d "$R/.rite/worktrees/issue-150-copending-decoy" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "C-06 status reports session_worktrees=1" ;; *) fail "C-06 status: $out" ;; esac
+
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; wiki-worktree excluded; session-start best-effort wiring."
+  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1957 corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; Issue #1966 free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); Issue #1945 corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the #1966 branch bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."

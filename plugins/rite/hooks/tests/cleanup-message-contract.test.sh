@@ -18,6 +18,36 @@ echo "=== ステップ 4-W: self-exclusion 付き live-cwd guard の配線 ==="
 assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$CLEANUP" "worktree-foreign-cwd\.sh"
 assert_grep "4-W passes --self-root \$PPID (excludes the cleanup session's harness)" "$CLEANUP" 'worktree-foreign-cwd\.sh.*--self-root'
 
+echo "=== ステップ 4-W: session_worktree manifest 記録が {pr_merged}=true ガード配下にあること (Issue #1945 AC-4) ==="
+# 未マージ PR の強制 cleanup で corpse worktree のパスが記録され、Step 5 の corpse age-guard
+# バイパス（dirty チェック無し）に晒される事故を防ぐ唯一の防波堤。ガード行と record 呼び出しの
+# 両方を、それぞれの分岐（sandbox マスク検知 / busy 削除失敗）の狭いセクション内で固定する — 汎用の
+# "pr_merged という語がどこかにある" だけの assert では、ガードが record 呼び出しから外れて
+# 常時記録に regression しても検知できない。
+## start パターンは `echo "[CONTEXT] ...` 形式の bash コード行にのみ一致させる（`[CONTEXT]` 接頭辞
+## を含めない生の marker 名だけだと、ステップ 12 の説明文（同じ marker 名をバッククォート引用する
+## prose 行）にも一致し、awk flip-flop レンジが最初の end 一致後にそこで再起動して EOF まで伸びる
+## — section scoping が実質無効化され、コード側 guard が regression しても prose 側の記述が
+## 生き残る限り silent pass しうる。`echo "[CONTEXT] ` 接頭辞は bash コード行にしか出現しないため、
+## この曖昧さを構造的に排除する。
+## start/end は assert_grep_in_section 内部で `awk -v` に渡り、awk の -v 引数は C 風エスケープを
+## 1段階解釈してから正規表現エンジンに渡す（`\[` は「不要なエスケープ」として警告付きで `[` に
+## 潰される）。ERE として `\[`/`\]`（リテラル bracket）を正規表現エンジンまで届けるには、-v 側の
+## 解釈で 1 段階消費される分を見越して `\\[`/`\\]`（バックスラッシュ2つ）を渡す必要がある
+## （1つだけだと `[CONTEXT]` が bracket 式として解釈され match しなくなる／過剰マッチの温床にもなる）。
+assert_grep_in_section "4-W sandbox-mask branch: session_worktree record call present" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^     else$' \
+  'record --type session_worktree'
+assert_grep_in_section "4-W sandbox-mask branch: record is inside the {pr_merged}=true guard" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^     else$' \
+  '\{pr_merged\}" = "true"'
+assert_grep_in_section "4-W busy-failed branch: session_worktree record call present" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
+  'record --type session_worktree'
+assert_grep_in_section "4-W busy-failed branch: record is inside the {pr_merged}=true guard" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
+  '\{pr_merged\}" = "true"'
+
 echo "=== ステップ 5: squash-merge 確認済みブランチの強制削除 + 遅延ブランチの manifest 記録 ==="
 assert_grep "Step 5 reads the {pr_merged} signal" "$CLEANUP" "pr_merged"
 assert_grep "Step 5 emits via=squash-merged on confirmed-merged force delete" "$CLEANUP" "via=squash-merged"
@@ -43,6 +73,32 @@ assert_grep "4-W busy WARNING gives the sandbox-outside manual recovery command"
 # この WARNING を読む実行エージェント自身への「この場での再試行はしない」明示が必要
 # (non-blocking で遅延 reap へ委譲する設計を守るため)。
 assert_grep "4-W busy WARNING tells the executing agent not to auto-retry" "$CLEANUP" "実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと"
+
+echo "=== ステップ 4-W: sandbox マスク検知による remove 抑止 (Issue #1957 AC-1/AC-2) ==="
+# AC-1: 検知は remove 試行の前 — 削除試行自体が admin dir を半壊させるため、検知時は
+# remove (--force 含む) を一切実行せず遅延 reap (pr-cycle-cleanup.sh Step 5 corpse 回収) へ
+# 委譲する。behavioral 検証 (corpse 回収側) は pr-cycle-cleanup-session-reap.test.sh C-01..C-04。
+assert_grep "4-W resolves the admin dir from the worktree's .git file" "$CLEANUP" '_wt_admin=\$\(sed -n .s/.gitdir: //p. "\{flow_wt\}/\.git"'
+assert_grep "4-W detects the mask as a character device on config.worktree" "$CLEANUP" '\-c "\$_wt_admin/config\.worktree"'
+assert_grep "4-W emits the sandbox-mask skip marker" "$CLEANUP" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1"
+assert_grep "4-W mask WARNING states removal is not attempted at all" "$CLEANUP" "削除自体を試行しません"
+assert_grep "4-W mask WARNING forbids in-place sandbox-disable retry" "$CLEANUP" "実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと"
+# AC-2 (非回帰): マスク非検知時の従来 remove 経路 (LC_ALL=C 固定の remove → --force fallback)
+# が残存している — 検知ガードが常時抑止に化けたらこの pin ごと落ちる。
+assert_grep "4-W keeps the conventional remove path for unmasked worktrees" "$CLEANUP" 'LC_ALL=C git worktree remove "\{flow_wt\}"'
+# ステップ 12 報告: SANDBOX_MASK skip の分岐が存在し、sandbox 外での手動回収コマンドを示す。
+assert_grep "Step 12 has a SANDBOX_MASK branch in {session_worktree_check}" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1. のとき'
+assert_grep "Step 12 mask message points to a sandbox-outside manual removal" "$CLEANUP" "sandbox 外のシェルで git worktree remove --force"
+# Step 5 deferral 経路: mask skip が自セッション由来の第 2 ルートを作るため、旧「別 live セッション
+# 在席時のみ」の排他性主張と「別のセッションの作業ツリーで使用中」の原因断定 WARNING は不正確。
+# コメントは mask ルートに言及し、branch-deferral 系 WARNING は原因中立の文面を使う (Issue #1957)。
+assert_grep "Step 5 comment names the SANDBOX_MASK deferral route" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク'
+assert_grep "Step 5 deferred WARNING is cause-neutral" "$CLEANUP" "まだ削除されていない作業ツリーで使用中のため、削除を見送りました"
+assert_not_grep "old exclusive-cause claim removed from Step 5 comment" "$CLEANUP" "本経路に来るのは"
+assert_not_grep "old other-session attribution removed from deferred WARNINGs" "$CLEANUP" "はまだ別のセッションの作業ツリーで使用中のため"
+assert_not_grep "old exclusive-cause claim removed from in_main note" "$CLEANUP" "別セッション在席時のみ遅延する"
+assert_not_grep "old other-session release attribution removed from Step 5 manifest comment" "$CLEANUP" "別 live セッションが worktree を"
+assert_not_grep "old other-session gloss removed from BRANCH_DELETE_DEFERRED definition" "$CLEANUP" "（別セッションが worktree を使用中で削除を遅延したケース）"
 
 echo "=== ステップ 12: 旧・内部実装語/不正確な記述が除去されている ==="
 # 旧 worktree-skip メッセージの内部用語「遅延 reap が後で回収します」は撤去済み。

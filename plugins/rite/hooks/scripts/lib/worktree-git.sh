@@ -36,6 +36,15 @@
 # 5) ;; # no staged diff — caller decides policy (stdout is silent)
 # esac
 #
+# Batch/defer push (#1941): a caller processing several commits in a loop
+# (e.g. wiki-ingest, one commit per raw source) can defer the push to a
+# single call at the end of the loop instead of pushing after every commit:
+# WTGP_COMMIT_ONLY=1 worktree_commit_push "$worktree_path" "$wiki_branch" "$commit_msg" "$wiki_rel"
+# # rc 0/3/5 as above, minus 4 (no push attempted — stdout is "head=<sha>" only)
+# ...
+# worktree_push_branch "$worktree_path" "$wiki_branch" # once, after the loop
+# rc=$? # 0 pushed, 2 argument error, 4 push failed (commits stay local)
+#
 # Arguments:
 # WORKTREE path to the worktree (caller must have validated it)
 # BRANCH expected branch name for the push (caller-validated;
@@ -219,10 +228,10 @@ worktree_commit_push() {
  if [[ $_wtgp_errexit -eq 1 ]]; then set -e; else set +e; fi
  }
 
- local add_err="" diff_err="" commit_err="" push_err=""
+ local add_err="" diff_err="" commit_err=""
  # Internal cleanup trap (EXIT only — caller's signal traps are
  # re-applied below on any non-signal return path).
- trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"' EXIT INT TERM HUP
+ trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"' EXIT INT TERM HUP
 
  # mktemp failures are surfaced to stderr (not silently swallowed) so
  # operators can see when stderr capture is degraded to /dev/null.
@@ -238,10 +247,6 @@ worktree_commit_push() {
  echo "WARNING: mktemp for worktree_commit_push commit stderr capture failed — diagnostics will be lost" >&2
  commit_err=""
  fi
- if ! push_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-push-err-XXXXXX" 2>/dev/null); then
- echo "WARNING: mktemp for worktree_commit_push push stderr capture failed — diagnostics will be lost" >&2
- push_err=""
- fi
 
  # Step 1: stage paths. Quote the first pathspec in the error message
  # to mirror the pre-refactor wiki-worktree-commit.sh format, so log
@@ -251,7 +256,7 @@ worktree_commit_push() {
  echo "ERROR: git add '$_first_path' failed in worktree '$worktree'" >&2
  [ -n "$add_err" ] && [ -s "$add_err" ] && head -n 10 "$add_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " hint: index lock / path error / permission denied のいずれかを確認してください" >&2
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
  _wtgp_restore_caller_state
  return 3
  fi
@@ -270,7 +275,7 @@ worktree_commit_push() {
  # Silent on stdout: callers emit their own `reason=no-staged-diff`
  # status line (wiki-worktree-commit.sh / wiki-ingest-commit.sh
  # both do this). Returning 5 is the sole signal.
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
  _wtgp_restore_caller_state
  return 5
  ;;
@@ -278,7 +283,7 @@ worktree_commit_push() {
  *)
  echo "ERROR: git diff --cached failed in worktree '$worktree' (rc=$cached_rc)" >&2
  [ -n "$diff_err" ] && [ -s "$diff_err" ] && head -n 10 "$diff_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
  _wtgp_restore_caller_state
  return 3
  ;;
@@ -289,7 +294,7 @@ worktree_commit_push() {
  echo "ERROR: git commit failed in worktree '$worktree'" >&2
  [ -n "$commit_err" ] && [ -s "$commit_err" ] && head -n 10 "$commit_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " hint: pre-commit hook / gpg sign / author config / permission のいずれかを確認" >&2
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
  _wtgp_restore_caller_state
  return 3
  fi
@@ -297,12 +302,12 @@ worktree_commit_push() {
  # head_sha capture: post-commit rev-parse should normally succeed. If it
  # fails (corrupt worktree between commit and rev-parse, extremely rare),
  # surface a WARNING rather than silently embedding "unknown" in the
- # status line — otherwise the caller sees `head=unknown; push=ok` and
- # treats it as a successful commit.
+ # status line — otherwise the caller sees `head=unknown` and treats it
+ # as a successful commit.
  local head_sha head_err=""
  # Extend internal trap to cover head_err so SIGINT / SIGTERM / SIGHUP during
  # the post-commit rev-parse cannot leak the tempfile. Must be set BEFORE mktemp.
- trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}" "${head_err:-}"' EXIT INT TERM HUP
+ trap 'rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${head_err:-}"' EXIT INT TERM HUP
  head_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-head-err-XXXXXX" 2>/dev/null) || head_err=""
  if head_sha=$(git -C "$worktree" rev-parse HEAD 2>"${head_err:-/dev/null}"); then
  :
@@ -315,17 +320,161 @@ worktree_commit_push() {
  fi
  [ -n "$head_err" ] && rm -f "$head_err"
 
- # Step 4: push using the caller-supplied branch (no silent
- # `rev-parse --abbrev-ref HEAD` fallback to literal "HEAD"). On a
- # non-fast-forward rejection (a concurrent session advanced
- # origin/<branch>), fetch + rebase onto origin/<branch> and retry,
- # up to 3 push attempts (multi-session design §9). wiki commits are
- # append-mostly (new raw / new pages / log appends) so the rebase is
- # almost always conflict-free; a rebase conflict aborts and falls
- # through to the existing rc=4. Non-NFF failures (auth / network) do
- # NOT retry — they fail immediately, preserving the prior behavior.
- # The 0/3/4/5 exit-code contract is unchanged (return 4 on any push
- # failure; the caller owns the continue-vs-hard-fail policy).
+ # #1941 (wiki push batch/defer): a caller processing several commits in a
+ # loop (wiki-ingest per raw source) sets WTGP_COMMIT_ONLY=1 to stage+commit
+ # here WITHOUT pushing, then pushes once at the end of the loop via
+ # worktree_push_branch directly. A plain env var (not a new positional
+ # parameter) keeps the existing 3-fixed-args + variadic-paths call
+ # signature — and every existing caller (wiki-init / standalone
+ # wiki-lint) — untouched.
+ if [[ "${WTGP_COMMIT_ONLY:-0}" == "1" ]]; then
+ echo "head=${head_sha}"
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
+ _wtgp_restore_caller_state
+ return 0
+ fi
+
+ # Step 4: push using the caller-supplied branch. The NFF-retry push logic
+ # lives in worktree_push_branch (#1941) so a batch caller can invoke it
+ # standalone (push-only, after N commit-only commits) without duplicating
+ # the retry loop here — this call is that same function used inline for
+ # the traditional commit-then-push-immediately path.
+ local push_out push_rc
+ push_out=$(worktree_push_branch "$worktree" "$branch")
+ push_rc=$?
+ echo "$push_out"
+
+ rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}"
+ _wtgp_restore_caller_state
+
+ if [[ $push_rc -ne 0 ]]; then
+ return 4
+ fi
+ return 0
+}
+
+# -----------------------------------------------------------------------
+# worktree_push_branch: push WORKTREE's local BRANCH to origin, retrying
+# on non-fast-forward rejection (fetch + rebase) up to 3 attempts.
+#
+# Responsibility (#1941, wiki push batch/defer): hold the push-with-retry
+# logic extracted from worktree_commit_push's Step 4, so a caller that has
+# accumulated several WTGP_COMMIT_ONLY=1 commits (wiki-ingest processing
+# multiple raw sources) can push them all with a single call instead of
+# once per commit. worktree_commit_push calls this same function for its
+# own Step 4, so the retry behavior is identical on both paths.
+#
+# Usage:
+#   worktree_push_branch "$worktree" "$branch"
+#   rc=$?
+#   case "$rc" in
+#     0) ;; # pushed (or origin already up to date)
+#     2) ;; # argument error
+#     4) ;; # push failed after retry budget exhausted — commit(s) stay local
+#   esac
+#
+# Arguments:
+#   WORKTREE  path to the worktree (caller must have validated it)
+#   BRANCH    branch name to push (caller-validated; no silent
+#             rev-parse --abbrev-ref HEAD fallback — mirrors
+#             worktree_commit_push's detached-HEAD rationale)
+#
+# Self-gate: if BRANCH has no commits that the locally-known origin/BRANCH
+# lacks (`git rev-list origin/BRANCH..BRANCH --count`, no fetch — a pure
+# local ref comparison), no push is attempted at all (`push=no-op`). This
+# costs nothing extra on the commit-then-push-immediately path (a just-made
+# commit is always "ahead"), and lets a batch caller (#1941) invoke this
+# function unconditionally after a commit-only loop — without tracking its
+# own commit count, and without the network call this Issue is reducing
+# when there is genuinely nothing new to push (including a stale
+# already-committed-but-unpushed state left by a prior failed run: the
+# next call that reaches this function flushes it).
+#
+# Exit codes:
+#   0  push succeeded, or origin already up to date (push=no-op)
+#   2  argument error (missing worktree / branch)
+#   4  push failed after retry budget exhausted (error already on stderr)
+#
+# stdout: "head=<sha>; push=<ok|failed|no-op>"
+#
+# Contract: does not toggle caller's `set -e` / traps (same discipline as
+# worktree_commit_push — see that function's header for the full rationale).
+worktree_push_branch() {
+ local worktree="$1" branch="$2"
+
+ if [[ -z "$worktree" ]] || [[ -z "$branch" ]]; then
+ echo "ERROR: worktree_push_branch: WORKTREE / BRANCH required" >&2
+ return 2
+ fi
+
+ local _wpb_errexit=0
+ case $- in *e*) _wpb_errexit=1 ;; esac
+
+ local _wpb_outer_exit _wpb_outer_int _wpb_outer_term _wpb_outer_hup
+ _wpb_outer_exit=$(trap -p EXIT)
+ _wpb_outer_int=$(trap -p INT)
+ _wpb_outer_term=$(trap -p TERM)
+ _wpb_outer_hup=$(trap -p HUP)
+
+ _wpb_restore_caller_state() {
+ if [[ -n "$_wpb_outer_exit" ]]; then eval "$_wpb_outer_exit"; else trap - EXIT; fi
+ if [[ -n "$_wpb_outer_int" ]]; then eval "$_wpb_outer_int"; else trap - INT; fi
+ if [[ -n "$_wpb_outer_term" ]]; then eval "$_wpb_outer_term"; else trap - TERM; fi
+ if [[ -n "$_wpb_outer_hup" ]]; then eval "$_wpb_outer_hup"; else trap - HUP; fi
+ if [[ $_wpb_errexit -eq 1 ]]; then set -e; else set +e; fi
+ }
+
+ local push_err="" head_err=""
+ trap 'rm -f "${push_err:-}" "${head_err:-}"' EXIT INT TERM HUP
+
+ if ! push_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-push-err-XXXXXX" 2>/dev/null); then
+ echo "WARNING: mktemp for worktree_push_branch push stderr capture failed — diagnostics will be lost" >&2
+ push_err=""
+ fi
+ if ! head_err=$(mktemp "${TMPDIR:-/tmp}/rite-wtgit-head-err-XXXXXX" 2>/dev/null); then
+ echo "WARNING: mktemp for worktree_push_branch head stderr capture failed — diagnostics will be lost" >&2
+ head_err=""
+ fi
+
+ # head_sha here reports whatever is currently on BRANCH (the commit(s)
+ # about to be pushed) — not necessarily one just made in this call, since
+ # this function is also invoked standalone after a batch of prior
+ # WTGP_COMMIT_ONLY=1 commits.
+ local head_sha
+ if head_sha=$(git -C "$worktree" rev-parse HEAD 2>"${head_err:-/dev/null}"); then
+ :
+ else
+ local head_rc=$?
+ echo "WARNING: git -C '$worktree' rev-parse HEAD failed (rc=$head_rc)" >&2
+ [ -n "$head_err" ] && [ -s "$head_err" ] && head -n 5 "$head_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
+ head_sha="unknown"
+ fi
+ [ -n "$head_err" ] && rm -f "$head_err"
+
+ # Self-gate (see function header): skip the push entirely when there is
+ # nothing local-only to send. Failure to compute ahead_count (rev-list
+ # error, unexpected output) falls through to attempting the push rather
+ # than silently skipping it.
+ local ahead_count
+ if ahead_count=$(git -C "$worktree" rev-list "origin/${branch}..${branch}" --count 2>/dev/null) \
+   && [[ "$ahead_count" =~ ^[0-9]+$ ]] && [ "$ahead_count" -eq 0 ]; then
+ echo "head=${head_sha}; push=no-op"
+ rm -f "${push_err:-}" "${head_err:-}"
+ _wpb_restore_caller_state
+ return 0
+ fi
+
+ # Push using the caller-supplied branch (no silent `rev-parse
+ # --abbrev-ref HEAD` fallback to literal "HEAD"). On a non-fast-forward
+ # rejection (a concurrent session advanced origin/<branch>), fetch +
+ # rebase onto origin/<branch> and retry, up to 3 push attempts
+ # (multi-session design §9). wiki commits are append-mostly (new raw /
+ # new pages / log appends) so the rebase is almost always conflict-free;
+ # a rebase conflict aborts and falls through to the existing rc=4.
+ # Non-NFF failures (auth / network) do NOT retry — they fail
+ # immediately (#1941 AC-3: a deferred push that fails is surfaced and
+ # left for manual/next-session recovery, not auto-retried within the
+ # same flow).
  local push_status="failed" _push_max=3 _push_i=0
  while [ "$_push_i" -lt "$_push_max" ]; do
  _push_i=$((_push_i + 1))
@@ -365,8 +514,8 @@ worktree_commit_push() {
 
  echo "head=${head_sha}; push=${push_status}"
 
- rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}" "${head_err:-}"
- _wtgp_restore_caller_state
+ rm -f "${push_err:-}" "${head_err:-}"
+ _wpb_restore_caller_state
 
  if [[ "$push_status" == "failed" ]]; then
  return 4
@@ -539,6 +688,13 @@ ensure_session_worktree() {
 
   if [ "$branch_local" = yes ]; then
     if git worktree add "$wt_path" "$branch" 1>&2; then
+      # Dogfooding override (#1943): .claude/ is gitignored so `git worktree
+      # add` never copies it. Without this, a reconstructed session worktree
+      # loses enabledPlugins["rite@rite-marketplace"]:false and the stale
+      # marketplace-cached skill definitions load instead of local plugins/rite.
+      if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
+        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #$issue）— ドッグフーディング上書きが worktree に反映されません" >&2
+      fi
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0
     fi
@@ -562,6 +718,11 @@ ensure_session_worktree() {
       echo "WARNING: ensure_session_worktree: git fetch origin '$branch' が 3 回失敗しました — 既存の origin/$branch（stale の可能性）から再構築します (issue #$issue)" >&2
     fi
     if git worktree add --track -b "$branch" "$wt_path" "origin/$branch" 1>&2; then
+      # Dogfooding override (#1943): see the branch_local reconstruction
+      # branch above for why this copy is needed.
+      if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
+        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #$issue）— ドッグフーディング上書きが worktree に反映されません" >&2
+      fi
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0
     fi

@@ -74,7 +74,7 @@ gh pr list -R {owner_repo} --head {branch_name} --state all --json number,title,
 
 PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
 
-`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 4-W / ステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 4-W の worktree パス manifest 記録（Issue #1945）、およびステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
 
 ### 1.4 リポジトリ情報取得
 
@@ -360,9 +360,40 @@ esac
      # --self-root "$PPID" でこの Bash の親（claude ハーネス）の process subtree を self として除外する。
      _fc_rc=0
      bash {plugin_root}/hooks/scripts/worktree-foreign-cwd.sh "{flow_wt}" --self-root "$PPID" >/dev/null 2>&1 || _fc_rc=$?
+     # sandbox マスク検知（Issue #1957）: sandbox が admin dir の config.worktree に
+     # /dev/null マスクマウントを張っている（= character device に見える）状態で
+     # `git worktree remove`（--force 含む）を実行すると、working tree 削除失敗後の
+     # admin dir 再帰削除が HEAD を unlink した直後にマスクの EBUSY で中断し、HEAD のみ
+     # 欠けた半壊 admin dir（corpse）が残る。削除試行自体が半壊を作るため、busy 失敗後の
+     # 対処では防げない — 検知したら remove を一切実行せず遅延 reap（corpse 回収経路を持つ
+     # pr-cycle-cleanup.sh Step 5）へ委譲する。admin dir は worktree 側 .git ファイルの
+     # gitdir: 行から解決する（解決不能・マスク無しなら従来どおり remove を試行 = 非 sandbox
+     # 環境で挙動不変の後方互換）。
+     _wt_admin=$(sed -n 's/^gitdir: //p' "{flow_wt}/.git" 2>/dev/null | head -1) || _wt_admin=""
      if [ "$_fc_rc" -eq 0 ]; then
        echo "WARNING: 別のセッションがこの作業ツリー（{flow_wt}）を使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。" >&2
        echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path={flow_wt}" >&2
+     elif [ -n "$_wt_admin" ] && [ -c "$_wt_admin/config.worktree" ]; then
+       echo "WARNING: sandbox が作業ツリーの管理ディレクトリ（$_wt_admin/config.worktree）にマスクマウントを張っているため、削除を見送りました。この状態で git worktree remove を実行すると管理ディレクトリが半壊するため、削除自体を試行しません。次回のセッション開始時（sandbox 外）に作業ツリーとローカルブランチが自動で回収されます。実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと。" >&2
+       echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path={flow_wt}" >&2
+       # Issue #1945: このマスク検知は次に control が渡る側（admin dir 半壊 = corpse）の
+       # 直接の前兆であり、corpse は checkout 中 branch を git で解決できないため
+       # pr-cycle-cleanup.sh Step 5 のブランチ名 manifest bypass（#1966）が構造的に効かない。パス自体を
+       # 事前に記録しておけば、pr-cycle-cleanup.sh の corpse age guard がこの記録を見て
+       # 24h 待ちをバイパスできる（{pr_merged}=true のときのみ — AC-4: 未マージ PR の
+       # 強制 cleanup では記録しない）。record 自体は non-blocking 契約（rite-tmp-artifact.sh）。
+       # `--type session_worktree`（`worktree` ではない）: `worktree` type は Step 4.5 の
+       # ungated reap（dirty チェックのみ、claim/self-exclusion/live-cwd ガード無し）が
+       # 消費する EPHEMERAL tmp artifact 専用の契約を持つ。session worktree のパスをそこに
+       # 混ぜると、Step 4.5 が Step 5 の保護ゲートを経ずに生存中の worktree を reap しうる
+       # （"session worktrees go through Step 5's gated reap, never here" 契約違反）。
+       # `session_worktree` type は Step 4.5 の専用 case arm が扱うが、この arm は reap を
+       # 一切行わず、パスが既に消滅している場合のみ stale 参照を drop（self-heal）し、
+       # 存在する場合は verbatim 保持して Step 5 に委ねる。実 reap の消費は
+       # Step 5 の gated bypass（下記）のみが行う。
+       if [ "{pr_merged}" = "true" ]; then
+         bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type session_worktree --id "{flow_wt}" 2>/dev/null || true
+       fi
      else
        # git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定し、busy 検出の
        # substring マッチを安定させる（repo 既存の LC_ALL=C 規約と統一）。stderr を
@@ -377,14 +408,24 @@ esac
          if [ -n "$_wt_rm_err" ] && grep -qi "busy" "$_wt_rm_err" 2>/dev/null; then
            echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force '{flow_wt}' && git worktree prune" >&2
          fi
+         # Issue #1945: remove --force 自体がこの busy 失敗の過程で admin dir を
+         # 部分破壊し corpse 化した場合、上記マスク検知分岐と同じ理由でブランチ名
+         # bypass（#1966）が効かなくなる。パスを reap manifest に記録し、
+         # pr-cycle-cleanup.sh の corpse age guard バイパスに委ねる
+         # （{pr_merged}=true のときのみ — AC-4）。`--type session_worktree` を使う理由は
+         # 上記マスク検知分岐のコメントを参照（Step 4.5 の ungated ephemeral-worktree reap
+         # と混ぜず、Step 5 の gated bypass のみに消費させるため）。
+         if [ "{pr_merged}" = "true" ]; then
+           bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type session_worktree --id "{flow_wt}" 2>/dev/null || true
+         fi
        fi
        [ -n "$_wt_rm_err" ] && rm -f "$_wt_rm_err"
        git worktree prune 2>/dev/null || true
      fi
      ```
      > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、worktree には自他いずれの cwd も無く `worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op だった経路（`in_worktree_unrecorded` 等）でも、残る live cwd は自セッションのハーネス（`$PPID` subtree）だけなので self-exclusion により rc=1（削除）となり、自己ブロッキングしない。rc=0（遅延）になるのは別セッションのハーネスが実際にこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（Issue #1923 AC-5）。
-- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（別セッション在席時のみ遅延する）。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — Issue #1957。remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（Issue #1923 AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（Issue #1945。`worktree` type ではない — Step 4.5 の ephemeral tmp artifact 専用 ungated reap と混ぜないため）。corpse 化（admin dir 半壊で git がツリーを認識できなくなる状態）した場合、checkout 中 branch が解決不能でブランチ名 bypass（#1966）が構造的に効かないため、パス自体の記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
+- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（#1957）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
 
 > **復旧: `/clear` が `Path does not exist` で失敗する場合（Issue #1552）**
@@ -486,12 +527,17 @@ fi
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 
 ```bash
-# worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD を残した =
-# 別 live セッションが worktree 使用中）、branch は worktree で checkout 中のため削除できない。
-# その場合は強制削除せず reap manifest に記録し（#1670）、worktree が解放されたあと
+# worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD = 別 live
+# セッションが worktree 使用中、または WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク
+# 検知で自セッション worktree の削除を試行しなかった（#1957）、のいずれかを残した場合）、
+# branch は worktree で checkout 中のため削除できない。その場合は強制削除せず reap manifest に
+# 記録し（#1670）、worktree が解放（遅延 reap の corpse 回収含む）されたあと
 # pr-cycle-cleanup.sh Step 5 が次セッションで branch・worktree の双方を回収する（dead-letter 解消）。
-# 自セッションの worktree は 4-W の self-exclusion で即時削除されるため、本経路に来るのは
-# 別 live セッション在席時のみ。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して
+# manifest 記録は Step 5 の free-claim 24h age guard 自体もバイパスさせる（#1966 — ハーネスが
+# worktree root の mtime をセッション毎に更新するため、記録なしでは回収が永遠に始まらない）。
+# 自セッションの worktree は通常 4-W の self-exclusion 後に即時削除されるが、sandbox マスク
+# 検知時は削除を試行しないため自セッション由来でも本経路に入る（「別セッション在席時のみ」では
+# ない）。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して
 # substring マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
 # `{pr_merged}` はステップ 1.3 の PR 状態（`mergedAt` 非 null なら `true`、それ以外すべて
 # `false`。Step 1.3 と同一定義）を Claude が literal substitute する。squash merge では feature の
@@ -504,8 +550,9 @@ else
   case "$del_err" in
     *"used by worktree"*|*"checked out"*)
       # #1670: 遅延ブランチを次セッション回収へ配線する（dead-letter 解消）。PR が merged 済み
-      # （{pr_merged}=true）のときのみ reap manifest に記録し、別 live セッションが worktree を
-      # 解放したあと pr-cycle-cleanup.sh Step 5 が安全に回収できるようにする。未マージ PR の強制
+      # （{pr_merged}=true）のときのみ reap manifest に記録し、worktree が解放（別セッション終了
+      # または遅延 reap での回収 — 原因は断定しない）されたあと pr-cycle-cleanup.sh Step 5 が
+      # 安全に回収できるようにする。未マージ PR の強制
       # cleanup 時（{pr_merged}=false）は記録しない（作業損失防止 — AC-4）。
       # **recovery= の意味（AC-6）**: rite-tmp-artifact.sh は非ブロッキング契約で、append 失敗でも
       # WARNING を出して exit 0 を返す（非 0 は usage error のみ）。したがって record の exit code では
@@ -523,7 +570,7 @@ else
       fi
       if [ "$_recovery" = "auto" ]; then
         echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=auto" >&2
-        echo "WARNING: ローカルブランチ {branch_name} はまだ別のセッションの作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
+        echo "WARNING: ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
       else
         echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=manual" >&2
         echo "WARNING: ローカルブランチ {branch_name} は作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}" >&2
@@ -545,7 +592,7 @@ fi
 git ls-remote --heads origin {branch_name} && git push origin --delete {branch_name}
 ```
 
-`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（別セッションが worktree を使用中で削除を遅延したケース）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true かつ reap manifest への記録を verify 済み）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、または記録漏れ）は自動回収されないため手動 `git branch -D` が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。リモート削除は GitHub auto-delete で既削除のエラーは無視。
+`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中(#1670) または sandbox マスク skip(#1957)。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true かつ reap manifest への記録を verify 済み）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、または記録漏れ）は自動回収されないため手動 `git branch -D` が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。リモート削除は GitHub auto-delete で既削除のエラーは無視。
 
 ---
 
@@ -712,6 +759,8 @@ skill return 後、出力から以下のいずれかの sentinel を発火させ
 - 並行 ingest スキップ (ingest 出力に `WIKI_INGEST_SKIPPED reason=concurrent_ingest`): `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest`（別 live セッションが ingest 中。pending raw は wiki branch に残り次回 ingest が冪等回収する — multi-session §9）
 - 失敗: `[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error`
 
+> **#1941 wiki push batch/defer**: ingest.md はページ更新のたびに push していた旧挙動を、raw source ごとに commit のみ行い ingest フロー末尾（ステップ 8.6）で 1 回だけ push する方式に変更した（AC-1）。`push=failed` 部分文字列検出はそのまま機能する — 集約 push が失敗した場合も、その 1 回の push 結果として ingest の stdout に同じ文字列が現れるため、本ステップの検出ロジック自体の変更は不要（ローカル commit は保持され、次回 ingest のステップ 8.6 が自動で flush を試みる — AC-2 / SHOULD）。
+
 ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 ---
@@ -766,6 +815,9 @@ Status: {projects_status_result}
 - [x] Issue claim 解放
 - [x] 関連 Issue をクローズ
 - [x] 親 Issue の Tasklist 更新・自動クローズ (該当する場合)
+
+未完了事項:
+{outstanding_items_block}
 ```
 
 各チェックボックスおよび placeholder の判定:
@@ -776,11 +828,16 @@ Status: {projects_status_result}
   - `main_root_unresolved` のとき（main checkout の絶対パスが未解決、またはそこへの `cd` に失敗）: ` ` + 「⚠️ main checkout ルートが解決できず base 更新を skip しました。`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
   - `ff_failed_clean` / `ff_failed_divergent` / `ff_failed_discardable` のいずれかのとき（fast-forward 失敗。未コミット変更の有無・内容は marker ごとに異なるが、いずれも base 更新自体は未完了）: ` ` + 「⚠️ base ブランチの fast-forward 更新に失敗しました。`git status` で状態を確認し、`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
   - いずれの `[CONTEXT] BASE_UPDATE=` 行も見つからないとき（ステップ 4 の bash block が実行されなかった等の想定外経路）: ` ` + 「⚠️ base 更新の実行結果が確認できませんでした。`git status` / `git log` で状態を確認してください」を付記
-- `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` と `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/else で排他だが、両 `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
+- `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` / `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/elif/else で排他だが、複数の `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
   - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（別のセッションが作業ツリーを使用中のため削除を見送った）: ` ` + 以下を付記
     ```
     ℹ️ この作業ツリーは別のセッションが使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
       すぐに消したい場合（別セッションを閉じたあと）: git worktree remove --force '{flow_wt}' && git worktree prune
+    ```
+  - `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1` のとき（sandbox のマスクマウント検知により削除を試行しなかった — Issue #1957）: ` ` + 以下を付記
+    ```
+    ℹ️ sandbox が作業ツリーの管理ディレクトリにマスクマウントを張っているため、削除を見送りました（この状態での削除試行は管理ディレクトリを半壊させます）。次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
+      すぐに消したい場合: sandbox 外のシェルで git worktree remove --force '{flow_wt}' && git worktree prune
     ```
   - `WORKTREE_REMOVE_FAILED=1` のとき（削除そのものが失敗）: ` ` + 以下を付記
     ```
@@ -790,10 +847,10 @@ Status: {projects_status_result}
     ```
   - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
 - `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定（上から評価し最初に一致したものを採用）:
-  - `BRANCH_DELETE_DEFERRED=1` のとき（別セッションが作業ツリーを使用中で削除を見送った。#1670）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
+  - `BRANCH_DELETE_DEFERRED=1` のとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中（#1670）または sandbox マスク skip（#1957）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
     - `recovery=auto`（PR が merged 済みで reap manifest に記録成功 → 次セッションで自動回収される）:
       ```
-      ℹ️ ローカルブランチ {branch_name} は、別セッションが使用中の作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
+      ℹ️ ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
       ```
     - `recovery=manual`（未マージ PR の強制 cleanup、または manifest 記録に失敗 → 自動回収されないため手動が必要）:
       ```
@@ -828,6 +885,24 @@ Status: {projects_status_result}
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
+`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
+
+判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルール（上記）はいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip（`{wiki_ingest_check}` の `reason=disabled`/`auto_ingest_off`/`no_pending`/`concurrent_ingest` 等）は `x` を割り当てる」という契約を既に持つ。付記文の絵文字 prefix は表示上の飾りに過ぎず（`{local_branch_check}` の `BRANCH_DELETE_FAILED`/`BRANCH_DELETE_UNMERGED` のように prefix を伴わない実失敗付記も存在する）、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。この統一により、prefix の有無に関わらず全 check の実失敗・残作業を漏れなく拾い、かつ legitimate skip（`x` 判定）は自然に除外される（追加の除外ルールは不要）。
+
+いずれの check も `x`（すべて成功、または legitimate skip）の場合は次の 1 行のみを出力する:
+
+```
+- なし（非ブロッキングで継続した失敗はありませんでした）
+```
+
+上記の判定は 6 個の check が steps 4/5/8/9 の別々の Bash 呼び出しで確定するため bash 側で合算できず、本コマンド (LLM) が完了報告を組み立てる時点で件数を数える。数えた件数を、他の numbered sentinel (`[pr:created:N]` 等) と同じ表記規約で、ステップ 12 末尾の return signal 行に隣接する HTML コメントとして出力する (grep 可能・rendered view では不可視):
+
+```
+<!-- [cleanup:outstanding:{n}] -->
+```
+
+`{n}` は「なし」なら `0`、付記ありなら列挙した件数。`/rite:batch-run` ステップ 6 がこの sentinel を読み、バッチ全体のロールアップに使う。
+
 親 Issue 処理結果 (該当する場合のみ):
 ```
 親 Issue 処理:
@@ -853,11 +928,11 @@ Status: {projects_status_result}
 
 stash した変更があれば「復元する (`git stash pop`) / 後で手動で復元」を確認する。
 
-次のステップ (通常 ordered list として出力 — fenced code block 禁止。`<!-- skill return signal: caller must continue next step -->` + `<!-- [cleanup:returned-to-caller] -->` は最終 list item 末尾に半角スペース区切りで inline 付加):
+次のステップ (通常 ordered list として出力 — fenced code block 禁止。`<!-- [cleanup:outstanding:{n}] -->` + `<!-- skill return signal: caller must continue next step -->` + `<!-- [cleanup:returned-to-caller] -->` は最終 list item 末尾に半角スペース区切りで inline 付加。`{n}` は上記「未完了事項」判定件数):
 
 次のステップ:
 1. `/rite:issue-list` で次の Issue を確認
-2. `/rite:open <issue_number>` で新しい作業を開始 <!-- skill return signal: caller must continue next step --> <!-- [cleanup:returned-to-caller] -->
+2. `/rite:open <issue_number>` で新しい作業を開始 <!-- [cleanup:outstanding:{n}] --> <!-- skill return signal: caller must continue next step --> <!-- [cleanup:returned-to-caller] -->
 
 > **Why `returned-to-caller` (not `completed`)**: 旧 `cleanup:completed` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、cleanup → wiki-ingest → wiki-lint のネストで lint 直後に turn が暗黙終了する事象が複数回再発した。`returned-to-caller` で terminal vocabulary を構造的に排除する。
 

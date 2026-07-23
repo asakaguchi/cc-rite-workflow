@@ -282,7 +282,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.9.0",
+ "version": "0.9.1",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "asakaguchi" },
  "license": "MIT"
@@ -1320,7 +1320,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `sh-cross-ref-check.sh` | shell prose (echo 文字列 / comment) 内の cross-file step/phase 参照の実在を検証 | — |
 | `orphan-reference-check.sh` | plugins/rite/ 配下の未参照 (orphan) ファイル検出 | — |
 | `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | — |
-| `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | — |
+| `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h)。`session-start.sh` のセッション開始時 lazy reap 起動 (`CWD == STATE_ROOT` ゲート) では、stdout/stderr を `STATE_ROOT/.rite/logs/pr-cycle-cleanup.log` へ退避する (ログディレクトリ初回作成時に自己完結的な `.gitignore` (`*`) も生成し downstream consuming repo でも自動除外、上書き方式、ログ書き込み準備失敗時（ディレクトリ作成不可または既存ディレクトリへの書き込み不可）は従来どおり破棄にフォールバック、#1968) | — |
 | `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 (`fix.md` ステップ 3.1.1 の pre-commit gate から直接呼び出される) | `review.loop.pre_commit_drift_check` |
 | `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、setup.md Phase 4.5.0.2) | — |
 | `lib/` (`git-remote.sh` / `git-status-filtered.sh` / `wiki-config.sh` / `worktree-git.sh`) | 汎用 git helper + wiki 系 helper の共有ライブラリ (owner/repo 解決 / sandbox ghost mount 除外 git status / wiki config 読取 / worktree git 操作) | — |
@@ -1401,7 +1401,7 @@ The per-session flow-state structure above isolates the **state** layer; **Workt
 | Create / enter | `/rite:open N` | `git worktree add --no-track -b {branch} {worktree_base}/issue-{N} origin/{base}` (idempotent across 5 cases — reuse / stale-residue prune / branch-only / new / other-worktree abort; `--no-track` avoids sandbox-rejected `.git/config` tracking writes, Issue #1894), then `EnterWorktree(path)` (Step 2.2-W / 2.3-W). A pre-existing `worktree` flow-state value triggers Step 0.5 re-entry on resume |
 | Work | implement / lint / push / PR create | unchanged — they are cwd-relative and complete inside the worktree (Steps 3–6) |
 | Exit / remove | `/rite:cleanup` | `ExitWorktree(action: "keep")` back to the main checkout, then `git worktree remove {path}` (a path-entered worktree is **not** removed by `ExitWorktree` itself, so removal runs from the main checkout) |
-| Reap (orphans) | `pr-cycle-cleanup.sh` Step 5 | lazily removes abnormally-orphaned session worktrees only when a **self-exclusion guard (Gate 0)** plus **3 gates** all pass: Gate 0 never reaps the worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching or nested under the candidate, so a long-lived session cannot delete its own active worktree mid-flight), then strict `^issue-[0-9]+$` name under `worktree_base`, claim not live (or no claim + mtime > 24h), and `git status --porcelain` empty (a dirty worktree is never auto-reaped — WARNING + manual command instead) |
+| Reap (orphans) | `pr-cycle-cleanup.sh` Step 5 | lazily removes abnormally-orphaned session worktrees only when a **self-exclusion guard (Gate 0)** plus **3 gates** all pass: Gate 0 never reaps the worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching or nested under the candidate, so a long-lived session cannot delete its own active worktree mid-flight), then strict `^issue-[0-9]+$` name under `worktree_base`, claim not live (or no claim + mtime > 24h — a worktree whose checked-out branch is reap-manifest-recorded, i.e. cleanup verified the PR merged and deferred the removal, bypasses the age guard: the harness refreshes the root mtime every session, so the guard alone would leak the deferred tree forever, Issue #1966), and `git status --porcelain` empty (a dirty worktree is never auto-reaped — WARNING + manual command instead; the sole exception is an admin-HEAD-missing, git-unrecognized **corpse** whose status is structurally undeterminable — it bypasses the status gate and is reaped, working tree + admin dir, behind the claim + 24h age guards, Issue #1957) |
 
 The session worktree is one of **four non-overlapping worktree namespaces** (`.rite/worktrees/issue-{N}` session / `.worktrees/{issue}/{task}` parallel sub-agent / `pr-{N}-cycle{X}` reviewer transient / `.rite/wiki-worktree` wiki); the reap's strict regex guarantees it never touches the other three. See [`references/git-worktree-patterns.md` → Multi-Session Patterns](../plugins/rite/references/git-worktree-patterns.md#multi-session-patterns).
 

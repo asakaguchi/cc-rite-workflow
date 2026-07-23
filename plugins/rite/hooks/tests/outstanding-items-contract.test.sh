@@ -37,7 +37,7 @@ assert_grep "run-queue schema includes outstanding field (init doc)" "$BATCH_RUN
 assert_grep "queue initialization literal includes outstanding:[]" "$BATCH_RUN" 'failed:\[\], outstanding:\[\], active:true'
 
 echo "=== batch-run.md ステップ 6: cleanup の outstanding sentinel を run-queue に記録 ==="
-assert_grep "Step 6 reads the [cleanup:outstanding:{n}] sentinel" "$BATCH_RUN" '\[cleanup:outstanding:\{n\}\]'
+assert_grep "Step 6 reads the [cleanup:outstanding:N] sentinel" "$BATCH_RUN" '\[cleanup:outstanding:N\]'
 assert_grep "Step 6 records into outstanding[] via jq" "$BATCH_RUN" '\.outstanding = \(\(\.outstanding // \[\]\) \+ \[\$n\] \| unique\)'
 assert_grep "Step 6 emits RUN_OUTSTANDING_RECORDED" "$BATCH_RUN" 'RUN_OUTSTANDING_RECORDED'
 

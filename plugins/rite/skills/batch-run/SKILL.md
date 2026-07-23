@@ -55,7 +55,7 @@ argument-hint: "[--merge] <issue_number>..."
 | `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
-| `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:{n}]` sentinel の `{n}` 値（Issue #1946） |
+| `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:N]` sentinel の `N` に実際に埋め込まれた数値（Issue #1946） |
 | `{outstanding_issues}` | ステップ 7 bash の `outstanding=`（未完了事項が残った Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -65,7 +65,7 @@ argument-hint: "[--merge] <issue_number>..."
 
 ## ステップ 0: キュー初期化 / 再開判定
 
-`.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, outstanding, active, updated_at}` の形。session_id は各 bash ブロック先頭で `flow-state.sh path` の basename から導出し、解決できなければ fail-loud で停止する — global 名へフォールバックしない）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。ファイル名がセッションごとに分離するため、突き合わせ対象は常に自セッションのキューであり、他セッションのキューを読む・上書きする経路は存在しない（Issue #1859）。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`outstanding` は cleanup 完了報告の `[cleanup:outstanding:{n}]` sentinel（Issue #1946）で `n > 0` だった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`active` は run が iterate を駆動中かを示す真偽値で、ステップ 0 で `true`、停止（ステップ 8）で `false` にする。iterate ステップ 6 の batch 判定が停止済み dormant キューを active batch と誤判定しないための signal（欠落時は `false` = 安全側）。`updated_at` は cursor 前進（ステップ 6）/ active 設定（ステップ 0/8）を書き込むたびに更新する ISO 8601 タイムスタンプで、`/rite:recover` の active batch 検出（鮮度判定）が使う（欠落時は鮮度不明 = stale 扱い、後方互換。ステップ 1 の coarse skip-closed による cursor 前進は対象外 — バッチ開始時のステップ 0 更新により鮮度は保たれ、stale 側に倒れても安全側のため許容。詳細: [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.5）。
+`.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, outstanding, active, updated_at}` の形。session_id は各 bash ブロック先頭で `flow-state.sh path` の basename から導出し、解決できなければ fail-loud で停止する — global 名へフォールバックしない）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。ファイル名がセッションごとに分離するため、突き合わせ対象は常に自セッションのキューであり、他セッションのキューを読む・上書きする経路は存在しない（Issue #1859）。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`outstanding` は cleanup 完了報告の `[cleanup:outstanding:N]` sentinel（Issue #1946）で `n > 0` だった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`active` は run が iterate を駆動中かを示す真偽値で、ステップ 0 で `true`、停止（ステップ 8）で `false` にする。iterate ステップ 6 の batch 判定が停止済み dormant キューを active batch と誤判定しないための signal（欠落時は `false` = 安全側）。`updated_at` は cursor 前進（ステップ 6）/ active 設定（ステップ 0/8）を書き込むたびに更新する ISO 8601 タイムスタンプで、`/rite:recover` の active batch 検出（鮮度判定）が使う（欠落時は鮮度不明 = stale 扱い、後方互換。ステップ 1 の coarse skip-closed による cursor 前進は対象外 — バッチ開始時のステップ 0 更新により鮮度は保たれ、stale 側に倒れても安全側のため許容。詳細: [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.5）。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -314,7 +314,7 @@ args: "{branch_name}"
 | `[cleanup:returned-to-caller]` | この Issue 完了。下記 bash で cursor を +1 してステップ 1 へループ |
 | sentinel 不在（cleanup 途中で停止） | merge は既に完了済み（成功扱い）。下記 bash で cursor を +1 してステップ 1 へ進む（cleanup の未完分は `/rite:recover {current_issue}` で個別補完できる旨を表示） |
 
-**（`[cleanup:returned-to-caller]` 経由の場合のみ）** cursor を進める前に、cleanup の完了報告に含まれる `[cleanup:outstanding:{n}]` sentinel（Issue #1946: 非ブロッキング失敗の集約 surface）を読み、`{n}` が `0` より大きければ当該 Issue を `outstanding[]` に記録する（ステップ 7 完了通知のロールアップに使うため。`failed[]` と同じ記録パターン）。sentinel 不在（cleanup 途中停止）の場合は判定不能なので記録しない — silent に「outstanding 無し」と誤記録しない（`{current_issue}` / `{outstanding_n}` はステップ 1 の marker 値・cleanup 完了報告の sentinel 値をそれぞれリテラル置換）:
+**（`[cleanup:returned-to-caller]` 経由の場合のみ）** cursor を進める前に、cleanup の完了報告に含まれる `[cleanup:outstanding:N]` sentinel（Issue #1946: 非ブロッキング失敗の集約 surface）を読み、`{outstanding_n}` が `0` より大きければ当該 Issue を `outstanding[]` に記録する（ステップ 7 完了通知のロールアップに使うため。`failed[]` と同じ記録パターン）。sentinel 不在（cleanup 途中停止）の場合は判定不能なので記録しない — silent に「outstanding 無し」と誤記録しない（`{current_issue}` / `{outstanding_n}` はステップ 1 の marker 値・cleanup 完了報告の sentinel 値をそれぞれリテラル置換）:
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)

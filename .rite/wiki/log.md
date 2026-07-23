@@ -1,6 +1,7 @@
 ## 2026-07-24
 
 * **Skip**: [20260723T172336Z-pr-1986.md](raw/reviews/20260723T172336Z-pr-1986.md) — 指摘0件の機械的バージョン文字列更新PR。DRY非該当の判断はHyperFramesのシーン独立アーキテクチャに固有で汎用性が低く、既存の関連ページも無いため経験則化を見送った
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=279, broken_refs=0
 
 ## 2026-07-23
 

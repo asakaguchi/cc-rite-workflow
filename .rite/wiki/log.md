@@ -1,5 +1,7 @@
 ## 2026-07-23
 
+* **Create**: [SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する](pages/anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md) — raw/reviews/20260723T052236Z-pr-1975.md, raw/fixes/20260723T052849Z-pr-1975.md を新規ページ化
+* **Create**: [複数の異種 signal を集約するロジックは表層パターンではなく共通の構造化された状態を判定基準にする](pages/heuristics/aggregate-heterogeneous-signals-by-structured-state-not-surface-pattern.md) — raw/reviews/20260723T062652Z-pr-1975.md, raw/fixes/20260723T055411Z-pr-1975.md, raw/fixes/20260723T061352Z-pr-1975.md を新規ページ化
 * **Create**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — raw/reviews/20260723T005459Z-pr-1974.md, raw/fixes/20260723T010449Z-pr-1974.md を新規ページ化
 * **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — raw/reviews/20260723T020925Z-pr-1974-cycle2.md を統合 — 複数ファイルに複製されたコメントは実装の段階的進化に追随せず drift しやすい観点を追加
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/fixes/20260723T021111Z-pr-1974-cycle2.md を統合 — 安全ゲートを剥がす mutation は producer 側にも discriminating assert が必要という適用 30 を追加

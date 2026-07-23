@@ -898,7 +898,8 @@ Wiki Ingest が完了しました。
 | `WIKI_INGEST_PUSH=` | 展開 |
 |---|---|
 | `failed` | `- ⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}（次回 /rite:wiki-ingest 実行時にも自動で flush を試みます）` |
-| `ok` / `skipped; reason=same_branch` / marker なし | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
+| marker なし（ステップ 8.6 未到達などの想定外経路） | `- ⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください`（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
+| `ok` / `skipped; reason=same_branch` | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
 
 ### 9.1 Return-to-Caller Signal
 

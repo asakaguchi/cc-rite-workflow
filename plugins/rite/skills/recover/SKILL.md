@@ -300,18 +300,28 @@ echo "[CONTEXT] RESOLVED_PHASE=$resolved_phase"
 
 ### 3.6 未完了事項の検出（Issue #1946、`resolved_phase` が `cleanup`/`completed` のときのみ、informational）
 
-当該 Issue が既に cleanup 段階を終えている（= これ以上 phase を進める作業は無い）場合に限り、過去の cleanup が非ブロッキングで残した可能性のある 2 種類の signal を git 実態から直接検出する（新しい記録先は持たない — 集約記録のありか自体が git/リモートの実態であり、既存の `.rite/wiki-worktree` / ローカルブランチ / `gh pr view` 以上のものを要求しない）。Phase 3.5 のフラグ判定・Phase 5.3 のルーティング表には影響しない、純粋な追加情報:
+当該 Issue が既に cleanup 段階を終えている（= これ以上 phase を進める作業は無い）場合に限り、過去の cleanup が非ブロッキングで残した可能性のある 2 種類の signal を git 実態から直接検出する（新しい記録先は持たない — 集約記録のありか自体が git/リモートの実態であり、既存の `.rite/wiki-worktree` / ローカルブランチ / `gh pr view` 以上のものを要求しない）。Phase 3.5 のフラグ判定・Phase 5.3 のルーティング表には影響しない、純粋な追加情報。
+
+> **重要 — Bash tool 境界での変数消失**: 本 step は Phase 3.5 とは別の Bash tool 呼び出しのため、`$resolved_phase` / `$issue_arg` をシェル変数として直接参照できない（line 397 と同じ制約）。LLM は Phase 3.5 の `{resolved_phase}` と Phase 1.1 の `{issue_arg}` を会話コンテキストから読み、下記 bash block 内の placeholder を実値に置換してから実行すること。
 
 ```bash
-if [ "$resolved_phase" = "cleanup" ] || [ "$resolved_phase" = "completed" ]; then
-  if [ -d ".rite/wiki-worktree" ]; then
-    wiki_branch_probe=$(git -C .rite/wiki-worktree branch --show-current 2>/dev/null || echo "")
+if [ "{resolved_phase}" = "cleanup" ] || [ "{resolved_phase}" = "completed" ]; then
+  state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || state_root=""
+  [ -n "$state_root" ] || state_root="$(pwd)"
+  wiki_wt="$state_root/.rite/wiki-worktree"
+  if [ -d "$wiki_wt" ]; then
+    wiki_branch_probe=$(git -C "$wiki_wt" branch --show-current 2>/dev/null || echo "")
     if [ -n "$wiki_branch_probe" ]; then
-      unpushed=$(git -C .rite/wiki-worktree log "origin/$wiki_branch_probe..HEAD" --oneline 2>/dev/null)
-      [ -n "$unpushed" ] && echo "[CONTEXT] RECOVER_OUTSTANDING_WIKI=1; branch=$wiki_branch_probe"
+      if ! git -C "$wiki_wt" rev-parse -q --verify "origin/$wiki_branch_probe" >/dev/null 2>&1; then
+        # origin に対応 ref が無い = push が一度も成功していない（最悪ケース）。fail-safe に検出側へ倒す
+        echo "[CONTEXT] RECOVER_OUTSTANDING_WIKI=1; branch=$wiki_branch_probe; reason=no_remote_ref"
+      else
+        unpushed=$(git -C "$wiki_wt" log "origin/$wiki_branch_probe..HEAD" --oneline 2>/dev/null)
+        [ -n "$unpushed" ] && echo "[CONTEXT] RECOVER_OUTSTANDING_WIKI=1; branch=$wiki_branch_probe; reason=unpushed_commits"
+      fi
     fi
   fi
-  stale_branch=$(git branch --list "*/issue-${issue_arg}-*" --format='%(refname:short)' 2>/dev/null | head -1)
+  stale_branch=$(git branch --list "*/issue-{issue_arg}-*" --format='%(refname:short)' 2>/dev/null | head -1)
   if [ -n "$stale_branch" ]; then
     br_pr_state=$(gh pr view "$stale_branch" -R {owner_repo} --json state --jq '.state' 2>/dev/null || echo "NONE")
     [ "$br_pr_state" != "OPEN" ] && echo "[CONTEXT] RECOVER_OUTSTANDING_BRANCH=1; branch=$stale_branch"

@@ -885,7 +885,11 @@ Status: {projects_status_result}
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、ひとつでも非ブロッキング失敗の付記（⚠️ / ℹ️ で始まる文、`{projects_status_result}` の `⚠️ 更新失敗` 行も含む）を伴うものがあれば、その付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。いずれの check にも付記が無い（すべて `x` かつ警告文なし）場合は次の 1 行のみを出力する:
+`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、ひとつでも非ブロッキング失敗の付記（⚠️ / ℹ️ で始まる文、`{projects_status_result}` の `⚠️ 更新失敗` 行も含む）を伴うものがあれば、その付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
+
+**marker 完全不在（想定外クラッシュ）の取りこぼし防止**: `{session_worktree_check}` / `{local_branch_check}` / `{review_cleanup_check}` の 3 つは、対応する Step（4-W / 5 / 6）の `[CONTEXT]` marker が一つも出力されない想定外クラッシュ経路でも `x`（成功）として描画される fail-open 設計になっている（該当 3 check の判定ルール自体は変更しない）。このため `{outstanding_items_block}` は上記の「レンダリング済み付記文の走査」に加え、Step 4-W / Step 5 / Step 6 のいずれかで `[CONTEXT]` marker が一つも会話コンテキストに現れなかった場合も検知し、「⚠️ {該当ステップ} の実行結果が確認できませんでした。`git status` / `git branch --list` で状態を確認してください」を件数に算入したうえで列挙に追加する（marker 不在の判定は LLM が該当ステップの bash 出力を確認して行う）。
+
+いずれの check にも付記が無く、かつ marker 不在の想定外クラッシュも検知されなかった（すべて `x` かつ警告文なし）場合は次の 1 行のみを出力する:
 
 ```
 - なし（非ブロッキングで継続した失敗はありませんでした）

@@ -26,7 +26,7 @@ confidence: high
 
 ### 発生背景
 
-PR #1975（Issue #1946: 非ブロッキング失敗の集約 surface）の review-fix ループで、cleanup 完了報告の「未完了事項」集約ロジックが 4 review cycle にわたって 3 世代の異なるバグを生んだ:
+cleanup 完了報告に非ブロッキング失敗を集約 surface する機能を追加した review-fix ループで、「未完了事項」集約ロジックが 4 review cycle にわたって 3 世代の異なるバグを生んだ:
 
 1. **cycle 1**: cross-Bash-tool-call 境界での値受け渡しにシェル変数を使い、既存の `{placeholder}` 規約を確認しなかった（[別ページ「SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する」](../anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md) 参照）。
 2. **cycle 2**: 複数 signal の「異常」を一律の仮定（`marker` 不在 = 異常）で判定しようとしたが、各 signal の実際の emit 条件（成功時に marker を出す設計か、失敗時のみ出す設計か）を個別確認しなかったため、成功時に marker を出さない設計のステップで常に誤検知（false positive）した。

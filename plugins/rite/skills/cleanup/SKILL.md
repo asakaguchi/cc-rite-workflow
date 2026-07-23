@@ -815,6 +815,9 @@ Status: {projects_status_result}
 - [x] Issue claim 解放
 - [x] 関連 Issue をクローズ
 - [x] 親 Issue の Tasklist 更新・自動クローズ (該当する場合)
+
+未完了事項:
+{outstanding_items_block}
 ```
 
 各チェックボックスおよび placeholder の判定:
@@ -882,6 +885,20 @@ Status: {projects_status_result}
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
+`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、ひとつでも非ブロッキング失敗の付記（⚠️ / ℹ️ で始まる文、`{projects_status_result}` の `⚠️ 更新失敗` 行も含む）を伴うものがあれば、その付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。いずれの check にも付記が無い（すべて `x` かつ警告文なし）場合は次の 1 行のみを出力する:
+
+```
+- なし（非ブロッキングで継続した失敗はありませんでした）
+```
+
+上記の判定は 6 個の check が steps 4/5/8/9 の別々の Bash 呼び出しで確定するため bash 側で合算できず、本コマンド (LLM) が完了報告を組み立てる時点で件数を数える。数えた件数を、他の sentinel (`[pr:created:N]` 等) と同じ `[name:value]` 形式で、ステップ 12 末尾の return signal 行に隣接する HTML コメントとして出力する (grep 可能・rendered view では不可視):
+
+```
+<!-- [cleanup:outstanding:{n}] -->
+```
+
+`{n}` は「なし」なら `0`、付記ありなら列挙した件数。`/rite:batch-run` ステップ 6 がこの sentinel を読み、バッチ全体のロールアップに使う。
+
 親 Issue 処理結果 (該当する場合のみ):
 ```
 親 Issue 処理:
@@ -907,11 +924,11 @@ Status: {projects_status_result}
 
 stash した変更があれば「復元する (`git stash pop`) / 後で手動で復元」を確認する。
 
-次のステップ (通常 ordered list として出力 — fenced code block 禁止。`<!-- skill return signal: caller must continue next step -->` + `<!-- [cleanup:returned-to-caller] -->` は最終 list item 末尾に半角スペース区切りで inline 付加):
+次のステップ (通常 ordered list として出力 — fenced code block 禁止。`<!-- [cleanup:outstanding:{n}] -->` + `<!-- skill return signal: caller must continue next step -->` + `<!-- [cleanup:returned-to-caller] -->` は最終 list item 末尾に半角スペース区切りで inline 付加。`{n}` は上記「未完了事項」判定件数):
 
 次のステップ:
 1. `/rite:issue-list` で次の Issue を確認
-2. `/rite:open <issue_number>` で新しい作業を開始 <!-- skill return signal: caller must continue next step --> <!-- [cleanup:returned-to-caller] -->
+2. `/rite:open <issue_number>` で新しい作業を開始 <!-- [cleanup:outstanding:{n}] --> <!-- skill return signal: caller must continue next step --> <!-- [cleanup:returned-to-caller] -->
 
 > **Why `returned-to-caller` (not `completed`)**: 旧 `cleanup:completed` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、cleanup → wiki-ingest → wiki-lint のネストで lint 直後に turn が暗黙終了する事象が複数回再発した。`returned-to-caller` で terminal vocabulary を構造的に排除する。
 

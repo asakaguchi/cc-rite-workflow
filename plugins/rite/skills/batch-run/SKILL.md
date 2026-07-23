@@ -55,6 +55,8 @@ argument-hint: "[--merge] <issue_number>..."
 | `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
+| `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:{n}]` sentinel の `{n}` 値（Issue #1946） |
+| `{outstanding_issues}` | ステップ 7 bash の `outstanding=`（未完了事項が残った Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
@@ -63,7 +65,7 @@ argument-hint: "[--merge] <issue_number>..."
 
 ## ステップ 0: キュー初期化 / 再開判定
 
-`.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, active, updated_at}` の形。session_id は各 bash ブロック先頭で `flow-state.sh path` の basename から導出し、解決できなければ fail-loud で停止する — global 名へフォールバックしない）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。ファイル名がセッションごとに分離するため、突き合わせ対象は常に自セッションのキューであり、他セッションのキューを読む・上書きする経路は存在しない（Issue #1859）。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`active` は run が iterate を駆動中かを示す真偽値で、ステップ 0 で `true`、停止（ステップ 8）で `false` にする。iterate ステップ 6 の batch 判定が停止済み dormant キューを active batch と誤判定しないための signal（欠落時は `false` = 安全側）。`updated_at` は cursor 前進（ステップ 6）/ active 設定（ステップ 0/8）を書き込むたびに更新する ISO 8601 タイムスタンプで、`/rite:recover` の active batch 検出（鮮度判定）が使う（欠落時は鮮度不明 = stale 扱い、後方互換。ステップ 1 の coarse skip-closed による cursor 前進は対象外 — バッチ開始時のステップ 0 更新により鮮度は保たれ、stale 側に倒れても安全側のため許容。詳細: [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.5）。
+`.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, outstanding, active, updated_at}` の形。session_id は各 bash ブロック先頭で `flow-state.sh path` の basename から導出し、解決できなければ fail-loud で停止する — global 名へフォールバックしない）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。ファイル名がセッションごとに分離するため、突き合わせ対象は常に自セッションのキューであり、他セッションのキューを読む・上書きする経路は存在しない（Issue #1859）。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`outstanding` は cleanup 完了報告の `[cleanup:outstanding:{n}]` sentinel（Issue #1946）で `n > 0` だった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`active` は run が iterate を駆動中かを示す真偽値で、ステップ 0 で `true`、停止（ステップ 8）で `false` にする。iterate ステップ 6 の batch 判定が停止済み dormant キューを active batch と誤判定しないための signal（欠落時は `false` = 安全側）。`updated_at` は cursor 前進（ステップ 6）/ active 設定（ステップ 0/8）を書き込むたびに更新する ISO 8601 タイムスタンプで、`/rite:recover` の active batch 検出（鮮度判定）が使う（欠落時は鮮度不明 = stale 扱い、後方互換。ステップ 1 の coarse skip-closed による cursor 前進は対象外 — バッチ開始時のステップ 0 更新により鮮度は保たれ、stale 側に倒れても安全側のため許容。詳細: [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.5）。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -93,7 +95,7 @@ if [ "$arg_count" -gt 0 ]; then
   else
     # 新規 / 既存と不一致 → 上書き（古いキューは破棄）。`active=true` で駆動中を明示
     now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    jq -n --argjson issues "$arg_issues_json" --arg mode "$arg_mode" --arg now "$now_ts" '{issues:$issues, cursor:0, mode:$mode, failed:[], active:true, updated_at:$now}' > "$queue_file"
+    jq -n --argjson issues "$arg_issues_json" --arg mode "$arg_mode" --arg now "$now_ts" '{issues:$issues, cursor:0, mode:$mode, failed:[], outstanding:[], active:true, updated_at:$now}' > "$queue_file"
     echo "[CONTEXT] RUN_QUEUE=initialized; cursor=0; total=$arg_count; mode=$arg_mode"
   fi
 else
@@ -312,6 +314,25 @@ args: "{branch_name}"
 | `[cleanup:returned-to-caller]` | この Issue 完了。下記 bash で cursor を +1 してステップ 1 へループ |
 | sentinel 不在（cleanup 途中で停止） | merge は既に完了済み（成功扱い）。下記 bash で cursor を +1 してステップ 1 へ進む（cleanup の未完分は `/rite:recover {current_issue}` で個別補完できる旨を表示） |
 
+**（`[cleanup:returned-to-caller]` 経由の場合のみ）** cursor を進める前に、cleanup の完了報告に含まれる `[cleanup:outstanding:{n}]` sentinel（Issue #1946: 非ブロッキング失敗の集約 surface）を読み、`{n}` が `0` より大きければ当該 Issue を `outstanding[]` に記録する（ステップ 7 完了通知のロールアップに使うため。`failed[]` と同じ記録パターン）。sentinel 不在（cleanup 途中停止）の場合は判定不能なので記録しない — silent に「outstanding 無し」と誤記録しない（`{current_issue}` / `{outstanding_n}` はステップ 1 の marker 値・cleanup 完了報告の sentinel 値をそれぞれリテラル置換）:
+
+```bash
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
+session_id=$(basename "$fs_path" .flow-state)
+[ -n "$session_id" ] || { echo "ERROR: batch-run: session_id を解決できません（run-queue はセッションスコープのため必須）" >&2; exit 1; }
+queue_file="$state_root/.rite/state/run-queue-$session_id.json"
+outstanding_n={outstanding_n}
+if [ "$outstanding_n" -gt 0 ] 2>/dev/null; then
+  if jq --argjson n {current_issue} '.outstanding = ((.outstanding // []) + [$n] | unique)' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"; then
+    echo "[CONTEXT] RUN_OUTSTANDING_RECORDED; issue={current_issue}; n=$outstanding_n"
+  else
+    rm -f "$queue_file.tmp"
+    echo "WARNING: outstanding 記録の書込に失敗（完了通知の未完了事項一覧から漏れる恐れ）" >&2
+  fi
+fi
+```
+
 **（`[iterate:max-cycles-reached]` 経由の場合のみ）** cursor を進める前に当該 Issue を `failed[]` に記録する（ステップ 7 完了通知で報告するため。両モードで実行。`{current_issue}` はステップ 1 の marker 値をリテラル置換）:
 
 ```bash
@@ -369,11 +390,12 @@ bash {plugin_root}/hooks/flow-state.sh consume-handoff >/dev/null 2>&1 || true
 mode=$(jq -r '.mode // "default"' "$queue_file" 2>/dev/null || echo "default")
 processed=$(jq -rc '.issues' "$queue_file" 2>/dev/null || echo "[]")
 failed=$(jq -rc '.failed // []' "$queue_file" 2>/dev/null || echo "[]")
+outstanding=$(jq -rc '.outstanding // []' "$queue_file" 2>/dev/null || echo "[]")
 rm -f "$queue_file"
-echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; mode=$mode"
+echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$outstanding; mode=$mode"
 ```
 
-`mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。
+`mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（Issue #1946: cleanup 完了報告の「未完了事項」ロールアップ。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 
 **デフォルト（`mode=default`）**: 各 Issue は draft PR で停止しており **merge していない**:
 
@@ -398,6 +420,7 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; mode=$mode"
 処理した Issue: {processed_issues}
 全 Issue を処理しました（failed 扱いを除き open→iterate→ready→merge→cleanup を完走）。
 （`failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となり merge/cleanup をスキップした Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。`/rite:iterate <pr>` で再開できます。
+未完了事項: （`outstanding=` が空のとき）なし（全 Issue） / （非空のとき）{outstanding_issues} の cleanup で非ブロッキング失敗が残っています — 各 Issue の cleanup 完了報告（本セッションのログ）を参照するか、`/rite:recover <issue>` で確認してください。
 
 <!-- [run:all-completed] -->
 ```
@@ -475,7 +498,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 - **handoff 不使用**: flow-state の `handoff` は単一フィールド + default-clear で、iterate / cleanup が内部で排他使用する。run が割り込むと sub-skill の継続保証（Stop hook 差し戻し）が壊れるため、run は handoff を一切 set しない。継続は flat step 構造に委ねる（`/rite:open` と同じ）。ただしデフォルトモードは ready を経由しないため、iterate の残存 FINALIZE handoff は次 Issue の open（`flow-state.sh set`）が default-clear し、最後の Issue 分のみステップ 7 の `consume-handoff` で消費する（merge モードでは ready が clear するため no-op）
 - **phase enum を拡張しない**: 各 sub-skill が自分の phase を書くため、中断時の個別 Issue 復帰は既存 `/rite:recover` がそのままカバーする。run 専用 phase は持たない
 - **recover.md からの active batch 継続（Issue #1820）**: 当初は「recover.md を変更しない」方針だったが、真に `/rite:batch-run` 実行中の中断（`run-queue-{session_id}.json` の `active=true` かつ cursor が recover 対象 Issue を指し `updated_at` が鮮度閾値以内）を recover 自身が検出できないと、個別復帰後に残りキューが誰にも処理されず取り残される欠陥があったため、recover.md 側に検出・継続ロジックを追加した（[skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.5）。継続時の分岐ロジックは本ファイルのステップ 3-8 の表を参照する形にとどめ、recover.md 側には複製しない（DRY）
-- **キュー永続化**: 複数 Issue の残りキューは `state_root/.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, active, updated_at}`）に持つ。会話コンテキストでなくディスクに置くことで compact / 中断を跨いでも残り Issue・モード・failed 記録が失われない。`mode` 欠落の旧形式は `default` 互換、`failed` 欠落は `[]` 互換、`active` 欠落は `false` 互換、`updated_at` 欠落は鮮度不明 = stale 扱いとして扱う（Issue #1536 D-03、`updated_at` は Issue #1820）。linked worktree を跨ぐため `state-path-resolve.sh` で解決した main checkout root 基準で配置する（同一セッションは worktree を出入りしても同じ session_id → 同じファイル）
+- **キュー永続化**: 複数 Issue の残りキューは `state_root/.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, outstanding, active, updated_at}`）に持つ。会話コンテキストでなくディスクに置くことで compact / 中断を跨いでも残り Issue・モード・failed/outstanding 記録が失われない。`mode` 欠落の旧形式は `default` 互換、`failed` / `outstanding` 欠落は `[]` 互換、`active` 欠落は `false` 互換、`updated_at` 欠落は鮮度不明 = stale 扱いとして扱う（Issue #1536 D-03、`updated_at` は Issue #1820、`outstanding` は Issue #1946）。linked worktree を跨ぐため `state-path-resolve.sh` で解決した main checkout root 基準で配置する（同一セッションは worktree を出入りしても同じ session_id → 同じファイル）
 - **`[fix:replied-only]` の扱いはモード依存**: `--merge` では mergeable 未到達とみなし merge 前に停止する（未解決指摘の握り潰し防止）。デフォルトでは merge しないため即停止は不要で、draft PR を残し「未解決指摘あり」を明示してキューを次へ進める（Issue #1536 Open Question 暫定方針）
 - **キューのセッションスコープ化（Issue #1859）**: run-queue はファイル名に `session_id` を含める（`run-queue-{session_id}.json`）ことでセッションごとに物理分離する。**候補比較**: (A) ファイル名スコープ化 / (B) 単一ファイル + 所有者検証 / (C) 持続ロック のうち、AC-1「複数セッションが同時に batch-run しても各キューが独立保持」を満たすのは A のみ（B は 1 ファイル 1 所有者しか表現できず 2 つの並行キューを構造的に持てない、C のロックは共有リソースへの排他で各セッションに独立キューを与えない）。A は flow-state（`{session_id}.flow-state`）・issue-claim・worktree がすべて per-session である既存アーキテクチャと対称で、run-queue だけ repo-global だった非対称を解消する。session_id は `flow-state.sh path`（正典 `_resolve_session_id` を再利用）の basename から導出し、新しいロック・所有者フィールド・専用ヘルパーを追加しない（filesystem が構造的隔離を保証）。**トレードオフ**: 再開が session_id スコープに厳格化され、プロセス再起動で session_id が変わると旧キューを Phase 5.5 自動継続 / 引数省略再開から拾えなくなる。ただし flow-state の phase 解決も元々 ambient session_id 依存（same-session 前提）のため一貫性の回復であり、AC-5 が保証する単一セッション運用（compact 跨ぎ・引数省略再開・Phase 5.5 検出）は session_id が安定なので回帰しない。アップグレード時点で in-flight だった旧 global `run-queue.json` は新コードから拾われない（ephemeral・無害残置のため移行コードは書かない）
 - **専用ヘルパー/hook を作らない**: run-queue は run.md 内 bash の `jq` 直接操作で完結する（既存の `.rite/state/` PR-state ファイルと同じく helper なし）。各セッションが**自分のファイル**（`run-queue-{session_id}.json`）を順次書くため atomic は `jq → 一時ファイル → mv` で十分（セッションスコープ化により「単一 writer per file」が構造的に保証される — 旧版の repo-global 単一ファイル前提が multi_session 並走で崩れていた点を Issue #1859 で修正）。`mode` 追加や session_id 導出もこの方針内で `jq` フィールド / `flow-state.sh path` の読み取りに留める

@@ -861,6 +861,9 @@ Wiki Ingest が完了しました。
 - 未登録 raw（skip 済、warnings 不加算）: {n_unregistered_raw} 件
 - {wiki_push_line}
 
+未完了事項:
+{ingest_outstanding_line}
+
 新規/更新ページ:
 - {path1} ({action1})
 - {path2} ({action2})
@@ -889,6 +892,13 @@ Wiki Ingest が完了しました。
 | `failed` | `⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}` |
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
+
+`{ingest_outstanding_line}`（Issue #1946: 非ブロッキング失敗の集約 surface。`{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで、新しい記録先は持たない — local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を試みる）:
+
+| `WIKI_INGEST_PUSH=` | 展開 |
+|---|---|
+| `failed` | `- ⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}（次回 /rite:wiki-ingest 実行時にも自動で flush を試みます）` |
+| `ok` / `skipped; reason=same_branch` / marker なし | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
 
 ### 9.1 Return-to-Caller Signal
 

@@ -164,10 +164,12 @@ revert_find_out=""
 manifest_keep=""
 # Step 5 branch recovery の manifest エントリ即時消費用 (Issue #1966)
 session_branch_mf_keep=""
+# Step 5 corpse reap の session_worktree manifest エントリ即時消費用 (Issue #1945)
+_wt_mf_keep=""
 _rite_pr_cycle_cleanup() {
   rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}" "${mutation_find_err:-}" \
         "${revert_find_err:-}" "${workdir_find_out:-}" "${mutation_find_out:-}" "${revert_find_out:-}" \
-        "${manifest_keep:-}" "${session_branch_mf_keep:-}"
+        "${manifest_keep:-}" "${session_branch_mf_keep:-}" "${_wt_mf_keep:-}"
 }
 trap 'rc=$?; _rite_pr_cycle_cleanup; exit $rc' EXIT
 trap '_rite_pr_cycle_cleanup; exit 130' INT
@@ -466,8 +468,10 @@ fi
 # intent, so there is no in-flight ambiguity to protect against (unlike the
 # path-name sweeps of Steps 3/4). Worktree entries still honor AC-6 — a dirty
 # worktree is skipped (and kept in the manifest for a later retry) so uncommitted
-# work is never destroyed. The manifest is contract-bound to EPHEMERAL tmp
-# artifacts; session worktrees go through Step 5's gated reap, never here.
+# work is never destroyed. The `worktree` type is contract-bound to EPHEMERAL
+# tmp artifacts; session worktrees go through Step 5's gated reap, never here
+# (Issue #1945: they use the distinct `session_worktree` type below, which
+# this step never reaps — only drops once the path is already gone).
 #
 # Manifest rewrite: lines we reap (or find already-gone) are dropped; skipped
 # (dirty) and failed entries are preserved so the next run retries them.
@@ -578,6 +582,22 @@ if [ -f "$manifest_path" ]; then
             errors=$((errors + 1))
             printf '%s\n' "$_m_line" >> "$manifest_keep"
           fi
+          ;;
+        session_worktree)
+          # Issue #1945: session worktree paths (`.rite/worktrees/issue-N`) are
+          # NEVER reaped here — that is Step 5's job, behind its claim /
+          # self-exclusion / live-cwd gates (the "worktree" type case above is
+          # ungated and reserved for ephemeral tmp artifacts only; mixing
+          # session worktrees into it would let this step destroy a live,
+          # claimed worktree). The only action this step takes is dropping a
+          # stale reference once the path is already gone (harmless — no gate
+          # needed to delete a pointer to nothing), mirroring the "already
+          # gone" self-heal the `worktree` case has. A still-existing path is
+          # preserved verbatim so Step 5 sees it on this same run.
+          if [ ! -e "$_m_val" ]; then
+            continue
+          fi
+          printf '%s\n' "$_m_line" >> "$manifest_keep"
           ;;
         *)
           # Unknown type — preserve verbatim (forward-compat / conservative).
@@ -1077,7 +1097,33 @@ if [ -d "$session_wt_root" ]; then
     # stale-claim path too (AC-4: a fresh corpse is never reaped). The skip is
     # logged, not silent: a corpse's existence is itself an anomaly the user
     # should see before the guard expires.
-    if [ "$_corpse" -eq 1 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
+    #
+    # Manifest bypass (Issue #1945): a corpse cannot resolve its checked-out
+    # branch (git no longer recognizes the tree), so the branch-keyed bypass
+    # above (Issue #1966, free-claim arm) structurally never fires for it —
+    # every corpse would wait the full 24h even when cleanup.md already tried
+    # and failed to remove this exact path. cleanup.md Step 4-W records the
+    # worktree's own PATH (not branch) into the manifest at the moment
+    # `git worktree remove` fails or is skipped for a busy/sandbox-mask reason
+    # (only when {pr_merged}=true, mirroring the branch bypass's AC-4 gate), so
+    # a manifest hit here means "rite already confirmed this path needs reaping" —
+    # the same "reap me" intent the branch bypass encodes, keyed differently
+    # because a corpse has no resolvable branch.
+    #
+    # `session_worktree` type (NOT `worktree`): the `worktree` manifest type is
+    # reserved for EPHEMERAL tmp artifacts consumed by Step 4.5's ungated reap
+    # (dirty-check only — no claim/self-exclusion/live-cwd gates, see Step 4.5's
+    # header comment "session worktrees go through Step 5's gated reap, never
+    # here"). Recording a session worktree path under `worktree` would let
+    # Step 4.5 reap it — possibly a live, claimed worktree — before this Step 5
+    # gate ever runs. `session_worktree` is a distinct type handled by Step
+    # 4.5's own dedicated case arm (below), which never reaps — it only drops
+    # a stale entry once the path is already gone and otherwise preserves it
+    # verbatim — so only this gated Step 5 bypass ever actually reaps it.
+    if [ "$_corpse" -eq 1 ] && [ -f "$manifest_path" ] \
+       && grep -qxF "session_worktree$(printf '\t')$wt_path" "$manifest_path" 2>/dev/null; then
+      echo "[pr-cycle-cleanup] manifest 記録済み (削除失敗確認済み) corpse session worktree のため age guard をバイパスします: $(printf '%s' "$wt_path" | neutralize_ctrl)" >&2
+    elif [ "$_corpse" -eq 1 ] && [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
       echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) は age guard (24h) 未達のため回収を見送ります。" >&2
       continue
     fi
@@ -1120,6 +1166,36 @@ if [ -d "$session_wt_root" ]; then
       # (uses the pre-removal canonical path) so re-entry / harness cwd-restore is
       # not pointed at the just-removed dir. Non-blocking (AC-5).
       _rite_null_worktree_refs "$wt_path" "$_wt_canon"
+
+      # Manifest entry consumption (Issue #1945, symmetric with the branch
+      # consumption below — #1966): a lingering `session_worktree\t<path>`
+      # entry is not inert — the corpse age-guard bypass above is keyed on it,
+      # so a DIFFERENT worktree later created at this same path (e.g. the
+      # issue reopened) would inherit the bypass and skip the 24h protection
+      # it never earned. Best-effort: on failure, the entry survives Step 4.5's
+      # own "already gone" check for this type (added alongside this Step 5
+      # consumer above) on the *next* run only if this exact path is gone by
+      # then — while the worktree still exists here, retrying the consumption
+      # is this step's own responsibility (never silently drops an entry a
+      # failed write left behind).
+      if [ -f "$manifest_path" ] && grep -qxF "session_worktree$(printf '\t')$wt_path" "$manifest_path" 2>/dev/null; then
+        if _wt_mf_keep=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-wtmf-XXXXXX" 2>/dev/null); then
+          _wt_mf_rc=0
+          grep -vxF "session_worktree$(printf '\t')$wt_path" "$manifest_path" > "$_wt_mf_keep" 2>/dev/null || _wt_mf_rc=$?
+          if [ "$_wt_mf_rc" -ge 2 ]; then
+            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_wt_mf_rc)（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+          elif [ -s "$_wt_mf_keep" ]; then
+            cp "$_wt_mf_keep" "$manifest_path" 2>/dev/null \
+              || echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+          elif ! rm -f "$manifest_path" 2>/dev/null; then
+            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+          fi
+          rm -f "$_wt_mf_keep" 2>/dev/null || true
+          _wt_mf_keep=""
+        else
+          echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+        fi
+      fi
 
       # Branch recovery (#1670): the worktree is gone, so its branch is no longer
       # checked out and can be deleted. SAFE-delete first — `git branch -d` refuses

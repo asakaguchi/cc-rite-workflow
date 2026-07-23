@@ -18,6 +18,36 @@ echo "=== ステップ 4-W: self-exclusion 付き live-cwd guard の配線 ==="
 assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$CLEANUP" "worktree-foreign-cwd\.sh"
 assert_grep "4-W passes --self-root \$PPID (excludes the cleanup session's harness)" "$CLEANUP" 'worktree-foreign-cwd\.sh.*--self-root'
 
+echo "=== ステップ 4-W: session_worktree manifest 記録が {pr_merged}=true ガード配下にあること (Issue #1945 AC-4) ==="
+# 未マージ PR の強制 cleanup で corpse worktree のパスが記録され、Step 5 の corpse age-guard
+# バイパス（dirty チェック無し）に晒される事故を防ぐ唯一の防波堤。ガード行と record 呼び出しの
+# 両方を、それぞれの分岐（sandbox マスク検知 / busy 削除失敗）の狭いセクション内で固定する — 汎用の
+# "pr_merged という語がどこかにある" だけの assert では、ガードが record 呼び出しから外れて
+# 常時記録に regression しても検知できない。
+## start パターンは `echo "[CONTEXT] ...` 形式の bash コード行にのみ一致させる（`[CONTEXT]` 接頭辞
+## を含めない生の marker 名だけだと、ステップ 12 の説明文（同じ marker 名をバッククォート引用する
+## prose 行）にも一致し、awk flip-flop レンジが最初の end 一致後にそこで再起動して EOF まで伸びる
+## — section scoping が実質無効化され、コード側 guard が regression しても prose 側の記述が
+## 生き残る限り silent pass しうる。`echo "[CONTEXT] ` 接頭辞は bash コード行にしか出現しないため、
+## この曖昧さを構造的に排除する。
+## start/end は assert_grep_in_section 内部で `awk -v` に渡り、awk の -v 引数は C 風エスケープを
+## 1段階解釈してから正規表現エンジンに渡す（`\[` は「不要なエスケープ」として警告付きで `[` に
+## 潰される）。ERE として `\[`/`\]`（リテラル bracket）を正規表現エンジンまで届けるには、-v 側の
+## 解釈で 1 段階消費される分を見越して `\\[`/`\\]`（バックスラッシュ2つ）を渡す必要がある
+## （1つだけだと `[CONTEXT]` が bracket 式として解釈され match しなくなる／過剰マッチの温床にもなる）。
+assert_grep_in_section "4-W sandbox-mask branch: session_worktree record call present" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^     else$' \
+  'record --type session_worktree'
+assert_grep_in_section "4-W sandbox-mask branch: record is inside the {pr_merged}=true guard" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^     else$' \
+  '\{pr_merged\}" = "true"'
+assert_grep_in_section "4-W busy-failed branch: session_worktree record call present" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
+  'record --type session_worktree'
+assert_grep_in_section "4-W busy-failed branch: record is inside the {pr_merged}=true guard" \
+  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
+  '\{pr_merged\}" = "true"'
+
 echo "=== ステップ 5: squash-merge 確認済みブランチの強制削除 + 遅延ブランチの manifest 記録 ==="
 assert_grep "Step 5 reads the {pr_merged} signal" "$CLEANUP" "pr_merged"
 assert_grep "Step 5 emits via=squash-merged on confirmed-merged force delete" "$CLEANUP" "via=squash-merged"

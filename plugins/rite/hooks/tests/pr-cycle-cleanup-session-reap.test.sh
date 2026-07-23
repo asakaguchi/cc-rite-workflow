@@ -676,13 +676,12 @@ assert_grep "C-05b age-guard skip WARNING on stderr (not silent)" "$R/pcc.err" "
 assert "C-05b mismatch entry survived Step 4.5 (non-vacuous: bypass grep saw it)" "1" "$( grep -qxF "session_worktree$(printf '\t')$R/.rite/worktrees/issue-141-decoy" "$R/.rite/tmp-artifacts.tsv" 2>/dev/null && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=0"*) pass "C-05b status reports session_worktrees=0" ;; *) fail "C-05b status: $out" ;; esac
 
-echo "=== C-05c (#1945, error-handling review finding): manifest-recorded LIVE session worktree is NOT reaped by Step 4.5's ungated pass ==="
+echo "=== C-05c (#1945): manifest-recorded LIVE session worktree is NOT reaped by Step 4.5's ungated pass ==="
 R=$(make_repo 142); cleanup_dirs+=("$R")
-# The exact scenario the error-handling reviewer reproduced: a clean, healthy
-# (non-corpse) session worktree whose path is manifest-recorded (as would
-# happen from a sandbox-mask-skip deferred removal) but SID_A (the claim
-# holder) stays live. If session_worktree entries were reaped by Step 4.5's
-# ungated worktree-type pass (dirty-check only, no claim/self-exclusion/
+# A clean, healthy (non-corpse) session worktree whose path is manifest-recorded
+# (as would happen from a sandbox-mask-skip deferred removal) but SID_A (the
+# claim holder) stays live. If session_worktree entries were reaped by Step
+# 4.5's ungated worktree-type pass (dirty-check only, no claim/self-exclusion/
 # live-cwd gates), this live worktree would be destroyed silently. It must
 # survive entirely (Step 4.5 defers, Step 5's own claim-liveness Gate 2 also
 # protects it).
@@ -709,9 +708,8 @@ R=$(make_repo 150); cleanup_dirs+=("$R")
 # corpse, claim-free) and a co-pending decoy path that must survive the
 # consumption write-back untouched. This exercises the survivor-preserving
 # `cp` branch (multi-entry manifest) that C-05's single-entry `rm -f` branch
-# cannot reach — the exact coverage gap the test reviewer identified via
-# mutation testing (a survivor-drop bug in the cp branch went undetected by
-# the full suite without this test).
+# cannot reach — without this test, a survivor-drop bug in the cp branch
+# would go undetected by the full suite.
 RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
 rm -f "$R/.rite/state/issue-claims/issue-150.json"
 mkdir -p "$R/.rite/worktrees/issue-150-copending-decoy"

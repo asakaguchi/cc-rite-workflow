@@ -19,7 +19,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 
 ## Overview
 
-**Claude Code Rite Workflow** is a Claude Code plugin that provides a complete Issue-driven development workflow. It works with any software development project regardless of language or framework.
+**Claude Code Rite Workflow** is a Claude Code plugin that provides an Issue-driven development workflow. It works with any software development project regardless of language or framework.
 
 ### Features
 
@@ -27,14 +27,14 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Automated**: Auto-detection and auto-configuration
 - **Customizable**: Flexible configuration via YAML
 - **Integrated**: GitHub Projects
-- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/skills/pr-review/references/internal-consistency.md`](plugins/rite/skills/pr-review/references/internal-consistency.md) for the full verification protocol
+- **Smart Reviews**: Dynamic multi-reviewer code review with a Doc-Heavy PR Mode that verifies doc-implementation consistency on documentation-centric PRs. See [`plugins/rite/skills/pr-review/references/internal-consistency.md`](plugins/rite/skills/pr-review/references/internal-consistency.md) for the verification protocol
 - **External Review Integration**: `/rite:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
 - **Iteration Tracking**: Optional GitHub Projects Iteration field integration (auto-assign on `/rite:open`, `--sprint` / `--backlog` filters in `/rite:issue-list`)
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications
-- **Assumption Surfacing**: Before generating the Implementation Contract, `/rite:issue-create` surfaces the assumptions the model implicitly filled in and processes them in three categories — derivable (self-resolved from the repository/Wiki), user-specific decisions (confirmed with up to three recommended-option questions), and deferrable (documented as Assumptions / Open Questions in the Issue body). **Design principle**: questions are limited to information that exists only in the user's head; anything derivable from the repository or Wiki is resolved by the model. This keeps implicit guesses from being silently locked into the contract that drives the whole downstream pipeline
-- **Experience Wiki**: LLM-driven project knowledge base, stored as an [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant bundle (`type`/`okf_version` frontmatter, OKF index/log). Auto-ingests review/fix outcomes into topical pages and injects relevant heuristics at the start of each Issue (opt-out). The conformant bundle can be browsed as a concept graph with the upstream OKF static visualizer (not vendored; see `plugins/rite/references/wiki-patterns.md`)
-- **Sandbox-aware**: `/rite:setup` proactively detects and warns about two sandbox environment constraints before they cause a failure — a session worktree's state writes into the main checkout being rejected after `EnterWorktree`, and `git push`/`fetch` being blocked over an SSH host alias remote — with the supported workaround surfaced up front
+- **Assumption Surfacing**: `/rite:issue-create` surfaces the assumptions the model implicitly filled in and resolves them before they are locked into the Implementation Contract, asking the user only what cannot be derived from the repository or Wiki. See [docs/SPEC.md](docs/SPEC.md) (Phase 1.5) for the full protocol
+- **Experience Wiki**: LLM-driven project knowledge base that auto-ingests review/fix outcomes and injects relevant heuristics at the start of each Issue (opt-out). Stored as an [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant bundle; see [`plugins/rite/references/wiki-patterns.md`](plugins/rite/references/wiki-patterns.md) for details
+- **Sandbox-aware**: `/rite:setup` proactively detects known sandbox environment constraints and surfaces the supported workarounds before they cause a failure
 
 ## Installation
 
@@ -71,7 +71,7 @@ This removes the plugin code but leaves behind the artifacts it created in your 
 | Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete <branch>`, where `<branch>` is `wiki.branch_name` in `rite-config.yml` (default `wiki`) |
 | Local generated files (gitignored) | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
 | `.rite/` internal directories (gitignored, may hold live git worktrees) | `.rite/wiki-worktree/` (Wiki `separate_branch` strategy), `.rite/worktrees/issue-*` (per-session worktrees when `multi_session` is enabled) | Yes if removed with a plain `rm -rf` — this can orphan git worktree metadata and destroy uncommitted work | Check `git worktree list` first; if either path is registered, run `git worktree remove <path>` (confirming no uncommitted changes) then `git worktree prune`. Only after that, remove the rest of `.rite/` with `rm -rf .rite` |
-| Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove any hook entries whose command path contains `rite/` and `hooks/` as path segments — a plugin version segment may appear in between (e.g. `.../rite/hooks/foo.sh` or `.../rite/0.7.0/hooks/foo.sh` — not `favorite/hooks/foo.sh`) |
+| Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove hook entries whose command path points into the rite plugin's `hooks/` directory |
 
 None of these block reinstallation or affect other tooling — clean them up at your convenience.
 
@@ -115,7 +115,7 @@ This will:
 | `/rite:wiki-init` | Initialize Experience Wiki branch and directory layout |
 | `/rite:wiki-query` | Query Wiki pages for heuristics matching keywords |
 | `/rite:wiki-ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
-| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
+| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts, and broken cross-refs |
 | `/rite:recover` | Resume interrupted work |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills |
 

@@ -10,6 +10,7 @@
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
 * **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=277, broken_refs=0
 * **Skip**: [20260723T073946Z-pr-1977.md](raw/reviews/20260723T073946Z-pr-1977.md) — 指摘ゼロのクリーンレビュー結果のみで、新規の一般化可能な経験則を抽出できない（一時的な情報）
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=278, broken_refs=0
 
 ## 2026-07-22
 

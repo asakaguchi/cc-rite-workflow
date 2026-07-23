@@ -2,7 +2,7 @@
 
 > Claude Code のための汎用 Issue ドリブン開発ワークフロー
 
-[![Version](https://img.shields.io/badge/version-0.9.1-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.9.1)
+[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.9.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | **日本語**
@@ -11,7 +11,7 @@
 
 Issue から PR まで、開発を“儀式”に変える — 約125秒で分かる紹介動画（日本語字幕）。
 
-https://github.com/user-attachments/assets/900476d1-fbf0-4f8c-a3ef-3f286638568a
+https://github.com/user-attachments/assets/82ba8e65-0c07-4346-9964-5a482a1f4df5
 
 ## なぜ "Rite" なのか
 

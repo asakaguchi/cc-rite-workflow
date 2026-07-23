@@ -74,7 +74,7 @@ gh pr list -R {owner_repo} --head {branch_name} --state all --json number,title,
 
 PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
 
-`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 4-W / ステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 4-W の worktree パス manifest 記録（Issue #1945）、およびステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
 
 ### 1.4 リポジトリ情報取得
 
@@ -387,8 +387,10 @@ esac
        # 消費する EPHEMERAL tmp artifact 専用の契約を持つ。session worktree のパスをそこに
        # 混ぜると、Step 4.5 が Step 5 の保護ゲートを経ずに生存中の worktree を reap しうる
        # （"session worktrees go through Step 5's gated reap, never here" 契約違反）。
-       # `session_worktree` type は Step 4.5 の case 文が未知 type として素通しするため、
-       # Step 5 の gated bypass（下記）のみがこの記録を消費する。
+       # `session_worktree` type は Step 4.5 の専用 case arm が扱うが、この arm は reap を
+       # 一切行わず、パスが既に消滅している場合のみ stale 参照を drop（self-heal）し、
+       # 存在する場合は verbatim 保持して Step 5 に委ねる。実 reap の消費は
+       # Step 5 の gated bypass（下記）のみが行う。
        if [ "{pr_merged}" = "true" ]; then
          bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type session_worktree --id "{flow_wt}" 2>/dev/null || true
        fi

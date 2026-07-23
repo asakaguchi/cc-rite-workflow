@@ -753,6 +753,11 @@ fi
 #   T-27 → Issue T-06 / AC-6: manifest worktree pointing at a non-git path is
 #          skipped WITHOUT aborting the run (regression for the set -e rc-capture fix)
 #   T-28 → Issue T-04 / AC-4: stale manifest entry (branch already gone) is dropped
+#   T-29 → Issue #1945: rite-tmp-artifact.sh `session_worktree` type round-trip
+#          (helper writes the manifest line for an absolute path, rejects a
+#          relative one) — the reap-side behavior for this type is covered by
+#          pr-cycle-cleanup-session-reap.test.sh's C-05/C-05b/C-05c/C-05d/C-06;
+#          this test covers the producer (recorder) side only.
 # (Steps 1-4 non-blocking failure paths are covered by T-10..T-16; T-26 adds the
 #  same contract for the new Step 4.5 manifest reap. Issue T-06 session-worktree
 #  protection by the gated Step 5 reap lives in pr-cycle-cleanup-session-reap.test.sh.)
@@ -970,6 +975,24 @@ if [ "$t28_rc" = "0" ] \
   pass "T-28: stale エントリは status≠failed + manifest=0 + 空 manifest 削除で drop"
 else
   fail "T-28: rc=$t28_rc, manifest_gone=$t28_manifest_gone. Output: $t28_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# T-29: rite-tmp-artifact.sh `session_worktree` type round-trip (Issue #1945, producer side)
+echo "T-29: rite-tmp-artifact.sh session_worktree type の記録・バリデーション (Issue #1945)"
+TEST_REPO=$(make_temp_repo)
+t29_abs_id="$TEST_REPO/.rite/worktrees/issue-t29"
+(
+  cd "$TEST_REPO"
+  bash "$ARTIFACT_HELPER" record --type session_worktree --id "$t29_abs_id" >/dev/null 2>&1
+)
+t29_recorded=$(grep -qxF "session_worktree$(printf '\t')$t29_abs_id" "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null && echo yes || echo no)
+t29_rel_rc=0
+( cd "$TEST_REPO" && bash "$ARTIFACT_HELPER" record --type session_worktree --id "relative/path" >/dev/null 2>&1 ) || t29_rel_rc=$?
+if [ "$t29_recorded" = "yes" ] && [ "$t29_rel_rc" -ne 0 ]; then
+  pass "T-29: session_worktree type は絶対パスで manifest に記録され、相対パスは拒否される (rc=$t29_rel_rc)"
+else
+  fail "T-29: recorded=$t29_recorded, rel_rc=$t29_rel_rc"
 fi
 cleanup_temp_repo "$TEST_REPO"
 

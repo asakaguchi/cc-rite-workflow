@@ -1116,9 +1116,10 @@ if [ -d "$session_wt_root" ]; then
     # header comment "session worktrees go through Step 5's gated reap, never
     # here"). Recording a session worktree path under `worktree` would let
     # Step 4.5 reap it — possibly a live, claimed worktree — before this Step 5
-    # gate ever runs. `session_worktree` is a distinct type Step 4.5's case
-    # statement does not recognize (falls through to its `*)` preserve-verbatim
-    # arm), so only this gated Step 5 bypass ever consumes it.
+    # gate ever runs. `session_worktree` is a distinct type handled by Step
+    # 4.5's own dedicated case arm (below), which never reaps — it only drops
+    # a stale entry once the path is already gone and otherwise preserves it
+    # verbatim — so only this gated Step 5 bypass ever actually reaps it.
     if [ "$_corpse" -eq 1 ] && [ -f "$manifest_path" ] \
        && grep -qxF "session_worktree$(printf '\t')$wt_path" "$manifest_path" 2>/dev/null; then
       echo "[pr-cycle-cleanup] manifest 記録済み (削除失敗確認済み) corpse session worktree のため age guard をバイパスします: $(printf '%s' "$wt_path" | neutralize_ctrl)" >&2

@@ -16,10 +16,12 @@
 #       type=session_worktree). `worktree` is reserved for EPHEMERAL tmp
 #       artifacts consumed by pr-cycle-cleanup.sh Step 4.5's ungated reap
 #       (dirty-check only — no claim/self-exclusion/live-cwd gates).
-#       `session_worktree` is for `.rite/worktrees/issue-N` paths, consumed
-#       ONLY by Step 5's gated corpse-age-guard bypass (Issue #1945); Step 4.5
-#       does not recognize this type and preserves it verbatim, per the
-#       existing "session worktrees go through Step 5's gated reap, never
+#       `session_worktree` is for `.rite/worktrees/issue-N` paths, actually
+#       reaped ONLY by Step 5's gated corpse-age-guard bypass (Issue #1945).
+#       Step 4.5 has a dedicated case arm for this type too, but that arm
+#       never reaps — it only drops a stale entry once the path is already
+#       gone (self-heal) and otherwise preserves it verbatim for Step 5, per
+#       the existing "session worktrees go through Step 5's gated reap, never
 #       here" contract.
 #
 # Data contract (`<shared-root>/.rite/tmp-artifacts.tsv`, TAB-separated):

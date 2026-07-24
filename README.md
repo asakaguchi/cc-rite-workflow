@@ -38,7 +38,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 
 ## Installation
 
-Rite Workflow uses a two-step installation: first register the marketplace, then install the plugin from it.
+Rite Workflow uses a three-step installation: register the marketplace, install the plugin, then reload plugins to activate the new commands.
 
 **Step 1**: Add the marketplace
 
@@ -51,6 +51,14 @@ Rite Workflow uses a two-step installation: first register the marketplace, then
 ```bash
 /plugin install rite@rite-marketplace
 ```
+
+**Step 3**: Reload plugins
+
+```bash
+/reload-plugins
+```
+
+If `/rite:` commands are still not recognized after this, restart Claude Code.
 
 **Verify installation**: Run `/rite:setup` to confirm the plugin is working.
 

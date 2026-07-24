@@ -38,7 +38,7 @@ https://github.com/user-attachments/assets/82ba8e65-0c07-4346-9964-5a482a1f4df5
 
 ## インストール
 
-Rite Workflow は 2 ステップでインストールします。まずマーケットプレイスを登録し、次にそこからプラグインをインストールします。
+Rite Workflow は 3 ステップでインストールします。マーケットプレイスを登録し、プラグインをインストールし、最後にプラグインを再読み込みして新しいコマンドを有効化します。
 
 **ステップ 1**: マーケットプレイスを追加
 
@@ -51,6 +51,14 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 ```bash
 /plugin install rite@rite-marketplace
 ```
+
+**ステップ 3**: プラグインを再読み込み
+
+```bash
+/reload-plugins
+```
+
+`/reload-plugins` の実行後も `/rite:` コマンドが認識されない場合は、Claude Code を再起動してください。
 
 **インストール確認**: `/rite:setup` を実行してプラグインが動作することを確認します。
 

@@ -1919,6 +1919,9 @@ Distributed via Claude Code plugin system:
 
 # Install the plugin
 /plugin install rite@rite-marketplace
+
+# Reload plugins to activate the new commands
+/reload-plugins
 ```
 
 ---

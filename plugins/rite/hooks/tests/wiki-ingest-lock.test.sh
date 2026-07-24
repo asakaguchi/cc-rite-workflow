@@ -126,6 +126,7 @@ if [ "$probe_ok" -eq 0 ]; then
   pass "TC-9 skipped: PATH スタブがこのホストで set を実行できない (環境起因の setup gap)"
 else
   nf_err=$(mktemp)
+  fail_before=$FAIL
   set_rc=0
   PATH="$noflock_stub" bash "$FS" set --session "$SID_NF" --phase ingest --issue 1 --branch x --next n \
     >/dev/null 2>>"$nf_err" || set_rc=$?
@@ -136,6 +137,11 @@ else
   assert "TC-9 no-flock check → own" "own" "$(PATH="$noflock_stub" bash "$WIL" check --session "$SID_NF" 2>>"$nf_err")"
   assert "TC-9 no-flock 別セッション check → held (state 書込が liveness 判定に到達)" "held" "$(PATH="$noflock_stub" bash "$WIL" check --session "$SID_A" 2>>"$nf_err")"
   assert "TC-9 no-flock release → released" "released" "$(PATH="$noflock_stub" bash "$WIL" release --session "$SID_NF" 2>>"$nf_err")"
+  # assert 失敗時は捕捉済み stderr を表示してから削除する（診断の握り潰し防止、TC-6 の
+  # err_file 表示と対称）
+  if [ "$FAIL" -gt "$fail_before" ] && [ -s "$nf_err" ]; then
+    head -5 "$nf_err" | sed 's/^/    stderr: /'
+  fi
   rm -f "$nf_err"
 fi
 

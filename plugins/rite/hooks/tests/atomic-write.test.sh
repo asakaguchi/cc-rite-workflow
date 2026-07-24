@@ -285,7 +285,10 @@ if [ "$probe_ok" -eq 0 ]; then
 else
   err_file=$(mktemp)
   rc=0
-  (cd "$TD" && PATH="$noflock_stub" bash "$HOOK" set --session "$SID" \
+  # LC_ALL=C で bash のエラーメッセージを英語に固定する。これがないと非英語 locale では
+  # 「コマンドが見つかりません」等のローカライズ済みメッセージになり、TC-6.3/6.4 の
+  # 英語文字列 grep が常に空振りして dead assertion 化する
+  (cd "$TD" && LC_ALL=C PATH="$noflock_stub" bash "$HOOK" set --session "$SID" \
     --phase "noflock_phase" --issue 1999 --branch "fix/noflock" --pr 0 --next "n" \
     >/dev/null 2>"$err_file") || rc=$?
 

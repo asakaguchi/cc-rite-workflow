@@ -90,5 +90,48 @@ env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" acquire >/dev/nul
 assert "TC-8 env-absent acquire holder resolved via file sid (SID_B)" "$SID_B" "$(cat "$LOCKDIR/session_id")"
 assert "TC-8 env-absent check own (resolver returned file sid SID_B == holder)" "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)"
 
+echo "=== TC-9 (Issue #1999 / T-03 / AC-3): flock 不在 PATH でロック経路が続行する ==="
+# wiki-ingest-lock.sh 自体は mkdir ロックで flock を呼ばないが、liveness 判定が
+# flow-state.sh get/set を経由するため、flock 不在環境で acquire→check→release の
+# 全経路がエラー終了せず続行することを PATH スタブで固定する（issue-claim.test.sh
+# TC-16 と同じスタブ方式。probe は flock 入りスタブで行い、環境起因の setup gap を
+# degrade 不具合と誤判定しない）。
+bash "$WIL" release --session "$SID_B" >/dev/null 2>&1 || true
+rm -rf "$LOCKDIR" 2>/dev/null || true
+noflock_stub=$(mktemp -d)
+cleanup_dirs+=("$noflock_stub")
+for _c in bash sh awk basename cat chmod date dirname find git grep head jq \
+          mkdir mktemp mv rm sed sleep tail touch tr wc; do
+  _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$noflock_stub/$_c"
+done
+SID_NF="cccccccc-9999-9999-9999-999999999999"
+_flock_path=$(command -v flock 2>/dev/null) || _flock_path=""
+probe_ok=1
+if [ -n "$_flock_path" ]; then
+  ln -sf "$_flock_path" "$noflock_stub/flock"
+  if [ "$(PATH="$noflock_stub" bash "$WIL" check --session "$SID_NF" 2>/dev/null)" != "free" ]; then
+    probe_ok=0
+  fi
+  rm -f "$noflock_stub/flock"
+fi
+if [ "$probe_ok" -eq 0 ]; then
+  pass "TC-9 skipped: PATH スタブがこのホストで check を実行できない (環境起因の setup gap)"
+else
+  nf_err=$(mktemp)
+  PATH="$noflock_stub" bash "$FS" set --session "$SID_NF" --phase ingest --issue 1 --branch x --next n \
+    >/dev/null 2>>"$nf_err" || true
+  rc=0; got=$(PATH="$noflock_stub" bash "$WIL" acquire --session "$SID_NF" 2>>"$nf_err") || rc=$?
+  assert "TC-9 no-flock acquire → acquired" "acquired" "$got"
+  assert "TC-9 no-flock acquire rc 0" "0" "$rc"
+  assert "TC-9 no-flock check → own" "own" "$(PATH="$noflock_stub" bash "$WIL" check --session "$SID_NF" 2>>"$nf_err")"
+  assert "TC-9 no-flock release → released" "released" "$(PATH="$noflock_stub" bash "$WIL" release --session "$SID_NF" 2>>"$nf_err")"
+  if grep -q "command not found" "$nf_err"; then
+    fail "TC-9 stderr に 'command not found' (exit 127 系) が出力された"
+  else
+    pass "TC-9 stderr に 'command not found' なし"
+  fi
+  rm -f "$nf_err"
+fi
+
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530)."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530); no-flock PATH degrade continuation (Issue #1999)."
